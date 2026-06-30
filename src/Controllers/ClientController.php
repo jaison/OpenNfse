@@ -216,7 +216,7 @@ final class ClientController
 
     private function getDefaultClientAreaNoticeMessage(): string
     {
-        return 'A partir de 01/07/2026 mudamos nosso sistema de emissão de NFS-e para nova API da Nota Nacional. Portanto serão exibidas apenas as notas emitidas depois desta data.' . PHP_EOL . PHP_EOL . 'Caso precise do PDF ou XML de alguma nota fiscal anterior a esta data, solicite via https://my.minivps.com.br/submitticket.php';
+        return 'A partir de 01/07/2026 mudamos nosso sistema de emissão de NFS-e para nova API da Nota Nacional. Portanto serão exibidas apenas as notas emitidas depois desta data.' . PHP_EOL . PHP_EOL . 'Caso precise do PDF ou XML de alguma nota fiscal anterior a esta data, solicite ao suporte da sua empresa.';
     }
 
 

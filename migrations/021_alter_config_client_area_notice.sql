@@ -12,6 +12,6 @@ SET
       'A partir de 01/07/2026 mudamos nosso sistema de emissão de NFS-e para nova API da Nota Nacional. Portanto serão exibidas apenas as notas emitidas depois desta data.',
       CHAR(10),
       CHAR(10),
-      'Caso precise do PDF ou XML de alguma nota fiscal anterior a esta data, solicite via https://my.minivps.com.br/submitticket.php'
+      'Caso precise do PDF ou XML de alguma nota fiscal anterior a esta data, solicite ao suporte da sua empresa.'
     )
   );
