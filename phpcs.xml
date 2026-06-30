@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<ruleset name="Nfse WHMCS Addon">
+  <description>PSR-12 validation for the Nfse addon module.</description>
+
+  <arg name="basepath" value="."/>
+  <arg name="colors"/>
+  <arg name="extensions" value="php"/>
+  <arg name="parallel" value="4"/>
+
+  <rule ref="PSR12"/>
+
+  <exclude-pattern>vendor/*</exclude-pattern>
+  <exclude-pattern>templates/*</exclude-pattern>
+  <exclude-pattern>assets/*</exclude-pattern>
+  <exclude-pattern>migrations/*</exclude-pattern>
+
+  <file>src</file>
+  <file>hooks.php</file>
+  <file>cron.php</file>
+  <file>Nfse.php</file>
+  <file>bootstrap.php</file>
+  <file>functions.php</file>
+  <file>scripts</file>
+</ruleset>
+

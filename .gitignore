@@ -1,0 +1,21 @@
+/build/
+
+# Composer dependencies rebuilt locally
+/vendor/
+
+# Test and tool caches
+/.phpunit.cache/
+.php-cs-fixer.cache
+
+# Local agent/editor metadata
+/.claude/
+
+# Logs and temporary artifacts
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# macOS
+.DS_Store

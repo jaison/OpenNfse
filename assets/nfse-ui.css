@@ -1,0 +1,132 @@
+.nfse-btn-xs {
+  font-size: 11px !important;
+  padding: 2px 6px !important;
+}
+
+.nfse-client-table {
+  font-size: 12px;
+}
+
+.nfse-error-textarea {
+  width: 520px;
+  height: 60px;
+  resize: none;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.nfse-client-invoice-alert {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.nfse-client-invoice-alert a {
+  font-size: 11px;
+}
+
+.nfse-client-summary {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.nfse-client-summary-line {
+  margin-top: 3px;
+}
+
+.nfse-client-actions {
+  margin-top: 10px !important;
+}
+
+.nfse-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.nfse-action-row form {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+}
+
+.nfse-action-row .btn {
+  margin: 0 !important;
+}
+
+.nfse-status-ok {
+  color: #3c763d;
+  font-weight: 700;
+}
+
+.nfse-status-error {
+  color: #a94442;
+  font-weight: 700;
+}
+
+.nfse-chave {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  display: inline-block;
+  max-width: 100%;
+  font-size: 12px;
+}
+
+.nfse-chave-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.nfse-chave-short {
+  display: inline-block;
+  max-width: 100%;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.nfse-copy-btn {
+  margin-left: 0;
+}
+
+.nfse-chave-line {
+  padding-bottom: 10px !important;
+}
+
+.nfse-chave-wrap {
+  margin-bottom: 10px !important;
+}
+
+.nfse-chave-line {
+  display: block;
+  margin-bottom: 10px !important;
+}
+
+.nfse-mt-6 {
+  margin-top: 6px !important;
+}
+
+.nfse-mt-8 {
+  margin-top: 8px !important;
+}
+
+.nfse-mt-10 {
+  margin-top: 10px !important;
+}
+
+.nfse-mt-15 {
+  margin-top: 15px !important;
+}
+
+.nfse-ml-6 {
+  margin-left: 6px !important;
+}
+
+.nfse-ml-10 {
+  margin-left: 10px !important;
+}
+
+.nfse-mb-10 {
+  margin-bottom: 10px !important;
+}

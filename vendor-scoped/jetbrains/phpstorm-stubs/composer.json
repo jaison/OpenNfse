@@ -1,0 +1,36 @@
+{
+    "name": "jetbrains\/phpstorm-stubs",
+    "description": "PHP runtime & extensions header files for PhpStorm",
+    "homepage": "https:\/\/www.jetbrains.com\/phpstorm",
+    "license": "Apache-2.0",
+    "keywords": [
+        "JetBrains",
+        "PHPStorm",
+        "stubs",
+        "autocomplete",
+        "type",
+        "inference",
+        "code",
+        "inspection"
+    ],
+    "require-dev": {
+        "nikic\/php-parser": "^v5.6",
+        "phpdocumentor\/reflection-docblock": "^5.6",
+        "phpunit\/phpunit": "^12.3",
+        "friendsofphp\/php-cs-fixer": "^v3.86"
+    },
+    "autoload": {
+        "files": [
+            "PhpStormStubsMap.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "OpenNfseVendor\\StubTests\\": "tests\/"
+        }
+    },
+    "scripts": {
+        "cs": "php-cs-fixer fix -v --diff --dry-run",
+        "cs-fix": "php-cs-fixer fix -v --diff"
+    }
+}

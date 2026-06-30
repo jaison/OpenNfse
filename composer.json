@@ -1,0 +1,40 @@
+{
+  "name": "whmcs-addon/opennfse",
+  "type": "project",
+  "require": {
+    "php": "^8.1",
+    "nfse-nacional/nfse-php": "^1.20",
+    "paseto/nfse-nacional-pdf": "^0.5"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^10.5",
+    "squizlabs/php_codesniffer": "^3.13",
+    "humbug/php-scoper": "^0.18"
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "autoload": {
+    "psr-4": {
+      "OpenNfse\\": "src/",
+      "NfsePdf\\": "src/PasetoOverrides/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "OpenNfse\\Tests\\": "tests/"
+    },
+    "classmap": [
+      "tests/Stubs"
+    ]
+  },
+  "scripts": {
+    "cs:check": "phpcs -p",
+    "cs:fix": "phpcbf -p",
+    "test": "phpunit -c phpunit.xml",
+    "scope": [
+      "php -d memory_limit=1G vendor/bin/php-scoper add-prefix --output-dir=build/scoped --force --quiet",
+      "php tools/build-scoped-vendor.php",
+      "@php -r \"array_map('unlink', glob(__DIR__.'/build/scoped/*') ?: []); @rmdir('build/scoped'); @rmdir('build');\""
+    ]
+  }
+}
