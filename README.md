@@ -1,5 +1,7 @@
 # OpenNFS-e
 
+![Screenshot do OpenNFS-e](opennfse.png)
+
 Addon para WHMCS com emissão de NFS-e via API Nacional, geração de NFS-e em PDF, armazenamento de XML e integração com fila/processamento automático.
 
 ## Visão Geral
