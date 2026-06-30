@@ -1,0 +1,10 @@
+{
+  "module": "OpenNfse",
+  "latest_version": "0.1.0",
+  "release_date": "2026-06-30",
+  "download_url": "https://github.com/jaison/OpenNfse/releases",
+  "changelog_url": "https://github.com/jaison/OpenNfse/releases",
+  "minimum_whmcs": "8.13.0",
+  "minimum_php": "8.1",
+  "message": "Você está usando a versão inicial publicada do módulo OpenNfse."
+}

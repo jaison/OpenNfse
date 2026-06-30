@@ -143,6 +143,12 @@ final class AdminController
                 'requiresTokenMessage' => 'Método inválido para aprovação do hash dos municípios IBGE.',
                 'handler' => [$this->configController, 'approveIbgeHash'],
             ],
+            'checkUpdates' => [
+                'method' => 'POST',
+                'requiresToken' => true,
+                'requiresTokenMessage' => 'Método inválido para verificação de atualizações do módulo.',
+                'handler' => [$this->configController, 'checkUpdates'],
+            ],
             'relEmitidas' => [
                 'method' => 'GET',
                 'requiresToken' => false,

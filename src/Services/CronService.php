@@ -69,6 +69,7 @@ final class CronService
                 $this->processAutomationBatch();
             }
 
+            (new UpdateCheckService())->autoCheckIfDue($config);
             $this->cleanup($config);
         } catch (\Throwable $e) {
             $this->logCronFailure($source, $e);

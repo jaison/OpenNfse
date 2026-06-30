@@ -1,0 +1,9 @@
+ALTER TABLE mod_opennfse_config ADD COLUMN update_last_checked_at DATETIME NULL;
+ALTER TABLE mod_opennfse_config ADD COLUMN update_last_status VARCHAR(20) NULL;
+ALTER TABLE mod_opennfse_config ADD COLUMN update_latest_version VARCHAR(20) NULL;
+ALTER TABLE mod_opennfse_config ADD COLUMN update_message TEXT NULL;
+ALTER TABLE mod_opennfse_config ADD COLUMN update_download_url VARCHAR(255) NULL;
+ALTER TABLE mod_opennfse_config ADD COLUMN update_changelog_url VARCHAR(255) NULL;
+ALTER TABLE mod_opennfse_config ADD COLUMN update_minimum_whmcs VARCHAR(20) NULL;
+ALTER TABLE mod_opennfse_config ADD COLUMN update_minimum_php VARCHAR(20) NULL;
+ALTER TABLE mod_opennfse_config ADD COLUMN update_error TEXT NULL;

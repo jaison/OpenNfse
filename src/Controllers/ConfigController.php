@@ -23,6 +23,7 @@ use OpenNfse\Services\QueueErrorClassifierService;
 use OpenNfse\Services\QueueService;
 use OpenNfse\Services\StorageService;
 use OpenNfse\Services\TokenService;
+use OpenNfse\Services\UpdateCheckService;
 use WHMCS\Database\Capsule;
 use OpenNfse\Controllers\Support\AdminHelpersTrait;
 
@@ -135,6 +136,10 @@ final class ConfigController
             echo '<div class="successbox">Novo hash da fonte primária aprovado e base sincronizada com sucesso' . ($total > 0 ? ' (' . $h((string) $total) . ' registros).' : '.') . '</div>';
         } elseif ($msg === 'ibge_pin_error') {
             echo '<div class="errorbox">Não foi possível aprovar o novo hash da fonte primária. Tente novamente em alguns instantes.</div>';
+        } elseif ($msg === 'update_check_ok') {
+            echo '<div class="successbox">Verificação de atualizações concluída com sucesso.</div>';
+        } elseif ($msg === 'update_check_error') {
+            echo '<div class="errorbox">Não foi possível verificar atualizações do módulo no momento.</div>';
         }
         $configUrl = static function (string $tab): string {
             return 'addonmodules.php?module=OpenNfse&action=config&tab=' . rawurlencode($tab);
@@ -152,6 +157,7 @@ final class ConfigController
         $ibgeCatalogStatus = $ibgeService->getCatalogStatus($config);
         $configuredMunicipioStatus = $ibgeService->getConfiguredMunicipioStatus($config);
         $viaCepStatus = $ibgeService->getViaCepStatus($config);
+        $updateStatus = (new UpdateCheckService())->getStatus($config);
         $tabStatuses = [];
         foreach (array_keys($allowedTabs) as $key) {
             $tabStatuses[$key] = $this->getConfigTabStatusMeta($key, $config);
@@ -559,6 +565,9 @@ final class ConfigController
 
         echo '<div class="nfse-config-tab" data-tab="processamento">';
         $this->renderConfigPaneHeader((string) $tabMeta['processamento']['title'], (string) $tabMeta['processamento']['description'], $tabStatuses['processamento'] ?? []);
+        $this->renderConfigSectionStart('Atualizações do módulo', 'Acompanhe a versão instalada, verifique novas versões publicadas no GitHub e mantenha um cache local da última checagem remota.');
+        $this->renderUpdateCheckContent($updateStatus);
+        $this->renderConfigSectionEnd();
         $this->renderConfigSectionStart('Automação da fila', 'Defina quando o módulo deve enfileirar e processar emissões automaticamente após o pagamento.');
         $this->renderConfigFormTableStart();
         $this->renderSelectRow('queue_enabled', 'Habilitar fila/cron?', [
@@ -1031,6 +1040,88 @@ final class ConfigController
             header('Location: addonmodules.php?module=OpenNfse&action=config&tab=tomador&msg=ibge_pin_error');
             exit;
         }
+    }
+
+    public function checkUpdates(): void
+    {
+        try {
+            (new UpdateCheckService())->checkNow();
+            header('Location: addonmodules.php?module=OpenNfse&action=config&tab=processamento&msg=update_check_ok');
+            exit;
+        } catch (\Throwable $e) {
+            $configRepo = new ConfigRepository();
+            if ($configRepo->get() !== []) {
+                $configRepo->save([
+                    'update_last_checked_at' => date('Y-m-d H:i:s'),
+                    'update_last_status' => 'error',
+                    'update_error' => $e->getMessage(),
+                ]);
+            }
+            header('Location: addonmodules.php?module=OpenNfse&action=config&tab=processamento&msg=update_check_error');
+            exit;
+        }
+    }
+
+    private function renderUpdateCheckContent(array $status): void
+    {
+        $h = static function ($value): string {
+            return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+        };
+
+        $tone = match ((string) ($status['status'] ?? 'never_checked')) {
+            'ok' => !empty($status['update_available'])
+                ? ['#fff7ed', '#f59e0b', '#9a3412']
+                : ['#ecfdf3', '#16a34a', '#166534'],
+            'error' => ['#fef2f2', '#ef4444', '#991b1b'],
+            default => ['#eff6ff', '#3b82f6', '#1d4ed8'],
+        };
+        $lastCheckedAt = trim((string) ($status['last_checked_at'] ?? ''));
+        $lastCheckedDisplay = $lastCheckedAt !== '' ? date('d/m/Y H:i', strtotime($lastCheckedAt) ?: time()) : 'Nunca';
+        $manifestUrl = (string) ($status['manifest_url'] ?? '');
+        $downloadUrl = trim((string) ($status['download_url'] ?? ''));
+        $changelogUrl = trim((string) ($status['changelog_url'] ?? ''));
+        $minimumWhmcs = trim((string) ($status['minimum_whmcs'] ?? ''));
+        $minimumPhp = trim((string) ($status['minimum_php'] ?? ''));
+
+        echo '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:stretch;">';
+        echo '<div style="flex:1 1 320px;min-width:320px;padding:12px;border:1px solid #d9e1ea;background:#fff;">';
+        echo '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">';
+        echo '<strong style="font-size:13px;color:#334155;">Status da atualização</strong>';
+        echo '<span style="display:inline-block;padding:3px 8px;border-radius:999px;background:' . $h($tone[0]) . ';color:' . $h($tone[2]) . ';font-size:11px;font-weight:700;border:1px solid ' . $h($tone[1]) . ';">' . $h((string) ($status['label'] ?? '')) . '</span>';
+        echo '</div>';
+        echo '<div style="font-size:12px;color:#475569;line-height:1.55;margin-bottom:8px;">' . $h((string) ($status['summary'] ?? '')) . '</div>';
+        echo '<div style="font-size:11px;color:#64748b;line-height:1.65;">';
+        echo 'Versão instalada: <strong>' . $h((string) ($status['current_version'] ?? '—')) . '</strong><br />';
+        echo 'Última versão conhecida: <strong>' . $h((string) ($status['latest_version'] ?? '—')) . '</strong><br />';
+        echo 'Última checagem: <strong>' . $h($lastCheckedDisplay) . '</strong><br />';
+        echo 'Manifesto remoto: <span class="nfse-config-mono" style="font-size:11px;">' . $h($manifestUrl) . '</span>';
+        if ($minimumWhmcs !== '') {
+            echo '<br />WHMCS mínimo informado: <strong>' . $h($minimumWhmcs) . '</strong>';
+        }
+        if ($minimumPhp !== '') {
+            echo '<br />PHP mínimo informado: <strong>' . $h($minimumPhp) . '</strong>';
+        }
+        if (trim((string) ($status['message'] ?? '')) !== '') {
+            echo '<br />Mensagem: <strong>' . $h((string) $status['message']) . '</strong>';
+        }
+        if (trim((string) ($status['error'] ?? '')) !== '') {
+            echo '<br />Erro: <span style="color:#b91c1c;">' . $h((string) $status['error']) . '</span>';
+        }
+        echo '</div>';
+        echo '</div>';
+        echo '<div style="flex:0 0 260px;min-width:260px;padding:12px;border:1px solid #d9e1ea;background:#fafbfd;display:flex;flex-direction:column;justify-content:space-between;gap:12px;">';
+        echo '<div style="font-size:12px;color:#475569;line-height:1.55;">O módulo consulta o manifesto de atualização publicado no GitHub e mantém um cache local da última checagem. A validação automática ocorre no cron no máximo uma vez por dia.</div>';
+        echo '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
+        echo '<button type="submit" class="btn btn-primary" formaction="addonmodules.php?module=OpenNfse&action=checkUpdates" formmethod="post">Verificar atualizações agora</button>';
+        if ($downloadUrl !== '') {
+            echo '<a href="' . $h($downloadUrl) . '" target="_blank" rel="noopener noreferrer" class="btn btn-default">Abrir releases</a>';
+        }
+        if ($changelogUrl !== '' && $changelogUrl !== $downloadUrl) {
+            echo '<a href="' . $h($changelogUrl) . '" target="_blank" rel="noopener noreferrer" class="btn btn-default">Ver changelog</a>';
+        }
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
     }
 
 
