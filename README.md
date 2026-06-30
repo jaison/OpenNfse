@@ -20,6 +20,7 @@ Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emiss�
 - Usa `vendor-scoped` para reduzir risco de conflito com dependências de outros módulos do WHMCS.
 - Permite emissão automática ao pagamento da fatura, com controle separado por gateway.
 - Permite configurar código de serviço, NBS, alíquota e parâmetros tributários padrão.
+- Suporta emissão de NFS-e para clientes no Brasil e no exterior.
 - Gera DANFS-e em PDF e envia XML/PDF por e-mail ao cliente.
 - Possui fila de processamento, cron integrado ao WHMCS e consulta automática/manual de status.
 - Organiza XMLs emitidos por ambiente, série, ano e mês.
@@ -35,6 +36,7 @@ Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emiss�
 ### Operação De Notas
 - Emissão manual, reemissão e cancelamento de NFS-e pelo admin.
 - Consulta manual e automática de status da nota.
+- Emissão de NFS-e para tomadores nacionais e estrangeiros.
 - Download individual de XML e PDF.
 - Envio de XML e PDF por e-mail.
 
@@ -65,6 +67,7 @@ Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emiss�
 - Mapeamento por produto, grupo e gateway.
 - Configuração do DANFS-e e personalização de cabeçalho do PDF.
 - Dados padrão do tomador e sincronização de municípios IBGE.
+- Resolução de municípios com catálogo local alimentado por fonte IBGE e fallback via ViaCEP.
 - Política de retenção de logs e fila.
 
 ## SDKs E Bibliotecas De Terceiros
@@ -81,6 +84,15 @@ Este projeto utiliza bibliotecas de terceiros para integração com a NFS-e Naci
   utilizada para testes automatizados no ambiente de desenvolvimento.
 - [`squizlabs/php_codesniffer`](https://github.com/PHPCSStandards/PHP_CodeSniffer):
   utilizada para verificação de padrão de código no desenvolvimento.
+
+## Fontes De Dados Externas
+
+Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes externas para enriquecer e validar dados de municípios:
+
+- [`kelvins/municipios-brasileiros`](https://github.com/kelvins/municipios-brasileiros):
+  fonte primária do catálogo de municípios e códigos IBGE usada para popular a base local do módulo.
+- [`ViaCEP`](https://viacep.com.br/):
+  utilizada como fallback para apoio na resolução de município/UF a partir do CEP quando necessário.
 
 ## Estrutura Do Repositório
 
