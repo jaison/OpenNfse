@@ -200,18 +200,22 @@ composer cs:fix
 
 - O certificado A1 deve ficar fora do webroot do WHMCS.
 - O diretório `attachments/` deve ser gravável pelo PHP.
+- Certificados `.pfx` com criptografia antiga podem apresentar falhas de leitura ou compatibilidade no servidor.
 - Não publique logs, XMLs, PDFs gerados ou credenciais.
-- Consulte [SEGURANCA.md](file:///Users/jaison/Playground/nfse-nacional/modules/addons/OpenNfse/docs/SEGURANCA.md) para orientações operacionais detalhadas.
 
-## Publicação No GitHub
+### Certificado PFX Moderno
 
-Este repositório está preparado para publicar uma versão pronta para uso:
+Se o certificado A1 estiver em um `.pfx` antigo, ele pode apresentar incompatibilidades no ambiente do servidor. Nesses casos, a recomendação é reexportar o certificado em um PFX moderno.
 
-- incluir `vendor-scoped/`
-- não incluir `vendor/`
-- não incluir caches, logs ou arquivos locais
+Se você conseguir o certificado original ou tiver acesso ao Windows onde ele foi emitido:
 
-O `.gitignore` já está ajustado para esse fluxo.
+1. Abra `certmgr.msc`.
+2. Localize o certificado desejado.
+3. Exporte novamente o certificado.
+4. Utilize criptografia `AES`, quando essa opção estiver disponível no assistente.
+5. Gere um novo arquivo `.pfx`.
+
+Depois disso, atualize o caminho e a senha do certificado na configuração do módulo e valide novamente o certificado no admin do WHMCS.
 
 ## Licença E Uso
 
