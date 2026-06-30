@@ -33,20 +33,20 @@ Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emiss�
 - Fila de processamento para emissões, reprocessamentos e consultas de status.
 - Cron integrado ao WHMCS com proteção contra execução duplicada.
 
-### Operação De Notas
+### Operação de Notas
 - Emissão manual, reemissão e cancelamento de NFS-e pelo admin.
 - Consulta manual e automática de status da nota.
 - Emissão de NFS-e para tomadores nacionais e estrangeiros.
 - Download individual de XML e PDF.
 - Envio de XML e PDF por e-mail.
 
-### Dashboard E Monitoramento
+### Dashboard e Monitoramento
 - Dashboard operacional com métricas do período.
 - Indicadores de emitidas, canceladas, rejeitadas, pendentes, erros e valor emitido.
 - Listas rápidas de últimas emissões, últimos erros e últimos cancelamentos.
 - Atalhos para ações operacionais e fechamento mensal.
 
-### Relatórios E Exportações
+### Relatórios e Exportações
 - Relatórios de NFS-e emitidas.
 - Relatórios de falhas e rejeições.
 - Relatórios de cancelamentos.
@@ -54,13 +54,13 @@ Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emiss�
 - Exportação CSV de emitidas.
 - Download em ZIP dos XMLs emitidos no período.
 
-### Área Do Cliente
+### Área do Cliente
 - Listagem das NFS-e emitidas vinculadas ao cliente.
 - Download de XML e PDF pelo cliente.
 - Reenvio de XML/PDF por e-mail pelo cliente.
 - Aviso configurável na área do cliente.
 
-### Configuração E Cadastros
+### Configuração e Cadastros
 - Configuração de ambiente, certificado digital e dados do prestador.
 - Configuração de série DPS, sequenciais e parâmetros de processamento.
 - Catálogo de código de serviço e NBS.
@@ -85,7 +85,7 @@ Este projeto utiliza bibliotecas de terceiros para integração com a NFS-e Naci
 - [`squizlabs/php_codesniffer`](https://github.com/PHPCSStandards/PHP_CodeSniffer):
   utilizada para verificação de padrão de código no desenvolvimento.
 
-## Fontes De Dados Externas
+## Fontes de Dados Externas
 
 Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes externas para enriquecer e validar dados de municípios:
 
@@ -94,7 +94,7 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 - [`ViaCEP`](https://viacep.com.br/):
   utilizada como fallback para apoio na resolução de município/UF a partir do CEP quando necessário.
 
-## Estrutura Do Repositório
+## Estrutura do Repositório
 
 - `src/`:
   código-fonte principal do módulo.
@@ -131,7 +131,7 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 - Revise as opções de fila/processamento automático.
 - Salve a configuração antes de realizar testes de emissão.
 
-## Armazenamento De Arquivos
+## Armazenamento de Arquivos
 
 - XMLs são gravados em:
 
@@ -159,7 +159,7 @@ attachments/nfse/pdf/
 - O processamento respeita a configuração interna do addon e possui proteção contra execução duplicada no mesmo minuto.
 - O arquivo `cron.php` do módulo permanece disponível para compatibilidade, mas a recomendação é usar o cron principal do WHMCS como origem oficial.
 
-## Atualização De Dependências
+## Atualização de Dependências
 
 Se você estiver trabalhando a partir do código-fonte e precisar reconstruir as dependências escopadas:
 
@@ -217,7 +217,7 @@ Se você conseguir o certificado original ou tiver acesso ao Windows onde ele fo
 
 Depois disso, atualize o caminho e a senha do certificado na configuração do módulo e valide novamente o certificado no admin do WHMCS.
 
-## Licença E Uso
+## Licença e Uso
 
 Este projeto é disponibilizado para uso pessoal e uso interno por empresas, incluindo estudo, instalação e adaptação para uso próprio.
 
