@@ -16,6 +16,49 @@ Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emiss�
 - Possui fila de processamento, cron integrado ao WHMCS e consulta automática/manual de status.
 - Organiza XMLs emitidos por ambiente, série, ano e mês.
 
+## Panorama Funcional
+
+### Automação Fiscal
+- Emissão automática de NFS-e quando a fatura é paga.
+- Controle de automação separado por gateway de pagamento.
+- Fila de processamento para emissões, reprocessamentos e consultas de status.
+- Cron integrado ao WHMCS com proteção contra execução duplicada.
+
+### Operação De Notas
+- Emissão manual, reemissão e cancelamento de NFS-e pelo admin.
+- Consulta manual e automática de status da nota.
+- Download individual de XML e PDF.
+- Envio de XML e PDF por e-mail.
+
+### Dashboard E Monitoramento
+- Dashboard operacional com métricas do período.
+- Indicadores de emitidas, canceladas, rejeitadas, pendentes, erros e valor emitido.
+- Listas rápidas de últimas emissões, últimos erros e últimos cancelamentos.
+- Atalhos para ações operacionais e fechamento mensal.
+
+### Relatórios E Exportações
+- Relatórios de NFS-e emitidas.
+- Relatórios de falhas e rejeições.
+- Relatórios de cancelamentos.
+- Relatórios técnicos de logs com visualização detalhada de request/response.
+- Exportação CSV de emitidas.
+- Download em ZIP dos XMLs emitidos no período.
+
+### Área Do Cliente
+- Listagem das NFS-e emitidas vinculadas ao cliente.
+- Download de XML e PDF pelo cliente.
+- Reenvio de XML/PDF por e-mail pelo cliente.
+- Aviso configurável na área do cliente.
+
+### Configuração E Cadastros
+- Configuração de ambiente, certificado digital e dados do prestador.
+- Configuração de série DPS, sequenciais e parâmetros de processamento.
+- Catálogo de código de serviço e NBS.
+- Mapeamento por produto, grupo e gateway.
+- Configuração do DANFS-e e personalização de cabeçalho do PDF.
+- Dados padrão do tomador e sincronização de municípios IBGE.
+- Política de retenção de logs e fila.
+
 ## SDKs E Bibliotecas De Terceiros
 
 Este projeto utiliza bibliotecas de terceiros para integração com a NFS-e Nacional, geração de PDF e empacotamento seguro das dependências:
