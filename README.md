@@ -4,6 +4,14 @@
 
 Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emissão automática quando a fatura é paga, controle de automação por gateway de pagamento, configuração de NBS e código de serviço, geração de DANFS-e em PDF, armazenamento de XML organizado por ambiente e série, consulta de status, fila de processamento e envio de XML/PDF por e-mail ao cliente.
 
+> **Aviso importante**
+>
+> Este addon está em fase de testes.
+>
+> Antes de utilizar em produção, faça a validação completa no ambiente de homologação da NFS-e Nacional e confirme todos os fluxos operacionais, fiscais e de comunicação com o seu WHMCS.
+>
+> O uso deste software é por sua conta e risco. O autor não se responsabiliza por perdas, falhas operacionais, emissões incorretas, indisponibilidade, inconsistências fiscais, danos diretos ou indiretos decorrentes do uso deste addon.
+
 ## Visão Geral
 
 - Compatível com WHMCS `8.13.x`.
