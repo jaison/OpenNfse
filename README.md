@@ -146,12 +146,6 @@ attachments/nfse/xml/homologacao/900/2026/06/
 attachments/nfse/xml/producao/1/2026/06/
 ```
 
-- PDFs DANFS-e continuam sendo gravados em:
-
-```text
-attachments/nfse/pdf/
-```
-
 ## Cron
 
 - O addon possui integração com o cron do próprio WHMCS.
