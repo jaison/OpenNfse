@@ -1,8 +1,9 @@
 # OpenNFS-e
 
-Addon para WHMCS com emissão de NFS-e via API Nacional, geração de DANFS-e em PDF, armazenamento de XML e integração com fila/processamento automático.
+Addon para WHMCS com emissão de NFS-e via API Nacional, geração de NFS-e em PDF, armazenamento de XML e integração com fila/processamento automático.
 
 ## Visão Geral
+
 - Compatível com WHMCS `8.13.x`.
 - Requer PHP `8.1+`.
 - Usa a SDK `nfse-nacional/nfse-php`.
@@ -10,6 +11,7 @@ Addon para WHMCS com emissão de NFS-e via API Nacional, geração de DANFS-e em
 - Organiza XMLs emitidos por ambiente, série, ano e mês.
 
 ## Estrutura Do Repositório
+
 - `src/`:
   código-fonte principal do módulo.
 - `assets/`:
@@ -24,12 +26,14 @@ Addon para WHMCS com emissão de NFS-e via API Nacional, geração de DANFS-e em
   dependências prontas para uso no ambiente final.
 
 ## Requisitos
+
 - PHP `^8.1`
 - WHMCS `8.13.x`
 - Extensões PHP exigidas pela SDK e pelo ambiente do WHMCS
 - Certificado A1 válido (`.pfx` ou `.p12`)
 
 ## Instalação
+
 1. Copie a pasta `OpenNfse` para `modules/addons/` do WHMCS.
 2. Confirme que a pasta `vendor-scoped/` está presente no módulo publicado.
 3. No admin do WHMCS, acesse `Configuration > System Settings > Addon Modules`.
@@ -37,12 +41,14 @@ Addon para WHMCS com emissão de NFS-e via API Nacional, geração de DANFS-e em
 5. Acesse `Addons > OpenNFS-e` e preencha a configuração inicial.
 
 ## Configuração Inicial
+
 - Configure ambiente, certificado digital e dados do prestador.
 - Configure a série DPS conforme a operação desejada.
 - Revise as opções de fila/processamento automático.
 - Salve a configuração antes de realizar testes de emissão.
 
 ## Armazenamento De Arquivos
+
 - XMLs são gravados em:
 
 ```text
@@ -63,12 +69,14 @@ attachments/nfse/pdf/
 ```
 
 ## Cron
+
 - O addon possui integração com o cron do próprio WHMCS.
 - Quando o cron principal do WHMCS roda a cada minuto, o processamento automático do módulo é disparado junto.
 - O processamento respeita a configuração interna do addon e possui proteção contra execução duplicada no mesmo minuto.
 - O arquivo `cron.php` do módulo permanece disponível para compatibilidade, mas a recomendação é usar o cron principal do WHMCS como origem oficial.
 
 ## Atualização De Dependências
+
 Se você estiver trabalhando a partir do código-fonte e precisar reconstruir as dependências escopadas:
 
 ```bash
@@ -79,6 +87,7 @@ composer run scope
 Isso reconstrói a pasta `vendor-scoped/`.
 
 ## Desenvolvimento Local
+
 - Instalar dependências:
 
 ```bash
@@ -104,12 +113,14 @@ composer cs:fix
 ```
 
 ## Segurança
+
 - O certificado A1 deve ficar fora do webroot do WHMCS.
 - O diretório `attachments/` deve ser gravável pelo PHP.
 - Não publique logs, XMLs, PDFs gerados ou credenciais.
 - Consulte [SEGURANCA.md](file:///Users/jaison/Playground/nfse-nacional/modules/addons/OpenNfse/docs/SEGURANCA.md) para orientações operacionais detalhadas.
 
 ## Publicação No GitHub
+
 Este repositório está preparado para publicar uma versão pronta para uso:
 
 - incluir `vendor-scoped/`
@@ -119,9 +130,11 @@ Este repositório está preparado para publicar uma versão pronta para uso:
 O `.gitignore` já está ajustado para esse fluxo.
 
 ## Licença E Uso
+
 Este projeto é disponibilizado para uso pessoal e uso interno por empresas, incluindo estudo, instalação e adaptação para uso próprio.
 
 Sem autorização prévia e expressa do autor, não é permitido:
+
 - vender este software
 - revender este software
 - sublicenciar este software

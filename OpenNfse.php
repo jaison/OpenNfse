@@ -15,8 +15,8 @@ function opennfse_config(): array
 {
     return [
         'name' => 'OpenNFS-e',
-        'description' => 'Emissão de NFS-e via API Nacional usando nfse-nacional/nfse-php',
-        'author' => 'OpenNFS-e',
+        'description' => 'Emissão automática de NFS-e Nacional integrada ao WHMCS.',
+        'author' => '<a href="https://github.com/jaison/OpenNfse/" target="_blank" rel="noopener noreferrer">Jaison Perazza</a>',
         'version' => '0.1.0',
         'language' => 'portuguese-br',
     ];
