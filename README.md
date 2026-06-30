@@ -2,7 +2,7 @@
 
 ![Screenshot do OpenNFS-e](opennfse.png)
 
-Addon para WHMCS com emissão de NFS-e via API Nacional, geração de NFS-e em PDF, armazenamento de XML e integração com fila/processamento automático.
+Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emissão automática quando a fatura é paga, controle de automação por gateway de pagamento, configuração de NBS e código de serviço, geração de DANFS-e em PDF, armazenamento de XML organizado por ambiente e série, consulta de status, fila de processamento e envio de XML/PDF por e-mail ao cliente.
 
 ## Visão Geral
 
@@ -10,6 +10,10 @@ Addon para WHMCS com emissão de NFS-e via API Nacional, geração de NFS-e em P
 - Requer PHP `8.1+`.
 - Usa a SDK `nfse-nacional/nfse-php`.
 - Usa `vendor-scoped` para reduzir risco de conflito com dependências de outros módulos do WHMCS.
+- Permite emissão automática ao pagamento da fatura, com controle separado por gateway.
+- Permite configurar código de serviço, NBS, alíquota e parâmetros tributários padrão.
+- Gera DANFS-e em PDF e envia XML/PDF por e-mail ao cliente.
+- Possui fila de processamento, cron integrado ao WHMCS e consulta automática/manual de status.
 - Organiza XMLs emitidos por ambiente, série, ano e mês.
 
 ## SDKs E Bibliotecas De Terceiros
