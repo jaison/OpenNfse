@@ -10,6 +10,21 @@ Addon para WHMCS com emissão de NFS-e via API Nacional, geração de NFS-e em P
 - Usa `vendor-scoped` para reduzir risco de conflito com dependências de outros módulos do WHMCS.
 - Organiza XMLs emitidos por ambiente, série, ano e mês.
 
+## SDKs E Bibliotecas De Terceiros
+
+Este projeto utiliza bibliotecas de terceiros para integração com a NFS-e Nacional, geração de PDF e empacotamento seguro das dependências:
+
+- [`nfse-nacional/nfse-php`](https://github.com/nfse-nacional/nfse-php):
+  SDK principal de integração com a API Nacional da NFS-e.
+- [`paseto/nfse-nacional-pdf`](https://github.com/paseto/nfse-nacional-pdf):
+  biblioteca base para geração do DANFS-e em PDF.
+- [`humbug/php-scoper`](https://github.com/humbug/php-scoper):
+  utilizada no processo de build para gerar a pasta `vendor-scoped/` e reduzir conflitos de dependências com outros módulos do WHMCS.
+- [`phpunit/phpunit`](https://github.com/sebastianbergmann/phpunit):
+  utilizada para testes automatizados no ambiente de desenvolvimento.
+- [`squizlabs/php_codesniffer`](https://github.com/PHPCSStandards/PHP_CodeSniffer):
+  utilizada para verificação de padrão de código no desenvolvimento.
+
 ## Estrutura Do Repositório
 
 - `src/`:
