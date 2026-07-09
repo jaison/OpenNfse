@@ -1102,7 +1102,7 @@ final class ConfigController
             echo '<br />PHP mínimo informado: <strong>' . $h($minimumPhp) . '</strong>';
         }
         if (trim((string) ($status['message'] ?? '')) !== '') {
-            echo '<br />Mensagem: <strong>' . $h((string) $status['message']) . '</strong>';
+            echo '<br />Notas da versão: <strong>' . $h((string) $status['message']) . '</strong>';
         }
         if (trim((string) ($status['error'] ?? '')) !== '') {
             echo '<br />Erro: <span style="color:#b91c1c;">' . $h((string) $status['error']) . '</span>';

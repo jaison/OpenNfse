@@ -38,7 +38,11 @@ final class UpdateCheckService
         if ($status === 'ok') {
             if ($updateAvailable) {
                 $label = 'Atualização disponível';
-                $summary = $message !== '' ? $message : 'Há uma nova versão disponível para o módulo.';
+                $summary = sprintf(
+                    'Há uma nova versão disponível para o módulo. Atualize da versão %s para %s.',
+                    $currentVersion !== '' ? $currentVersion : 'atual',
+                    $latestVersion !== '' ? $latestVersion : 'mais recente'
+                );
             } else {
                 $label = 'Atualizado';
                 $summary = $message !== '' ? $message : 'A instalação local já está na versão mais recente conhecida.';

@@ -23,6 +23,7 @@ use OpenNfse\Services\QueueErrorClassifierService;
 use OpenNfse\Services\QueueService;
 use OpenNfse\Services\StorageService;
 use OpenNfse\Services\TokenService;
+use OpenNfse\Services\UpdateCheckService;
 use WHMCS\Database\Capsule;
 
 final class AdminController
@@ -345,6 +346,8 @@ final class AdminController
         $recentEmitidas = $repo->dashboardRecentEmitidas((string) ($metrics['range_start'] ?? ''), (string) ($metrics['range_end'] ?? ''), 5);
         $recentErros = $repo->dashboardRecentIssues((string) ($metrics['range_start'] ?? ''), (string) ($metrics['range_end'] ?? ''), 5);
         $recentCanceladas = $repo->dashboardRecentCancelamentos((string) ($metrics['range_start'] ?? ''), (string) ($metrics['range_end'] ?? ''), 5);
+        $config = (new ConfigRepository())->get();
+        $updateStatus = (new UpdateCheckService())->getStatus($config);
 
         Module::ui()->renderHeader('Dashboard - OpenNFS-e');
         $this->renderTabs('dashboard');
@@ -429,6 +432,47 @@ final class AdminController
         };
 
         $rangeSummary = 'Período selecionado: ' . $rangeStart . ' a ' . $rangeEnd;
+        if (!empty($updateStatus['update_available'])) {
+            $latestVersion = trim((string) ($updateStatus['latest_version'] ?? ''));
+            $currentVersion = trim((string) ($updateStatus['current_version'] ?? ''));
+            $summary = trim((string) ($updateStatus['summary'] ?? ''));
+            $message = trim((string) ($updateStatus['message'] ?? ''));
+            $downloadUrl = trim((string) ($updateStatus['download_url'] ?? ''));
+            $changelogUrl = trim((string) ($updateStatus['changelog_url'] ?? ''));
+            $configUrl = 'addonmodules.php?module=OpenNfse&action=config&tab=processamento';
+            $lastCheckedAt = $this->formatDate((string) ($updateStatus['last_checked_at'] ?? ''), 'd/m/Y H:i');
+
+            echo '<div style="margin-bottom:14px;border:1px solid #f0c36d;border-left:4px solid #d9822b;padding:14px;background:#fff8e8;">';
+            echo '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">';
+            echo '<div style="min-width:280px;flex:1 1 520px;">';
+            echo '<div style="font-size:16px;font-weight:700;color:#8a4b08;margin-bottom:6px;">Atualização disponível para o OpenNFS-e</div>';
+            echo '<div style="font-size:13px;color:#5f4b32;line-height:1.5;margin-bottom:8px;">';
+            echo 'Versão atual: <strong>' . $h($currentVersion !== '' ? $currentVersion : '—') . '</strong> ';
+            echo '• Última versão: <strong>' . $h($latestVersion !== '' ? $latestVersion : '—') . '</strong>';
+            if ($lastCheckedAt !== '—') {
+                echo ' • Última checagem: <strong>' . $h($lastCheckedAt) . '</strong>';
+            }
+            echo '</div>';
+            if ($summary !== '') {
+                echo '<div style="font-size:12px;color:#6b5a45;line-height:1.5;">' . $h($summary) . '</div>';
+            }
+            if ($message !== '') {
+                echo '<div style="font-size:12px;color:#6b5a45;line-height:1.5;margin-top:6px;"><strong>Notas da versão:</strong> ' . $h($message) . '</div>';
+            }
+            echo '</div>';
+            echo '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">';
+            echo '<a class="btn btn-sm btn-warning" href="' . $h($configUrl) . '">Ver detalhes</a>';
+            if ($downloadUrl !== '') {
+                echo '<a class="btn btn-sm btn-default" href="' . $h($downloadUrl) . '" target="_blank" rel="noopener noreferrer">Baixar atualização</a>';
+            }
+            if ($changelogUrl !== '' && $changelogUrl !== $downloadUrl) {
+                echo '<a class="btn btn-sm btn-default" href="' . $h($changelogUrl) . '" target="_blank" rel="noopener noreferrer">Ver changelog</a>';
+            }
+            echo '</div>';
+            echo '</div>';
+            echo '</div>';
+        }
+
         echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
         echo '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">';
         echo '<div style="font-size:15px;font-weight:700;color:#333;">Dashboard operacional</div>';
