@@ -79,13 +79,12 @@ final class QueueService
 
             try {
                 $notaBefore = $notaRepo->findByInvoiceId($invoiceId);
-                $statusBefore = $notaBefore ? (string) ($notaBefore['status'] ?? '') : '';
-                if ($statusBefore === 'EMITIDA') {
+                if ($this->shouldMarkQueueDone($notaBefore)) {
                     $queueRepo->markDone($id);
                     $logRepo->insert(null, 'QUEUE_SKIP_ALREADY_EMITIDA', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
                     continue;
                 }
-                if ($statusBefore === 'PROCESSANDO') {
+                if ($this->shouldKeepWaitingForStatus($notaBefore)) {
                     $queueRepo->markWaitStatus($id, $waitIntervalSeconds);
                     $logRepo->insert(null, 'QUEUE_WAIT_STATUS', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
                     continue;
@@ -129,14 +128,14 @@ final class QueueService
 
                 $nfseService->emitir($invoiceId, $correlationId);
                 $nota = $notaRepo->findByInvoiceId($invoiceId);
-                $status = $nota ? (string) ($nota['status'] ?? '') : '';
-                if ($status === 'EMITIDA') {
+                if ($this->shouldMarkQueueDone($nota)) {
                     $queueRepo->markDone($id);
                     $logRepo->insert(null, 'QUEUE_DONE', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
-                } elseif ($status === 'PROCESSANDO') {
+                } elseif ($this->shouldKeepWaitingForStatus($nota)) {
                     $queueRepo->markWaitStatus($id, $waitIntervalSeconds);
                     $logRepo->insert(null, 'QUEUE_WAIT_STATUS', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
                 } else {
+                    $status = $nota ? (string) ($nota['status'] ?? '') : '';
                     $err = $nota ? (string) ($nota['erro_api'] ?? '') : '';
                     $queueRepo->markError($id, $err !== '' ? $err : ('Status final: ' . $status));
                     $logRepo->insert(null, 'QUEUE_ERROR', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), $err !== '' ? $err : ('Status final: ' . $status), $correlationId);
@@ -189,13 +188,13 @@ final class QueueService
             try {
                 $nfseService->consultarStatus($invoiceId, $correlationId);
                 $nota = $notaRepo->findByInvoiceId($invoiceId);
-                $status = $nota ? (string) ($nota['status'] ?? '') : '';
-                if ($status === 'EMITIDA') {
+                if ($this->shouldMarkQueueDone($nota)) {
                     $queueRepo->markDone($id);
                     $logRepo->insert(null, 'QUEUE_DONE', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
-                } elseif ($status === 'PROCESSANDO') {
+                } elseif ($this->shouldKeepWaitingForStatus($nota)) {
                     $queueRepo->touchWaitStatus($id, $nextInterval);
                 } else {
+                    $status = $nota ? (string) ($nota['status'] ?? '') : '';
                     $err = $nota ? (string) ($nota['erro_api'] ?? '') : '';
                     $queueRepo->markError($id, $err !== '' ? $err : ('Status final: ' . $status));
                     $logRepo->insert(null, 'QUEUE_ERROR', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), $err !== '' ? $err : ('Status final: ' . $status), $correlationId);
@@ -209,5 +208,31 @@ final class QueueService
                 }
             }
         }
+    }
+
+    private function shouldMarkQueueDone(?array $nota): bool
+    {
+        if (!$nota) {
+            return false;
+        }
+
+        return trim((string) ($nota['status'] ?? '')) === 'EMITIDA'
+            && trim((string) ($nota['chave_acesso'] ?? '')) !== '';
+    }
+
+    private function shouldKeepWaitingForStatus(?array $nota): bool
+    {
+        if (!$nota) {
+            return false;
+        }
+
+        $status = trim((string) ($nota['status'] ?? ''));
+        $chave = trim((string) ($nota['chave_acesso'] ?? ''));
+
+        if ($status === 'PROCESSANDO') {
+            return true;
+        }
+
+        return $status === 'EMITIDA' && $chave === '';
     }
 }

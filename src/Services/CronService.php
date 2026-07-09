@@ -126,6 +126,50 @@ final class CronService
                 $logRepo->insert((int) ($row->id ?? 0), 'CRON_ERROR', null, $e->getMessage());
             }
         }
+
+        $this->recoverMissingKeysForIssuedNotas();
+    }
+
+    private function recoverMissingKeysForIssuedNotas(): void
+    {
+        $activeQueueInvoiceIds = Capsule::table('mod_opennfse_queue')
+            ->whereIn('status', ['PENDING', 'RUNNING', 'WAIT_STATUS'])
+            ->distinct()
+            ->pluck('invoiceid')
+            ->all();
+
+        $query = Capsule::table('mod_opennfse_notas')
+            ->where('status', 'EMITIDA')
+            ->where(static function ($q) {
+                $q->whereNull('chave_acesso')->orWhere('chave_acesso', '');
+            })
+            ->orderBy('updated_at', 'asc')
+            ->limit(50);
+
+        if (!empty($activeQueueInvoiceIds)) {
+            $query->whereNotIn('invoiceid', array_map('intval', $activeQueueInvoiceIds));
+        }
+
+        $notas = $query->get();
+        if ($notas->isEmpty()) {
+            return;
+        }
+
+        $nfseService = new NfseService();
+        $logRepo = new LogRepository();
+
+        foreach ($notas as $row) {
+            $invoiceId = (int) ($row->invoiceid ?? 0);
+            if ($invoiceId <= 0) {
+                continue;
+            }
+
+            try {
+                $nfseService->consultarStatus($invoiceId);
+            } catch (\Throwable $e) {
+                $logRepo->insert((int) ($row->id ?? 0), 'CRON_RECOVER_KEY_ERROR', json_encode(['invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), $e->getMessage());
+            }
+        }
     }
 
     private function logCronFailure(string $source, \Throwable $e): void

@@ -283,7 +283,9 @@ final class NfseService
                 $update['status'] = 'PROCESSANDO';
             }
             $notaRepo->upsert($update);
-            if ($statusBefore !== 'PROCESSANDO') {
+            if ($statusBefore === 'EMITIDA') {
+                (new InvoiceHistoryService())->append($invoiceId, 'Consulta de status localizou e salvou a chave da NFS-e.');
+            } elseif ($statusBefore !== 'PROCESSANDO') {
                 (new InvoiceHistoryService())->append($invoiceId, 'Consulta de status localizou a chave da NFS-e e manteve a nota em processamento.');
             }
         } elseif ($resp->errorMessage) {

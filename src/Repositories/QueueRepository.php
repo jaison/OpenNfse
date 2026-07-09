@@ -129,6 +129,8 @@ final class QueueRepository
         Capsule::table('mod_opennfse_queue')->where('id', $id)->update([
             'status' => 'DONE',
             'updated_at' => $now,
+            'last_error' => null,
+            'next_check_at' => null,
         ]);
     }
 

@@ -313,10 +313,11 @@ final class QueueController
         try {
             (new NfseService())->consultarStatus($invoiceId);
             $nota = (new NotaRepository())->findByInvoiceId($invoiceId);
-            $status = $nota ? (string) ($nota['status'] ?? '') : '';
-            if ($status === 'EMITIDA') {
+            $status = trim((string) ($nota['status'] ?? ''));
+            $chave = trim((string) ($nota['chave_acesso'] ?? ''));
+            if ($status === 'EMITIDA' && $chave !== '') {
                 $queueRepo->markDone($queueId);
-            } elseif ($status === 'PROCESSANDO') {
+            } elseif ($status === 'PROCESSANDO' || ($status === 'EMITIDA' && $chave === '')) {
                 $queueRepo->touchWaitStatus($queueId, $nextInterval);
             } else {
                 $err = $nota ? (string) ($nota['erro_api'] ?? '') : '';
