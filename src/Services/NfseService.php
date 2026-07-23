@@ -70,12 +70,7 @@ final class NfseService
         $userId = (int) ($invoice['userid'] ?? 0);
         $client = $customerRepo->getClient($userId);
 
-        try {
-            (new EmissionPreValidationService())->validate($config, $invoice, $items, $client);
-        } catch (\Throwable $e) {
-            (new InvoiceHistoryService())->append($invoiceId, 'Emissão da NFS-e bloqueada na validação preventiva. ' . $e->getMessage());
-            throw $e;
-        }
+        (new EmissionPreValidationService())->validate($config, $invoice, $items, $client);
 
         $country = strtoupper(trim((string) ($client['country'] ?? '')));
         if ($country === '') {
@@ -142,7 +137,6 @@ final class NfseService
                 'erro_api' => $result->errorMessage,
             ]);
             $logRepo->insert($notaId, 'EMISSAO_RESPONSE', null, $result->rawResponse ?? $result->errorMessage, $correlationId);
-            (new InvoiceHistoryService())->append($invoiceId, 'Emissão da NFS-e finalizada com status ' . $status . '. ' . trim((string) $result->errorMessage));
             return;
         }
 
@@ -252,9 +246,6 @@ final class NfseService
                     'status' => 'ERRO',
                     'erro_api' => $resp->errorMessage,
                 ]);
-                if ($statusBefore !== 'ERRO' || $errorBefore !== (string) $resp->errorMessage) {
-                    (new InvoiceHistoryService())->append($invoiceId, 'Consulta de status retornou erro: ' . (string) $resp->errorMessage);
-                }
             }
             return;
         }
@@ -295,9 +286,6 @@ final class NfseService
                 'status' => 'ERRO',
                 'erro_api' => $resp->errorMessage,
             ]);
-            if ($statusBefore !== 'ERRO' || $errorBefore !== (string) $resp->errorMessage) {
-                (new InvoiceHistoryService())->append($invoiceId, 'Consulta de status retornou erro: ' . (string) $resp->errorMessage);
-            }
         }
     }
 
@@ -405,7 +393,6 @@ final class NfseService
                 'cancel_erro' => $result->errorMessage,
             ]);
             $logRepo->insert($notaId, 'CANCELAMENTO_RESPONSE', null, $result->rawResponse ?? $result->errorMessage, $correlationId);
-            (new InvoiceHistoryService())->append($invoiceId, 'Falha ao cancelar a NFS-e. Motivo: ' . trim((string) $result->errorMessage));
             throw new NfseModuleException('Falha ao cancelar NFS-e: ' . $result->errorMessage);
         }
 
