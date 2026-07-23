@@ -587,7 +587,7 @@ final class ConfigController
         $this->renderConfigPaneHeader((string) $tabMeta['retencao']['title'], (string) $tabMeta['retencao']['description'], $tabStatuses['retencao'] ?? []);
         $this->renderConfigSectionStart('Política de retenção', 'Use prazos curtos para reduzir volume desnecessário, sem perder o histórico necessário para auditoria e suporte.');
         $this->renderConfigFormTableStart();
-        $this->renderTextRow('queue_done_retention_days', 'Reter fila DONE (dias, 0=desativar)', $config['queue_done_retention_days'] ?? '30');
+        $this->renderTextRow('queue_done_retention_days', 'Reter fila DONE/RESOLVIDO (dias, 0=desativar)', $config['queue_done_retention_days'] ?? '30');
         $this->renderTextRow('logs_retention_days', 'Reter logs (dias, 0=desativar)', $config['logs_retention_days'] ?? '90');
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
@@ -812,11 +812,11 @@ final class ConfigController
             }
         }
         if ($queueDoneRetentionDays === '' || !ctype_digit($queueDoneRetentionDays)) {
-            $errors[] = 'Informe a retenção de fila DONE (dias) apenas com números.';
+            $errors[] = 'Informe a retenção de fila DONE/RESOLVIDO (dias) apenas com números.';
         } else {
             $days = (int) $queueDoneRetentionDays;
             if ($days > 3650) {
-                $errors[] = 'Retenção de fila DONE inválida (0 a 3650 dias).';
+                $errors[] = 'Retenção de fila DONE/RESOLVIDO inválida (0 a 3650 dias).';
             }
         }
         if ($logsRetentionDays === '' || !ctype_digit($logsRetentionDays)) {

@@ -203,4 +203,44 @@ final class QueueRepository
             'last_error' => $error,
         ]);
     }
+
+    public function resolvePreviousErrorsByInvoice(int $invoiceId): int
+    {
+        if ($invoiceId <= 0) {
+            return 0;
+        }
+
+        $now = date('Y-m-d H:i:s');
+
+        return (int) Capsule::table('mod_opennfse_queue')
+            ->where('invoiceid', $invoiceId)
+            ->where('status', 'ERROR')
+            ->update([
+                'status' => 'RESOLVIDO',
+                'updated_at' => $now,
+            ]);
+    }
+
+    public function resolveErrorsForIssuedInvoices(int $limit = 100): int
+    {
+        $limit = max(1, $limit);
+
+        $invoiceIds = Capsule::table('mod_opennfse_queue as q')
+            ->join('mod_opennfse_notas as n', 'n.invoiceid', '=', 'q.invoiceid')
+            ->where('q.status', 'ERROR')
+            ->where('n.status', 'EMITIDA')
+            ->whereNotNull('n.chave_acesso')
+            ->where('n.chave_acesso', '<>', '')
+            ->distinct()
+            ->limit($limit)
+            ->pluck('q.invoiceid')
+            ->all();
+
+        $resolved = 0;
+        foreach ($invoiceIds as $invoiceId) {
+            $resolved += $this->resolvePreviousErrorsByInvoice((int) $invoiceId);
+        }
+
+        return $resolved;
+    }
 }

@@ -37,6 +37,16 @@ final class QueueService
             return;
         }
 
+        $resolvedLegacy = (new QueueRepository())->resolveErrorsForIssuedInvoices(100);
+        if ($resolvedLegacy > 0) {
+            (new LogRepository())->insert(
+                null,
+                'QUEUE_RESOLVED',
+                json_encode(['mode' => 'backfill', 'resolved_items' => $resolvedLegacy], JSON_UNESCAPED_UNICODE),
+                null
+            );
+        }
+
         $waitInterval = (int) ($config['queue_wait_status_interval_seconds'] ?? 120);
         if ($waitInterval < 30) {
             $waitInterval = 30;

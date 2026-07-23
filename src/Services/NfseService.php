@@ -12,6 +12,7 @@ use OpenNfse\Module;
 use OpenNfse\Repositories\ConfigRepository;
 use OpenNfse\Repositories\LogRepository;
 use OpenNfse\Repositories\NotaRepository;
+use OpenNfse\Repositories\QueueRepository;
 use OpenNfse\Repositories\SequenceRepository;
 use OpenNfse\Repositories\WhmcsCustomerRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
@@ -170,6 +171,7 @@ final class NfseService
             'emitida_em' => $emitidaEm,
             'erro_api' => null,
         ]);
+        $this->resolvePreviousQueueErrors($invoiceId, $notaId, $logRepo, $correlationId);
 
         $logRepo->insert($notaId, 'EMISSAO_RESPONSE', null, $result->nfseXml ?? 'OK', $correlationId);
         $historyMessage = 'NFS-e emitida com sucesso.';
@@ -236,6 +238,9 @@ final class NfseService
                 }
                 $notaRepo->upsert($update);
                 $statusAfter = (string) ($update['status'] ?? $statusBefore);
+                if ($statusAfter === 'EMITIDA') {
+                    $this->resolvePreviousQueueErrors($invoiceId, $notaId, $logRepo, $correlationId);
+                }
                 if ($statusAfter !== $statusBefore) {
                     (new InvoiceHistoryService())->append($invoiceId, 'Consulta de status atualizou a NFS-e para ' . $statusAfter . '.');
                 }
@@ -438,5 +443,21 @@ final class NfseService
     private function ensureMigrated(): void
     {
         Module::migrator()->up();
+    }
+
+    private function resolvePreviousQueueErrors(int $invoiceId, ?int $notaId, LogRepository $logRepo, ?string $correlationId): void
+    {
+        $resolved = (new QueueRepository())->resolvePreviousErrorsByInvoice($invoiceId);
+        if ($resolved <= 0) {
+            return;
+        }
+
+        $logRepo->insert(
+            $notaId,
+            'QUEUE_RESOLVED',
+            json_encode(['invoiceid' => $invoiceId, 'resolved_items' => $resolved], JSON_UNESCAPED_UNICODE),
+            null,
+            $correlationId
+        );
     }
 }

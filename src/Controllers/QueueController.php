@@ -68,6 +68,7 @@ final class QueueController
             'RUNNING' => 'RUNNING',
             'WAIT_STATUS' => 'WAIT_STATUS',
             'ERROR' => 'ERROR',
+            'RESOLVIDO' => 'RESOLVIDO',
             'DONE' => 'DONE',
         ];
         foreach ($statusOptions as $val => $label) {
@@ -135,6 +136,7 @@ final class QueueController
         $renderStatusBadge = static function (string $value): string {
             $styles = [
                 'DONE' => ['bg' => '#e8f5e9', 'color' => '#2e7d32'],
+                'RESOLVIDO' => ['bg' => '#e3f2fd', 'color' => '#1565c0'],
                 'ERROR' => ['bg' => '#fdecea', 'color' => '#c62828'],
                 'WAIT_STATUS' => ['bg' => '#fff8e1', 'color' => '#8a6d3b'],
                 'RUNNING' => ['bg' => '#e8f1fb', 'color' => '#23527c'],
@@ -201,6 +203,8 @@ final class QueueController
             $rowStyle = '';
             if ($status === 'ERROR') {
                 $rowStyle = ' style="background:#fffafa;"';
+            } elseif ($status === 'RESOLVIDO') {
+                $rowStyle = ' style="background:#f4f9ff;"';
             } elseif ($status === 'WAIT_STATUS') {
                 $rowStyle = ' style="background:#fffdf5;"';
             }
@@ -344,8 +348,8 @@ final class QueueController
             Module::ui()->renderError('Item da fila não encontrado.');
             return;
         }
-        if ((string) ($row['status'] ?? '') === 'DONE') {
-            Module::ui()->renderError('Este item já está DONE (NFS-e emitida). Reprocessar está bloqueado para evitar duplicidade.');
+        if (in_array((string) ($row['status'] ?? ''), ['DONE', 'RESOLVIDO'], true)) {
+            Module::ui()->renderError('Este item está em status terminal (DONE/RESOLVIDO). Reprocessar está bloqueado para evitar inconsistências e duplicidade.');
             return;
         }
         $queueRepo->resetToPending($queueId);

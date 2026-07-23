@@ -417,7 +417,7 @@ trait AdminHelpersTrait
             'queue_enabled' => 'Habilita o processamento automático via fila e cron do módulo.',
             'auto_emit_on_payment' => 'Quando ativo, o módulo enfileira a emissão assim que a fatura é marcada como paga.',
             'queue_wait_status_interval_seconds' => 'Intervalo entre consultas de status quando a nota fica aguardando retorno do ambiente nacional.',
-            'queue_done_retention_days' => 'Quantidade de dias para manter registros da fila concluídos antes da limpeza.',
+            'queue_done_retention_days' => 'Quantidade de dias para manter registros da fila concluídos ou resolvidos antes da limpeza.',
             'logs_retention_days' => 'Quantidade de dias para manter logs de request/response antes da limpeza.',
             'danfse_logo_svg' => 'Cole aqui o SVG completo do brasão ou logotipo que deve aparecer no cabeçalho do DANFS-e.',
             'danfse_municipio_nome' => 'Linha principal exibida no bloco institucional do cabeçalho do PDF.',
@@ -563,7 +563,7 @@ trait AdminHelpersTrait
                     'total' => 1,
                 ],
             'retencao' => $build([
-                'queue_done_retention_days' => 'Retenção da fila DONE',
+                'queue_done_retention_days' => 'Retenção da fila DONE/RESOLVIDO',
                 'logs_retention_days' => 'Retenção de logs',
             ], 'info', $info, 'Política de retenção'),
             'sequenciais' => [

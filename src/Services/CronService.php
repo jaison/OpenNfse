@@ -37,7 +37,7 @@ final class CronService
         if ($queueDays > 0) {
             $cutoff = date('Y-m-d H:i:s', time() - ($queueDays * 86400));
             Capsule::table('mod_opennfse_queue')
-                ->where('status', 'DONE')
+                ->whereIn('status', ['DONE', 'RESOLVIDO'])
                 ->where('updated_at', '<', $cutoff)
                 ->delete();
         }
