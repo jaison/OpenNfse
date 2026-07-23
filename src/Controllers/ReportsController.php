@@ -204,6 +204,22 @@ final class ReportsController
         echo '</div>';
         echo '</div>';
         echo '</form>';
+        echo '<div style="margin:-4px 0 10px 0;display:flex;gap:6px;flex-wrap:wrap;">';
+        echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
+            'tab' => 'emitidas',
+            'data_inicial' => $dataInicial,
+            'data_final' => $dataFinal,
+            'status' => $status,
+            'cliente' => $cliente,
+        ], 'btn btn-xs btn-default');
+        echo $this->renderPostActionButton('relatoriosExportZip', 'Baixar XMLs ZIP', [
+            'tab' => 'emitidas',
+            'data_inicial' => $dataInicial,
+            'data_final' => $dataFinal,
+            'status' => $status,
+            'cliente' => $cliente,
+        ], 'btn btn-xs btn-default');
+        echo '</div>';
 
         echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
         echo '<tr>';
@@ -255,22 +271,6 @@ final class ReportsController
         } else {
             echo 'Valor total: <strong>' . htmlspecialchars($this->formatMoney((float) ($summary['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</strong>';
         }
-        echo '<div style="margin-top:6px;">';
-        echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
-            'tab' => 'emitidas',
-            'data_inicial' => $dataInicial,
-            'data_final' => $dataFinal,
-            'status' => $status,
-            'cliente' => $cliente,
-        ], 'btn btn-xs btn-default');
-        echo $this->renderPostActionButton('relatoriosExportZip', 'Baixar XMLs ZIP', [
-            'tab' => 'emitidas',
-            'data_inicial' => $dataInicial,
-            'data_final' => $dataFinal,
-            'status' => $status,
-            'cliente' => $cliente,
-        ], 'btn btn-xs btn-default', 'margin-left:6px;');
-        echo '</div>';
         echo '</div>';
     }
 
@@ -316,6 +316,11 @@ final class ReportsController
         echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
         echo '<button type="submit" class="btn btn-xs btn-default">Filtrar</button>';
         echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas">Limpar</a>';
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+        echo '</form>';
+        echo '<div style="margin:-4px 0 10px 0;">';
         echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
             'tab' => 'falhas',
             'data_inicial' => $dataInicial,
@@ -323,9 +328,6 @@ final class ReportsController
             'cliente' => $cliente,
         ], 'btn btn-xs btn-default');
         echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
 
         echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
         echo '<tr>';
@@ -404,6 +406,11 @@ final class ReportsController
         echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
         echo '<button type="submit" class="btn btn-xs btn-default">Filtrar</button>';
         echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=cancelamentos">Limpar</a>';
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+        echo '</form>';
+        echo '<div style="margin:-4px 0 10px 0;display:flex;gap:6px;flex-wrap:wrap;">';
         echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
             'tab' => 'cancelamentos',
             'data_inicial' => $dataInicial,
@@ -417,9 +424,6 @@ final class ReportsController
             'cliente' => $cliente,
         ], 'btn btn-xs btn-default');
         echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
 
         echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
         echo '<tr>';
@@ -576,6 +580,11 @@ final class ReportsController
         echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
         echo '<button type="submit" class="btn btn-xs btn-default">Filtrar</button>';
         echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=logs">Limpar</a>';
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+        echo '</form>';
+        echo '<div style="margin:-4px 0 10px 0;">';
         echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
             'tab' => 'logs',
             'data_inicial' => $dataInicial,
@@ -585,9 +594,6 @@ final class ReportsController
             'q' => $qFilter,
         ], 'btn btn-xs btn-default');
         echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
 
         $extractInvoiceId = static function (?string $json): ?int {
             $json = (string) $json;
