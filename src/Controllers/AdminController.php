@@ -393,12 +393,17 @@ final class AdminController
             string $subtitle,
             string $href,
             string $accent,
-            string $background = '#fff'
+            string $background = '#fff',
+            string $valueStyle = ''
         ) use ($h): void {
             echo '<a href="' . $h($href) . '" style="flex:1 1 180px;min-width:180px;text-decoration:none;color:inherit;">';
             echo '<div style="height:100%;border:1px solid #ddd;border-left:4px solid ' . $h($accent) . ';padding:14px;background:' . $h($background) . ';box-sizing:border-box;">';
             echo '<div style="font-size:12px;color:#666;margin-bottom:6px;">' . $h($title) . '</div>';
-            echo '<div style="font-size:28px;line-height:1.1;font-weight:700;color:#2f2f2f;margin-bottom:6px;">' . $h($value) . '</div>';
+            $resolvedValueStyle = 'font-size:28px;line-height:1.1;font-weight:700;color:#2f2f2f;margin-bottom:6px;';
+            if (trim($valueStyle) !== '') {
+                $resolvedValueStyle .= trim($valueStyle);
+            }
+            echo '<div style="' . $h($resolvedValueStyle) . '">' . $h($value) . '</div>';
             echo '<div style="font-size:11px;color:#777;line-height:1.35;">' . $h($subtitle) . '</div>';
             echo '</div>';
             echo '</a>';
@@ -508,7 +513,7 @@ final class AdminController
         $renderMetricCard('Rejeitadas no período', (string) $rejeitadas, 'Abre Notas filtrado por rejeitadas', 'addonmodules.php?module=OpenNfse&action=notas&status=REJEITADA&updated_from=' . rawurlencode((string) ($metrics['range_start'] ?? '')) . '&updated_to=' . rawurlencode((string) ($metrics['range_end'] ?? '')), '#8e44ad', '#fbf8fd');
         $renderMetricCard('Pendentes agora', (string) $pendentes, 'Fila ativa com itens aguardando processamento', 'addonmodules.php?module=OpenNfse&action=fila', '#c77d02', '#fffaf2');
         $renderMetricCard('Com erro agora', (string) $comErro, 'Pendências operacionais que exigem atenção', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986), '#c62828', '#fff8f8');
-        $renderMetricCard('Valor emitido no período', $this->formatMoney($valorTotal, 'R$ ', ''), 'Soma das NFS-e emitidas no intervalo', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'EMITIDA'], '', '&', PHP_QUERY_RFC3986), '#23527c', '#f7fbff');
+        $renderMetricCard('Valor emitido no período', $this->formatMoney($valorTotal, 'R$ ', ''), 'Soma das NFS-e emitidas no intervalo', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'EMITIDA'], '', '&', PHP_QUERY_RFC3986), '#23527c', '#f7fbff', 'font-size:clamp(18px,2.3vw,28px);white-space:nowrap;letter-spacing:-0.02em;');
         echo '</div>';
 
         $ultimaEmissaoLabel = 'Nenhuma emissão encontrada no período';
