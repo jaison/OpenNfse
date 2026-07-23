@@ -490,18 +490,31 @@ final class DpsBuilderService
         $invoiceId = (string) ($invoice['id'] ?? '');
         $parts = [];
         foreach ($items as $it) {
-            $desc = trim((string) ($it['description'] ?? ''));
+            $desc = $this->sanitizeTextForXmlContent((string) ($it['description'] ?? ''));
             if ($desc !== '') {
                 $parts[] = $desc;
             }
         }
-        $base = 'Serviços referentes à fatura #' . $invoiceId;
+        $base = $this->sanitizeTextForXmlContent('Serviços referentes à fatura #' . $invoiceId);
         if (empty($parts)) {
             return $base;
         }
 
-        $full = $base . ': ' . implode(' | ', $parts);
+        $full = $this->sanitizeTextForXmlContent($base . ': ' . implode(' | ', $parts));
         return mb_substr($full, 0, 1900);
+    }
+
+    private function sanitizeTextForXmlContent(string $value): string
+    {
+        if ($value === '') {
+            return '';
+        }
+
+        $value = str_replace(["\r\n", "\r", "\n", "\t"], ' ', $value);
+        $value = preg_replace('/[\p{Cc}\p{Cf}]+/u', ' ', $value) ?? $value;
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+
+        return trim($value);
     }
 
     private function inferNumeroEndereco(string $logradouro): ?string
