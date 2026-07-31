@@ -50,7 +50,7 @@ final class EmissionPreValidationService
             $errors[] = 'opção do Simples Nacional do prestador não configurada';
         }
 
-        $total = (float) ($invoice['total'] ?? 0);
+        $total = (new InvoiceFinancialsService())->getGatewayPaidAmount($invoice);
         if ($total <= 0) {
             $errors[] = 'valor total da fatura inválido';
         }

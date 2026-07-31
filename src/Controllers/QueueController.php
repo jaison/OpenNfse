@@ -99,8 +99,7 @@ final class QueueController
 
 
         $q = Capsule::table('mod_opennfse_queue')
-            ->orderBy('updated_at', 'desc')
-            ->orderBy('created_at', 'desc');
+            ->orderBy('id', 'desc');
         if ($statusFilter !== '') {
             $q->where('status', $statusFilter);
         }

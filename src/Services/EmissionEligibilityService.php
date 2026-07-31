@@ -16,13 +16,15 @@ final class EmissionEligibilityService
      * Returns null when the invoice is eligible for emission, or an array with
      * the skip reason and the invoice details used to evaluate it.
      *
-     * @return array{reason: string, paymentMethod: string, status: string, credit: float}|null
+     * @return array{reason: string, paymentMethod: string, status: string, credit: float, gatewayPaidAmount?: float}|null
      */
     public function check(array $invoice): ?array
     {
+        $financials = new InvoiceFinancialsService();
         $paymentMethod = strtolower(trim((string) ($invoice['paymentmethod'] ?? '')));
         $invoiceStatus = strtolower(trim((string) ($invoice['status'] ?? '')));
-        $creditValue = (float) str_replace(',', '.', (string) ($invoice['credit'] ?? '0'));
+        $creditValue = $financials->getAppliedCredit($invoice);
+        $gatewayPaidAmount = $financials->getGatewayPaidAmount($invoice);
 
         if ($invoiceStatus !== 'paid') {
             return [
@@ -33,12 +35,13 @@ final class EmissionEligibilityService
             ];
         }
 
-        if ($paymentMethod === 'credit' || $creditValue > 0.00001) {
+        if ($financials->isCreditOnlyPayment($invoice)) {
             return [
                 'reason' => self::SKIP_CREDIT_PAYMENT,
                 'paymentMethod' => $paymentMethod,
                 'status' => $invoiceStatus,
                 'credit' => $creditValue,
+                'gatewayPaidAmount' => $gatewayPaidAmount,
             ];
         }
 

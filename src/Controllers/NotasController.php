@@ -581,8 +581,7 @@ final class NotasController
             if ($invoiceStatus !== 'paid') {
                 $this->redirectInvoice($invoiceId, ['nfse_emit' => 'not_paid']);
             }
-            $creditValue = (float) str_replace(',', '.', (string) ($invoice['credit'] ?? '0'));
-            if ($paymentMethod === 'credit' || $creditValue > 0.00001) {
+            if ((new \OpenNfse\Services\InvoiceFinancialsService())->isCreditOnlyPayment($invoice)) {
                 $this->redirectInvoice($invoiceId, ['nfse_emit' => 'credit_payment']);
             }
             if ($paymentMethod !== '' && !(new PaymentGatewaySettingsRepository())->isEnabled($paymentMethod)) {

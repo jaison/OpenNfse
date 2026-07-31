@@ -46,18 +46,17 @@ final class InvoiceHook
         $gatewayEnabled = true;
         $paymentMethod = '';
         $invoiceStatus = '';
-        $creditValue = 0.0;
         $invoiceTotal = 0.0;
         $isPaid = false;
         $isCreditPayment = false;
         try {
             $invoice = (new WhmcsInvoiceRepository())->getInvoice($invoiceId);
+            $financials = new \OpenNfse\Services\InvoiceFinancialsService();
             $paymentMethod = strtolower(trim((string) ($invoice['paymentmethod'] ?? '')));
             $invoiceStatus = (string) ($invoice['status'] ?? '');
             $isPaid = strtolower(trim($invoiceStatus)) === 'paid';
-            $creditValue = (float) str_replace(',', '.', (string) ($invoice['credit'] ?? '0'));
-            $invoiceTotal = (float) str_replace(',', '.', (string) ($invoice['total'] ?? '0'));
-            $isCreditPayment = $paymentMethod === 'credit' || $creditValue > 0.00001;
+            $invoiceTotal = $financials->getGatewayPaidAmount($invoice);
+            $isCreditPayment = $financials->isCreditOnlyPayment($invoice);
             if ($paymentMethod !== '' && !(new PaymentGatewaySettingsRepository())->isEnabled($paymentMethod)) {
                 $gatewayEnabled = false;
             }

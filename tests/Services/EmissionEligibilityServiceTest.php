@@ -54,19 +54,38 @@ final class EmissionEligibilityServiceTest extends TestCase
         $this->assertSame(EmissionEligibilityService::SKIP_CREDIT_PAYMENT, $result['reason']);
     }
 
-    public function testSkipsWhenPaidWithCreditBalanceApplied(): void
+    public function testAllowsWhenPaidWithGatewayAndPartialCreditApplied(): void
+    {
+        Capsule::$rows['mod_opennfse_payment_gateway_settings'] = [
+            (object) ['gateway' => 'paypal', 'enabled' => 1],
+        ];
+
+        $invoice = [
+            'status' => 'Paid',
+            'paymentmethod' => 'paypal',
+            'subtotal' => '119.90',
+            'total' => '95.90',
+            'credit' => '24,00',
+        ];
+
+        $this->assertNull($this->service->check($invoice));
+    }
+
+    public function testSkipsWhenCreditConsumesEntireInvoiceBalance(): void
     {
         $invoice = [
             'status' => 'Paid',
             'paymentmethod' => 'paypal',
-            'credit' => '10,50',
+            'subtotal' => '10.00',
+            'total' => '0.00',
+            'credit' => '10.00',
         ];
 
         $result = $this->service->check($invoice);
 
         $this->assertNotNull($result);
         $this->assertSame(EmissionEligibilityService::SKIP_CREDIT_PAYMENT, $result['reason']);
-        $this->assertSame(10.50, $result['credit']);
+        $this->assertSame(0.0, $result['gatewayPaidAmount']);
     }
 
     public function testSkipsWhenPaymentGatewayIsDisabled(): void

@@ -65,7 +65,7 @@ final class DpsBuilderService
 
         $descricao = $this->buildDescricao($invoice, $items);
 
-        $total = (float) ($invoice['total'] ?? 0);
+        $total = (new InvoiceFinancialsService())->getGatewayPaidAmount($invoice);
         if ($total <= 0) {
             throw new NfseValidationException('Valor total da fatura inválido.');
         }
@@ -286,7 +286,7 @@ final class DpsBuilderService
                 '@attributes' => ['Id' => $idDps],
                 'tpAmb' => $tpAmb,
                 'dhEmi' => (new \DateTimeImmutable('now'))->format('Y-m-d\TH:i:sP'),
-                'verAplic' => 'whmcs-nfse/0.1.0',
+                'verAplic' => 'whmcs-nfse/0.1.4',
                 'serie' => $serieDps,
                 'nDPS' => (string) $numeroDps,
                 'dCompet' => date('Y-m-d'),
