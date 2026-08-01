@@ -29,7 +29,7 @@ trait AdminHelpersTrait
     public function redirectRelatorios(string $tab): void
     {
         $tab = trim($tab);
-        $allowed = ['emitidas' => true, 'falhas' => true, 'cancelamentos' => true, 'logs' => true];
+        $allowed = ['emitidas' => true, 'falhas' => true, 'cancelamentos' => true, 'auditoria' => true, 'logs' => true];
         if (!isset($allowed[$tab])) {
             $tab = 'emitidas';
         }
@@ -117,7 +117,7 @@ trait AdminHelpersTrait
             'dashboard' => $base . '&action=dashboard',
             'notas' => $base . '&action=notas',
             'fila' => $base . '&action=fila',
-            'relatorios' => $base . '&action=relatorios',
+            'relatorios' => $base . '&action=relatorios&tab=auditoria',
             'config' => $base . '&action=config',
         ];
 

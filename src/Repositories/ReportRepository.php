@@ -420,6 +420,53 @@ final class ReportRepository
         return array_slice($all, 0, max(1, min(20, $limit)));
     }
 
+    public function listAuditoriaInvoices(array $filters, int $limit): array
+    {
+        $limit = max(1, min(5000, $limit));
+
+        $q = $this->buildAuditoriaInvoicesQuery($filters)
+            ->leftJoin('tblcurrencies as cur', 'cur.id', '=', 'c.currency')
+            ->select([
+                'i.id as invoice_id',
+                'i.userid',
+                'i.datepaid as paid_at',
+                'i.paymentmethod',
+                'i.total as invoice_total',
+                'i.credit as applied_credit',
+                'c.companyname',
+                'c.firstname',
+                'c.lastname',
+                'cur.prefix as currency_prefix',
+                'cur.suffix as currency_suffix',
+            ])
+            ->orderBy('i.datepaid', 'desc')
+            ->orderBy('i.id', 'desc');
+
+        $out = [];
+        foreach ($q->limit($limit)->get() as $r) {
+            $out[] = (array) $r;
+        }
+
+        return $out;
+    }
+
+    public function summaryAuditoriaInvoices(array $filters): array
+    {
+        $row = $this->buildAuditoriaInvoicesQuery($filters)
+            ->select([
+                Capsule::raw('COUNT(*) as total_invoices'),
+                Capsule::raw('SUM(i.total) as total_valor'),
+            ])
+            ->first();
+
+        $arr = $row ? (array) $row : [];
+
+        return [
+            'total_invoices' => (int) ($arr['total_invoices'] ?? 0),
+            'total_valor' => (float) ($arr['total_valor'] ?? 0),
+        ];
+    }
+
     private function normalizeDashboardRange(string $fromDate, string $toDate): array
     {
         $fromDate = trim($fromDate);
@@ -442,6 +489,42 @@ final class ReportRepository
             $fromDate . ' 00:00:00',
             $toDate . ' 23:59:59',
         ];
+    }
+
+    private function buildAuditoriaInvoicesQuery(array $filters)
+    {
+        $q = Capsule::table('tblinvoices as i')
+            ->join('tblclients as c', 'c.id', '=', 'i.userid')
+            ->where('i.status', 'Paid')
+            ->where('i.total', '>', 0)
+            ->whereNotNull('i.datepaid')
+            ->where('i.datepaid', '<>', '0000-00-00 00:00:00')
+            ->whereNotExists(static function ($sub) {
+                $sub->select(Capsule::raw('1'))
+                    ->from('mod_opennfse_notas as n')
+                    ->whereRaw('n.invoiceid = i.id');
+            })
+            ->whereNotExists(static function ($sub) {
+                $sub->select(Capsule::raw('1'))
+                    ->from('mod_opennfse_queue as q')
+                    ->whereRaw('q.invoiceid = i.id');
+            });
+
+        $gateways = array_values(array_filter(array_map(
+            static fn ($value): string => strtolower(trim((string) $value)),
+            is_array($filters['gateways'] ?? null) ? $filters['gateways'] : []
+        ), static fn (string $value): bool => $value !== ''));
+
+        if (empty($gateways)) {
+            $q->whereRaw('1 = 0');
+        } else {
+            $placeholders = implode(',', array_fill(0, count($gateways), '?'));
+            $q->whereRaw('LOWER(i.paymentmethod) IN (' . $placeholders . ')', $gateways);
+        }
+
+        $this->applyDateFilter($q, (string) ($filters['data_inicial'] ?? ''), (string) ($filters['data_final'] ?? ''), 'i.datepaid');
+
+        return $q;
     }
 
     private function applyFiltersToNotasQuery($q, array $filters): void

@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.4",
-  "release_date": "2026-07-30",
+  "latest_version": "0.1.5",
+  "release_date": "2026-07-31",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Corrigido o cálculo da NFS-e em faturas com saldo parcial, evitando desconto duplicado do crédito e mantendo o valor pago no gateway."
+  "message": "Adicionada a subaba Auditoria em Relatórios para listar faturas pagas em gateways ativos que não geraram NFS-e nem fila, agora aberta como padrão, com destaque visual crítico e mês atual como referência inicial."
 }

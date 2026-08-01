@@ -31,8 +31,15 @@ final class ReportsController
 
     public function showRelatorios(): void
     {
-        $active = trim((string) ($_GET['tab'] ?? 'emitidas'));
+        $active = trim((string) ($_GET['tab'] ?? 'auditoria'));
         $tabMeta = [
+            'auditoria' => [
+                'label' => 'Auditoria',
+                'badge' => 'Conferência',
+                'badge_bg' => '#e8f0fe',
+                'badge_color' => '#23527c',
+                'summary' => 'Lista faturas pagas em gateways ativos que não geraram NFS-e e também não entraram na fila.',
+            ],
             'emitidas' => [
                 'label' => 'NFS-e Emitidas',
                 'badge' => 'Fiscal',
@@ -124,6 +131,8 @@ final class ReportsController
             $this->showRelatorioFalhas(true);
         } elseif ($active === 'cancelamentos') {
             $this->showRelatorioCancelamentos(true);
+        } elseif ($active === 'auditoria') {
+            $this->showRelatorioAuditoria(true);
         } elseif ($active === 'logs') {
             $this->showRelatorioLogs(true);
         } else {
@@ -460,6 +469,97 @@ final class ReportsController
     }
 
 
+    public function showRelatorioAuditoria(bool $embedded = false): void
+    {
+        if (!$embedded) {
+            $this->redirectRelatorios('auditoria');
+        }
+
+        $requestedMonth = trim((string) ($_REQUEST['mes'] ?? ''));
+        $gatewayMap = $this->getAuditoriaActiveGatewayMap();
+        $gatewayKeys = array_keys($gatewayMap);
+
+        [$selectedMonth, $dataInicial, $dataFinal] = $this->resolveAuditoriaMonthRange($requestedMonth !== '' ? $requestedMonth : date('Y-m'));
+
+        $repo = new ReportRepository();
+        $filters = [
+            'data_inicial' => $dataInicial,
+            'data_final' => $dataFinal,
+            'gateways' => $gatewayKeys,
+        ];
+        $rows = $repo->listAuditoriaInvoices($filters, 200);
+
+        $summary = $repo->summaryAuditoriaInvoices($filters);
+        $periodLabel = $this->formatAuditoriaMonthLabel($selectedMonth);
+
+        echo '<form method="get" action="addonmodules.php">';
+        echo '<input type="hidden" name="module" value="OpenNfse" />';
+        echo '<input type="hidden" name="action" value="relatorios" />';
+        echo '<input type="hidden" name="tab" value="auditoria" />';
+        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
+        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
+        echo '<div style="min-width:180px;">';
+        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Mês de referência</div>';
+        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:180px;" />';
+        echo '</div>';
+        echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
+        echo '<button type="submit" class="btn btn-xs btn-default">Filtrar</button>';
+        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria">Limpar</a>';
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+        echo '</form>';
+        if (empty($gatewayKeys)) {
+            echo '<div class="alert alert-warning" style="margin-bottom:12px;">Nenhum gateway ativo e habilitado no addon foi encontrado para a auditoria.</div>';
+        } else {
+            $notice = 'Exibindo o período de ' . htmlspecialchars($periodLabel, ENT_QUOTES, 'UTF-8') . ' para conferir faturas pagas que não foram emitidas NFS-e. Revise se e emita manualmente cada uma delas se for o caso.';
+            echo '<div style="margin-bottom:14px;padding:14px 16px;border:1px solid #e4b9b9;border-left:5px solid #b94a48;background:#fff5f5;color:#7f1d1d;box-shadow:0 1px 2px rgba(127,29,29,0.08);">';
+            echo '<div style="font-size:12px;font-weight:700;letter-spacing:0.02em;text-transform:uppercase;margin-bottom:6px;">Atenção crítica</div>';
+            echo '<div style="font-size:13px;line-height:1.5;font-weight:600;">' . $notice . '</div>';
+            echo '</div>';
+        }
+
+        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
+        echo '<tr>';
+        echo '<th style="width:12%;">Fatura</th>';
+        echo '<th style="width:34%;">Cliente</th>';
+        echo '<th style="width:20%;">Pagamento</th>';
+        echo '<th style="width:18%;">Gateway</th>';
+        echo '<th style="width:16%;">Valor</th>';
+        echo '</tr>';
+
+        if (empty($rows)) {
+            echo '<tr><td colspan="5" style="text-align:center;color:#666;">Nenhuma fatura encontrada para os critérios selecionados.</td></tr>';
+        }
+
+        foreach ($rows as $row) {
+            $invoiceId = (int) ($row['invoice_id'] ?? 0);
+            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
+            $clienteNome = $this->resolveClientName($row);
+            $paidAt = $this->formatDate((string) ($row['paid_at'] ?? ''), 'd/m/Y H:i');
+            $gatewayKey = strtolower(trim((string) ($row['paymentmethod'] ?? '')));
+            $gatewayLabel = $gatewayMap[$gatewayKey] ?? ($gatewayKey !== '' ? $gatewayKey : '-');
+            $valor = (float) ($row['invoice_total'] ?? 0);
+            $prefix = (string) ($row['currency_prefix'] ?? 'R$ ');
+            $suffix = (string) ($row['currency_suffix'] ?? '');
+
+            echo '<tr>';
+            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($clienteNome, ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars($paidAt, ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($gatewayLabel, ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars($this->formatMoney($valor, $prefix, $suffix), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '</tr>';
+        }
+
+        echo '</table>';
+        echo '<div style="margin-top:10px;">';
+        echo 'Total de faturas: <strong>' . (int) ($summary['total_invoices'] ?? 0) . '</strong> &nbsp; ';
+        echo 'Valor total: <strong>' . htmlspecialchars($this->formatMoney((float) ($summary['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</strong>';
+        echo '</div>';
+    }
+
+
     public function showRelatorioLogs(bool $embedded = false): void
     {
         if (!$embedded) {
@@ -700,7 +800,7 @@ final class ReportsController
     public function exportRelatoriosCsv(): void
     {
         $tab = trim((string) ($_REQUEST['tab'] ?? 'emitidas'));
-        $allowed = ['emitidas' => true, 'falhas' => true, 'cancelamentos' => true, 'logs' => true];
+        $allowed = ['emitidas' => true, 'falhas' => true, 'cancelamentos' => true, 'auditoria' => true, 'logs' => true];
         if (!isset($allowed[$tab])) {
             $tab = 'emitidas';
         }
@@ -715,6 +815,30 @@ final class ReportsController
         }
 
         fwrite($out, "\xEF\xBB\xBF");
+
+        if ($tab === 'auditoria') {
+            [$selectedMonth, $dataInicial, $dataFinal] = $this->resolveAuditoriaMonthRange(trim((string) ($_REQUEST['mes'] ?? '')));
+            $rows = (new ReportRepository())->listAuditoriaInvoices([
+                'data_inicial' => $dataInicial,
+                'data_final' => $dataFinal,
+                'gateways' => array_keys($this->getAuditoriaActiveGatewayMap()),
+            ], 5000);
+            $gatewayMap = $this->getAuditoriaActiveGatewayMap();
+
+            fputcsv($out, ['invoice_id', 'cliente', 'data_pagamento', 'gateway', 'valor'], ';');
+            foreach ($rows as $r) {
+                $gatewayKey = strtolower(trim((string) ($r['paymentmethod'] ?? '')));
+                fputcsv($out, [
+                    (string) ($r['invoice_id'] ?? ''),
+                    $this->resolveClientName($r),
+                    (string) ($r['paid_at'] ?? ''),
+                    (string) ($gatewayMap[$gatewayKey] ?? ($gatewayKey !== '' ? $gatewayKey : '')),
+                    (string) ($r['invoice_total'] ?? ''),
+                ], ';');
+            }
+            fclose($out);
+            exit;
+        }
 
         if ($tab === 'falhas') {
             $dataInicial = trim((string) ($_REQUEST['data_inicial'] ?? ''));
@@ -934,6 +1058,66 @@ final class ReportsController
         readfile($zipPath);
         @unlink($zipPath);
         exit;
+    }
+
+    private function getAuditoriaActiveGatewayMap(): array
+    {
+        $gatewaySettingsRepo = new PaymentGatewaySettingsRepository();
+        $map = [];
+
+        foreach ((new WhmcsPaymentGatewayRepository())->listActive() as $gateway) {
+            $key = strtolower(trim((string) ($gateway['gateway'] ?? '')));
+            if ($key === '' || !$gatewaySettingsRepo->isEnabled($key)) {
+                continue;
+            }
+
+            $name = trim((string) ($gateway['name'] ?? ''));
+            $map[$key] = $name !== '' ? $name : $key;
+        }
+
+        if (!empty($map)) {
+            asort($map, SORT_NATURAL | SORT_FLAG_CASE);
+        }
+
+        return $map;
+    }
+
+    private function resolveAuditoriaMonthRange(string $month): array
+    {
+        $month = trim($month);
+        if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $month = date('Y-m');
+        }
+
+        $start = \DateTimeImmutable::createFromFormat('!Y-m-d', $month . '-01');
+        if (!$start instanceof \DateTimeImmutable) {
+            $month = date('Y-m');
+            $start = \DateTimeImmutable::createFromFormat('!Y-m-d', $month . '-01');
+        }
+
+        if (!$start instanceof \DateTimeImmutable) {
+            return [date('Y-m'), date('Y-m-01'), date('Y-m-t')];
+        }
+
+        return [
+            $start->format('Y-m'),
+            $start->format('Y-m-d'),
+            $start->modify('last day of this month')->format('Y-m-d'),
+        ];
+    }
+
+    private function formatAuditoriaMonthLabel(string $month): string
+    {
+        $month = trim($month);
+        if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+            return $month !== '' ? $month : date('m/Y');
+        }
+
+        try {
+            return (new \DateTimeImmutable($month . '-01'))->format('m/Y');
+        } catch (\Throwable $e) {
+            return $month;
+        }
     }
 
 
