@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.8",
+  "latest_version": "0.1.9",
   "release_date": "2026-08-03",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Historico fiscal e auditoria XML adicionados, armazenamento de XMLs de emissao e cancelamento preservado com nomenclatura fiscal dedicada, relatorio de emitidas paginado em 1000 registros e menu de relatorios reorganizado."
+  "message": "Saneamento do erro residual apos conciliacao de NFS-e emitida, ajuste da exibicao de falhas na fatura conforme o status atual e revisao completa dos cards da dashboard para respeitarem o periodo selecionado, incluindo pendentes, aguardando status, com erro e nao emitidas."
 }
