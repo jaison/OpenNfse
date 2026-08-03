@@ -344,11 +344,13 @@ final class AdminController
         $repo = new ReportRepository();
         $metrics = $repo->dashboardOverview($dataInicial, $dataFinal);
         $recentEmitidas = $repo->dashboardRecentEmitidas((string) ($metrics['range_start'] ?? ''), (string) ($metrics['range_end'] ?? ''), 5);
-        $recentErros = $repo->dashboardRecentIssues((string) ($metrics['range_start'] ?? ''), (string) ($metrics['range_end'] ?? ''), 5);
+        $recentErros = $repo->dashboardRecentIssues((string) ($metrics['range_start'] ?? ''), (string) ($metrics['range_end'] ?? ''), 4);
         $recentCanceladas = $repo->dashboardRecentCancelamentos((string) ($metrics['range_start'] ?? ''), (string) ($metrics['range_end'] ?? ''), 5);
         $dailySeries = $repo->dashboardDailySeries((string) ($metrics['range_start'] ?? ''), (string) ($metrics['range_end'] ?? ''));
         $config = (new ConfigRepository())->get();
         $updateStatus = (new UpdateCheckService())->getStatus($config);
+        $certificateInfo = $this->configController->evaluateCertificateFromConfig($config);
+        $auditoriaSummary = $this->reportsController->getAuditoriaDashboardSummary();
 
         Module::ui()->renderHeader('Dashboard - OpenNFS-e');
         $this->renderTabs('dashboard');
@@ -386,13 +388,29 @@ final class AdminController
         $aguardandoStatus = (int) ($metrics['aguardando_status'] ?? 0);
         $comErro = (int) ($metrics['com_erro'] ?? 0);
         $comErroPeriodo = (int) ($metrics['com_erro_periodo'] ?? 0);
-        $errosResolvidosPeriodo = (int) ($metrics['erros_resolvidos_periodo'] ?? 0);
         $movimentadas = (int) ($metrics['movimentadas'] ?? 0);
         $xmls = (int) ($metrics['xmls'] ?? 0);
         $valorTotal = (float) ($metrics['valor_total'] ?? 0);
         $taxaSucesso = (float) ($metrics['taxa_sucesso'] ?? 0);
         $ultimaEmissao = is_array($metrics['ultima_emissao'] ?? null) ? $metrics['ultima_emissao'] : null;
         $ultimoErro = is_array($metrics['ultimo_erro'] ?? null) ? $metrics['ultimo_erro'] : null;
+        $todayDate = date('Y-m-d');
+        $currentVersionBadge = trim((string) ($updateStatus['current_version'] ?? ''));
+        if ($currentVersionBadge !== '') {
+            $currentVersionBadge = 'v' . ltrim($currentVersionBadge, "vV ");
+        } else {
+            $currentVersionBadge = 'v—';
+        }
+        $certificateValidToRaw = trim((string) ($certificateInfo['valid_to'] ?? ''));
+        $certificateValidToLabel = $certificateValidToRaw !== '' ? trim((string) strtok($certificateValidToRaw, ' ')) : 'Não configurado';
+        $certificateDaysLeft = isset($certificateInfo['days_left']) && $certificateInfo['days_left'] !== '' ? (int) $certificateInfo['days_left'] : null;
+        $certificateExpiresSoon = $certificateDaysLeft !== null && $certificateDaysLeft <= 30;
+        $certificateExpired = trim((string) ($certificateInfo['status'] ?? '')) === 'expired';
+        $certificateAttention = $certificateExpired || $certificateExpiresSoon;
+        $certificateSummaryClass = 'opennfse-dashboard__summary-item';
+        if ($certificateAttention) {
+            $certificateSummaryClass .= ' opennfse-dashboard__summary-item--alert';
+        }
 
         $renderMetricCard = static function (
             string $title,
@@ -400,51 +418,128 @@ final class AdminController
             string $subtitle,
             string $href,
             string $accent,
-            string $background = '#fff',
-            string $valueStyle = ''
+            string $valueClass = '',
+            bool $secondary = false
         ) use ($h): void {
-            echo '<a href="' . $h($href) . '" style="flex:1 1 180px;min-width:180px;text-decoration:none;color:inherit;">';
-            echo '<div style="height:100%;border:1px solid #ddd;border-left:4px solid ' . $h($accent) . ';padding:14px;background:' . $h($background) . ';box-sizing:border-box;">';
-            echo '<div style="font-size:12px;color:#666;margin-bottom:6px;">' . $h($title) . '</div>';
-            $resolvedValueStyle = 'font-size:28px;line-height:1.1;font-weight:700;color:#2f2f2f;margin-bottom:6px;';
-            if (trim($valueStyle) !== '') {
-                $resolvedValueStyle .= trim($valueStyle);
+            $tileClass = 'opennfse-dashboard__tile';
+            if ($secondary) {
+                $tileClass .= ' opennfse-dashboard__tile--secondary';
             }
-            echo '<div style="' . $h($resolvedValueStyle) . '">' . $h($value) . '</div>';
-            echo '<div style="font-size:11px;color:#777;line-height:1.35;">' . $h($subtitle) . '</div>';
+            $cardClass = 'opennfse-dashboard__card opennfse-dashboard__metric-card';
+            if ($secondary) {
+                $cardClass .= ' opennfse-dashboard__metric-card--secondary';
+            }
+            $resolvedValueClass = 'opennfse-dashboard__metric-value';
+            if (trim($valueClass) !== '') {
+                $resolvedValueClass .= ' ' . trim($valueClass);
+            }
+
+            echo '<a href="' . $h($href) . '" class="' . $h($tileClass) . '" style="--accent:' . $h($accent) . ';">';
+            echo '<div class="' . $h($cardClass) . '">';
+            echo '<div class="opennfse-dashboard__metric-title">' . $h($title) . '</div>';
+            echo '<div class="' . $h($resolvedValueClass) . '">' . $h($value) . '</div>';
+            if (trim($subtitle) !== '') {
+                echo '<div class="opennfse-dashboard__metric-meta">' . $h($subtitle) . '</div>';
+            }
             echo '</div>';
             echo '</a>';
         };
-        $renderMiniCard = static function (
+        $renderRecentList = function (
             string $title,
-            string $value,
-            string $subtitle,
-            string $href,
-            string $accent
+            array $items,
+            string $emptyMessage,
+            callable $rowRenderer,
+            string $panelClass = '',
+            string $hint = '',
+            string $emptyClass = '',
+            string $headerActionHtml = ''
         ) use ($h): void {
-            echo '<a href="' . $h($href) . '" style="flex:1 1 220px;min-width:220px;text-decoration:none;color:inherit;">';
-            echo '<div style="height:100%;border:1px solid #ddd;padding:12px;background:#fff;box-sizing:border-box;">';
-            echo '<div style="font-size:12px;color:#666;margin-bottom:5px;">' . $h($title) . '</div>';
-            echo '<div style="font-size:20px;font-weight:700;color:' . $h($accent) . ';margin-bottom:4px;">' . $h($value) . '</div>';
-            echo '<div style="font-size:11px;color:#777;line-height:1.35;">' . $h($subtitle) . '</div>';
+            $resolvedPanelClass = trim('opennfse-dashboard__panel ' . $panelClass);
+            $resolvedEmptyClass = trim('opennfse-dashboard__empty ' . $emptyClass);
+            echo '<div class="opennfse-dashboard__tile opennfse-dashboard__tile--panel">';
+            echo '<div class="' . $h($resolvedPanelClass) . '">';
+            echo '<div class="opennfse-dashboard__panel-header">';
+            echo '<div class="opennfse-dashboard__panel-title">' . $h($title) . '</div>';
+            if ($headerActionHtml !== '') {
+                echo $headerActionHtml;
+            } elseif ($hint !== '') {
+                echo '<div class="opennfse-dashboard__panel-hint">' . $h($hint) . '</div>';
+            }
             echo '</div>';
-            echo '</a>';
-        };
-        $renderRecentList = function (string $title, array $items, string $emptyMessage, callable $rowRenderer, string $wrapperStyle = '') use ($h): void {
-            $resolvedWrapperStyle = $wrapperStyle !== '' ? $wrapperStyle : 'flex:1 1 320px;min-width:320px;border:1px solid #ddd;background:#fff;';
-            echo '<div style="' . $h($resolvedWrapperStyle) . '">';
-            echo '<div style="padding:12px 14px;border-bottom:1px solid #eee;background:#fafafa;font-size:13px;font-weight:700;color:#333;">' . $h($title) . '</div>';
             if (empty($items)) {
-                echo '<div style="padding:14px;color:#777;font-size:12px;">' . $h($emptyMessage) . '</div>';
+                echo '<div class="' . $h($resolvedEmptyClass) . '">' . $h($emptyMessage) . '</div>';
             } else {
+                echo '<div class="opennfse-dashboard__list-body">';
                 foreach ($items as $item) {
                     $rowRenderer($item);
                 }
+                echo '</div>';
             }
             echo '</div>';
+            echo '</div>';
         };
+        $normalizeIssueMessage = static function (string $error): string {
+            $normalized = trim((string) preg_replace('/\s+/', ' ', $error));
+            if ($normalized === '') {
+                return '-';
+            }
 
-        $rangeSummary = 'Período selecionado: ' . $rangeStart . ' a ' . $rangeEnd;
+            if (preg_match('/Client error:\s*`[A-Z]+\s+[^`]+`\s+resulted in a\s+`(\d{3}\s+[A-Za-z ]+)`/i', $normalized, $matches) === 1) {
+                $statusSummary = trim((string) ($matches[1] ?? ''));
+                if ($statusSummary !== '') {
+                    return 'Erro na requisição: ' . $statusSummary;
+                }
+            }
+
+            if (preg_match('/Server error:\s*`[A-Z]+\s+[^`]+`\s+resulted in a\s+`(\d{3}\s+[A-Za-z ]+)`/i', $normalized, $matches) === 1) {
+                $statusSummary = trim((string) ($matches[1] ?? ''));
+                if ($statusSummary !== '') {
+                    return 'Erro na requisição: ' . $statusSummary;
+                }
+            }
+
+            $normalized = (string) preg_replace_callback('/https?:\/\/[^\s]+/i', static function (array $matches): string {
+                $host = parse_url((string) ($matches[0] ?? ''), PHP_URL_HOST);
+                if (is_string($host) && trim($host) !== '') {
+                    return $host;
+                }
+
+                return 'URL omitida';
+            }, $normalized);
+            $normalized = str_replace([' for url ', ' for URI ', ' for uri '], ' - ', $normalized);
+            $normalized = trim((string) preg_replace('/\s+/', ' ', $normalized), " \t\n\r\0\x0B-");
+
+            if (mb_strlen($normalized) > 110) {
+                $normalized = rtrim(mb_substr($normalized, 0, 107)) . '...';
+            }
+
+            return $normalized;
+        };
+        $taxaSucessoBase = $emitidas + $comErroPeriodo;
+        $taxaSucessoMeta = $taxaSucessoBase > 0
+            ? ($emitidas . ' de ' . $taxaSucessoBase . ' no período')
+            : 'Sem operações consideradas no período';
+        $chartEndDate = (string) ($metrics['range_end'] ?? '');
+        if ($chartEndDate === '' || $chartEndDate > $todayDate) {
+            $chartEndDate = $todayDate;
+        }
+        $chartRangeLimitedToToday = $chartEndDate !== '' && $chartEndDate !== (string) ($metrics['range_end'] ?? '');
+        $chartSeries = array_values(array_filter(
+            $dailySeries,
+            static function (array $seriesDay) use ($chartEndDate): bool {
+                $dateKey = (string) ($seriesDay['date'] ?? '');
+                if ($dateKey === '' || $chartEndDate === '') {
+                    return false;
+                }
+
+                return $dateKey <= $chartEndDate;
+            }
+        ));
+        $auditoriaMonth = trim((string) ($auditoriaSummary['selected_month'] ?? date('Y-m')));
+        $auditoriaTotalInvoices = (int) ($auditoriaSummary['total_invoices'] ?? 0);
+        $auditoriaHasGateways = (bool) ($auditoriaSummary['has_gateways'] ?? false);
+        $auditoriaDescription = $auditoriaHasGateways ? 'Faturas pagas sem nota' : 'Sem gateways ativos para auditoria';
+        $auditoriaUrl = 'addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria&mes=' . rawurlencode($auditoriaMonth);
         if (!empty($updateStatus['update_available'])) {
             $latestVersion = trim((string) ($updateStatus['latest_version'] ?? ''));
             $currentVersion = trim((string) ($updateStatus['current_version'] ?? ''));
@@ -455,7 +550,8 @@ final class AdminController
             $configUrl = 'addonmodules.php?module=OpenNfse&action=config&tab=processamento';
             $lastCheckedAt = $this->formatDate((string) ($updateStatus['last_checked_at'] ?? ''), 'd/m/Y H:i');
 
-            echo '<div style="margin-bottom:14px;border:1px solid #f0c36d;border-left:4px solid #d9822b;padding:14px;background:#fff8e8;">';
+            echo '<div class="opennfse-dashboard">';
+            echo '<div class="opennfse-dashboard__banner">';
             echo '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">';
             echo '<div style="min-width:280px;flex:1 1 520px;">';
             echo '<div style="font-size:16px;font-weight:700;color:#8a4b08;margin-bottom:6px;">Atualização disponível para o OpenNFS-e</div>';
@@ -484,22 +580,24 @@ final class AdminController
             echo '</div>';
             echo '</div>';
             echo '</div>';
+        } else {
+            echo '<div class="opennfse-dashboard">';
         }
 
-        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
-        echo '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">';
-        echo '<div style="display:flex;align-items:center;gap:12px;">';
+        echo '<div class="opennfse-dashboard__header">';
+        echo '<div class="opennfse-dashboard__header-top">';
+        echo '<div class="opennfse-dashboard__brand">';
         if ($logoUrl !== '') {
-            echo '<img src="' . $h($logoUrl) . '" alt="OpenNfse" style="width:42px;height:42px;object-fit:contain;display:block;" />';
+            echo '<img src="' . $h($logoUrl) . '" alt="OpenNfse" class="opennfse-dashboard__brand-logo" />';
         }
         echo '<div>';
-        echo '<div style="font-size:18px;font-weight:700;color:#333;line-height:1.1;">OpenNfse</div>';
-        echo '<div style="font-size:12px;color:#666;margin-top:3px;">Dashboard operacional</div>';
+        echo '<div class="opennfse-dashboard__brand-line"><div class="opennfse-dashboard__brand-name">OpenNfse</div><span class="opennfse-dashboard__version-badge">' . $h($currentVersionBadge) . '</span></div>';
+        echo '<div class="opennfse-dashboard__brand-subtitle">Visão geral da operação fiscal</div>';
         echo '</div>';
         echo '</div>';
-        echo '<div style="font-size:12px;color:#666;">' . $h($rangeSummary) . '</div>';
         echo '</div>';
-        echo '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">';
+        echo '<div class="opennfse-dashboard__filters">';
+        echo '<div class="opennfse-dashboard__preset-group">';
         $presetButtons = [
             'hoje' => 'Hoje',
             '7_dias' => '7 dias',
@@ -508,40 +606,63 @@ final class AdminController
         ];
         foreach ($presetButtons as $key => $label) {
             $isActive = $periodo === $key;
-            $style = 'display:inline-block;padding:6px 10px;border:1px solid #ccc;border-radius:3px;text-decoration:none;';
-            $style .= $isActive ? 'background:#2d6ca2;color:#fff;border-color:#2d6ca2;' : 'background:#fff;color:#333;';
-            echo '<a href="' . $h($dashboardUrl(['periodo' => $key])) . '" style="' . $h($style) . '">' . $h($label) . '</a>';
+            $buttonClass = 'opennfse-dashboard__preset';
+            if ($isActive) {
+                $buttonClass .= ' is-active';
+            }
+            echo '<a href="' . $h($dashboardUrl(['periodo' => $key])) . '" class="' . $h($buttonClass) . '">' . $h($label) . '</a>';
         }
-        echo '<form method="get" action="addonmodules.php" style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;margin-left:auto;">';
+        echo '</div>';
+        echo '<form method="get" action="addonmodules.php" class="opennfse-dashboard__date-form">';
         echo '<input type="hidden" name="module" value="OpenNfse" />';
         echo '<input type="hidden" name="action" value="dashboard" />';
         echo '<input type="hidden" name="periodo" value="personalizado" />';
-        echo '<div><div style="font-size:11px;color:#666;margin-bottom:4px;">Data inicial</div><input type="date" name="data_inicial" value="' . $h((string) ($metrics['range_start'] ?? '')) . '" style="width:150px;" /></div>';
-        echo '<div><div style="font-size:11px;color:#666;margin-bottom:4px;">Data final</div><input type="date" name="data_final" value="' . $h((string) ($metrics['range_end'] ?? '')) . '" style="width:150px;" /></div>';
-        echo '<button type="submit" class="btn btn-xs btn-default">Aplicar</button>';
+        echo '<div class="opennfse-dashboard__date-field"><div class="opennfse-dashboard__date-label">Data inicial</div><input type="date" name="data_inicial" value="' . $h((string) ($metrics['range_start'] ?? '')) . '" class="opennfse-dashboard__date-input" /></div>';
+        echo '<div class="opennfse-dashboard__date-field"><div class="opennfse-dashboard__date-label">Data final</div><input type="date" name="data_final" value="' . $h((string) ($metrics['range_end'] ?? '')) . '" class="opennfse-dashboard__date-input" /></div>';
+        echo '<button type="submit" class="btn btn-default btn-sm">Aplicar</button>';
         echo '</form>';
         echo '</div>';
         echo '</div>';
 
-        echo '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:15px;">';
-        $renderMetricCard('Emitidas no período', (string) $emitidas, 'Abre Relatórios > Emitidas filtrado', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'EMITIDA'], '', '&', PHP_QUERY_RFC3986), '#2e7d32', '#f7fcf8');
-        $renderMetricCard('Canceladas no período', (string) $canceladas, 'Abre Relatórios > Cancelamentos filtrado', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=cancelamentos&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986), '#a67c00', '#fffdf6');
-        $renderMetricCard('Rejeitadas no período', (string) $rejeitadas, 'Abre Notas filtrado por rejeitadas', 'addonmodules.php?module=OpenNfse&action=notas&status=REJEITADA&updated_from=' . rawurlencode((string) ($metrics['range_start'] ?? '')) . '&updated_to=' . rawurlencode((string) ($metrics['range_end'] ?? '')), '#8e44ad', '#fbf8fd');
-        $renderMetricCard('Pendentes agora', (string) $pendentes, 'Fila ativa com itens aguardando processamento', 'addonmodules.php?module=OpenNfse&action=fila', '#c77d02', '#fffaf2');
-        $renderMetricCard('Com erro agora', (string) $comErro, 'Pendências operacionais que exigem atenção', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986), '#c62828', '#fff8f8');
-        $renderMetricCard('Valor emitido no período', $this->formatMoney($valorTotal, 'R$ ', ''), 'Soma das NFS-e emitidas no intervalo', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'EMITIDA'], '', '&', PHP_QUERY_RFC3986), '#23527c', '#f7fbff', 'font-size:clamp(18px,2.3vw,28px);white-space:nowrap;letter-spacing:-0.02em;');
+        echo '<div class="opennfse-dashboard__kpi-grid">';
+        $renderMetricCard('Emitidas', (string) $emitidas, '', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'EMITIDA'], '', '&', PHP_QUERY_RFC3986), '#2e7d32');
+        $renderMetricCard('Canceladas', (string) $canceladas, '', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=cancelamentos&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986), '#c75b12');
+        $renderMetricCard('Rejeitadas', (string) $rejeitadas, '', 'addonmodules.php?module=OpenNfse&action=notas&status=REJEITADA&updated_from=' . rawurlencode((string) ($metrics['range_start'] ?? '')) . '&updated_to=' . rawurlencode((string) ($metrics['range_end'] ?? '')), '#8e44ad');
+        $renderMetricCard('Pendentes', (string) $pendentes, '', 'addonmodules.php?module=OpenNfse&action=fila', '#c77d02');
+        $renderMetricCard('Com erro', (string) $comErro, '', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986), '#c62828');
+        $renderMetricCard('Valor emitido', $this->formatMoney($valorTotal, 'R$ ', ''), '', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'EMITIDA'], '', '&', PHP_QUERY_RFC3986), '#23527c', 'opennfse-dashboard__metric-value--money');
         echo '</div>';
 
-        $ultimaEmissaoLabel = 'Nenhuma emissão encontrada no período';
-        if ($ultimaEmissao !== null) {
-            $ultimaEmissaoLabel = 'Invoice #' . (int) ($ultimaEmissao['invoiceid'] ?? 0) . ' em ' . $this->formatDate((string) ($ultimaEmissao['data'] ?? ''), 'd/m/Y H:i');
+        echo '<div class="opennfse-dashboard__summary-strip">';
+        echo '<div class="opennfse-dashboard__summary-item">';
+        echo '<span class="opennfse-dashboard__summary-separator" aria-hidden="true">|</span>';
+        echo '<span class="opennfse-dashboard__summary-value">' . $h((string) $movimentadas) . '</span>';
+        echo '<span class="opennfse-dashboard__summary-label">Total processadas</span>';
+        echo '</div>';
+        echo '<div class="opennfse-dashboard__summary-item">';
+        echo '<span class="opennfse-dashboard__summary-separator" aria-hidden="true">|</span>';
+        echo '<span class="opennfse-dashboard__summary-value">' . $h(number_format($taxaSucesso, 1, ',', '.') . '%') . '</span>';
+        echo '<span class="opennfse-dashboard__summary-label">Taxa de sucesso</span>';
+        echo '</div>';
+        echo '<div class="opennfse-dashboard__summary-item">';
+        echo '<span class="opennfse-dashboard__summary-separator" aria-hidden="true">|</span>';
+        echo '<span class="opennfse-dashboard__summary-value">' . $h((string) $xmls) . '</span>';
+        echo '<span class="opennfse-dashboard__summary-label">XMLs armazenados</span>';
+        echo '</div>';
+        echo '<div class="' . $h($certificateSummaryClass) . '">';
+        echo '<span class="opennfse-dashboard__summary-separator" aria-hidden="true">|</span>';
+        if ($certificateAttention) {
+            echo '<span class="opennfse-dashboard__summary-icon" aria-hidden="true">!</span>';
         }
-        $ultimoErroLabel = 'Nenhum erro encontrado no período';
-        if ($ultimoErro !== null) {
-            $ultimoErroLabel = strtoupper(trim((string) ($ultimoErro['status'] ?? 'ERRO'))) . ' na invoice #' . (int) ($ultimoErro['invoiceid'] ?? 0) . ' em ' . $this->formatDate((string) ($ultimoErro['data'] ?? ''), 'd/m/Y H:i');
-        }
+        echo '<span class="opennfse-dashboard__summary-label">Vencimento do certificado:</span>';
+        echo '<span class="opennfse-dashboard__summary-value">' . $h($certificateValidToLabel) . '</span>';
+        echo '</div>';
+        echo '<span class="opennfse-dashboard__summary-separator opennfse-dashboard__summary-separator--tail" aria-hidden="true">|</span>';
+        echo '</div>';
+
+        $chartPointCount = count($chartSeries);
         $dailyChartMax = 1;
-        foreach ($dailySeries as $seriesDay) {
+        foreach ($chartSeries as $seriesDay) {
             $dailyChartMax = max(
                 $dailyChartMax,
                 (int) ($seriesDay['emitidas'] ?? 0),
@@ -549,16 +670,17 @@ final class AdminController
                 (int) ($seriesDay['erros_resolvidos'] ?? 0)
             );
         }
-        $dailyChartSvgWidth = max(760, 62 + (count($dailySeries) * 30));
-        $dailyChartSvgHeight = 320;
-        $dailyChartPaddingLeft = 44;
-        $dailyChartPaddingRight = 18;
-        $dailyChartPaddingTop = 18;
-        $dailyChartPaddingBottom = 42;
+        $dailyChartMinWidth = $chartPointCount <= 10 ? 980 : 760;
+        $dailyChartSvgWidth = max($dailyChartMinWidth, 62 + ($chartPointCount * 30));
+        $dailyChartSvgHeight = 180;
+        $dailyChartPaddingLeft = $chartPointCount <= 10 ? 58 : 40;
+        $dailyChartPaddingRight = $chartPointCount <= 10 ? 26 : 18;
+        $dailyChartPaddingTop = $chartPointCount <= 10 ? 12 : 10;
+        $dailyChartPaddingBottom = $chartPointCount <= 10 ? 36 : 24;
         $dailyChartPlotWidth = max(620, $dailyChartSvgWidth - $dailyChartPaddingLeft - $dailyChartPaddingRight);
-        $dailyChartPlotHeight = max(180, $dailyChartSvgHeight - $dailyChartPaddingTop - $dailyChartPaddingBottom);
-        $dailyChartStep = count($dailySeries) > 1 ? ($dailyChartPlotWidth / (count($dailySeries) - 1)) : 0.0;
-        $dailyChartBarWidth = (int) max(8, min(16, floor((count($dailySeries) > 1 ? $dailyChartStep : $dailyChartPlotWidth / 3) * 0.45)));
+        $dailyChartPlotHeight = max(100, $dailyChartSvgHeight - $dailyChartPaddingTop - $dailyChartPaddingBottom);
+        $dailyChartStep = $chartPointCount > 1 ? ($dailyChartPlotWidth / ($chartPointCount - 1)) : 0.0;
+        $dailyChartBarWidth = (int) max(8, min(16, floor(($chartPointCount > 1 ? $dailyChartStep : $dailyChartPlotWidth / 3) * 0.45)));
         $dailyChartBaseY = $dailyChartPaddingTop + $dailyChartPlotHeight;
         $chartY = static function (int $value) use ($dailyChartMax, $dailyChartPaddingTop, $dailyChartPlotHeight): float {
             return $dailyChartPaddingTop + $dailyChartPlotHeight - (($value / max(1, $dailyChartMax)) * $dailyChartPlotHeight);
@@ -598,8 +720,8 @@ final class AdminController
         $emitidasBars = [];
         $canceladasPoints = [];
         $errosResolvidosPoints = [];
-        foreach (array_values($dailySeries) as $index => $seriesDay) {
-            $x = count($dailySeries) > 1
+        foreach (array_values($chartSeries) as $index => $seriesDay) {
+            $x = $chartPointCount > 1
                 ? $dailyChartPaddingLeft + ($index * $dailyChartStep)
                 : $dailyChartPaddingLeft + ($dailyChartPlotWidth / 2);
             $emitidasValue = (int) ($seriesDay['emitidas'] ?? 0);
@@ -634,19 +756,13 @@ final class AdminController
         $errosResolvidosLinePath = $buildSmoothPath($errosResolvidosPoints);
         $errosResolvidosAreaPath = $buildAreaPath($errosResolvidosPoints, (float) $dailyChartBaseY, $buildSmoothPath);
 
-        echo '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:15px;">';
-        $renderMiniCard('Total processadas', (string) $movimentadas, 'Notas movimentadas no período selecionado', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'EMITIDA,CANCELADA'], '', '&', PHP_QUERY_RFC3986), '#2f2f2f');
-        $renderMiniCard('Taxa de sucesso', number_format($taxaSucesso, 1, ',', '.') . '%', 'Emitidas vs. itens com erro no período', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986), '#2d6ca2');
-        $renderMiniCard('XMLs armazenados', (string) $xmls, 'Arquivos XML emitidos no período', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'EMITIDA,CANCELADA'], '', '&', PHP_QUERY_RFC3986), '#5f6b7a');
-        $renderMiniCard('Aguardando status', (string) $aguardandoStatus, 'Itens da fila em consulta de status', 'addonmodules.php?module=OpenNfse&action=fila&status=WAIT_STATUS', '#8a6d3b');
-        $renderMiniCard('Última emissão', $ultimaEmissao !== null ? ('#' . (int) ($ultimaEmissao['invoiceid'] ?? 0)) : '-', $ultimaEmissaoLabel, $ultimaEmissao !== null ? ('invoices.php?action=edit&id=' . (int) ($ultimaEmissao['invoiceid'] ?? 0)) : 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986), '#2e7d32');
-        $renderMiniCard('Último erro', $ultimoErro !== null ? ('#' . (int) ($ultimoErro['invoiceid'] ?? 0)) : '-', $ultimoErroLabel, $ultimoErro !== null ? ('invoices.php?action=edit&id=' . (int) ($ultimoErro['invoiceid'] ?? 0)) : 'addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986), '#c62828');
+        echo '<div class="opennfse-dashboard__lists-layout">';
+        echo '<div class="opennfse-dashboard__tile opennfse-dashboard__tile--panel">';
+        echo '<div class="opennfse-dashboard__panel opennfse-dashboard__panel--attention">';
+        echo '<div class="opennfse-dashboard__panel-header">';
+        echo '<div class="opennfse-dashboard__panel-title">Exigem atenção</div>';
         echo '</div>';
-
-        echo '<div style="display:flex;gap:15px;align-items:stretch;flex-wrap:wrap;margin-bottom:15px;">';
-        echo '<div style="flex:1 1 260px;min-width:260px;border:1px solid #ddd;background:#fff;">';
-        echo '<div style="padding:12px 14px;border-bottom:1px solid #eee;background:#fafafa;font-size:13px;font-weight:700;color:#333;">Exigem atenção</div>';
-        echo '<div style="padding:10px 14px;">';
+        echo '<div class="opennfse-dashboard__attention-body">';
         $attentionItems = [
             [
                 'label' => 'Com erro agora',
@@ -676,119 +792,143 @@ final class AdminController
                 'color' => '#8e44ad',
                 'desc' => 'Exigem correção manual',
             ],
+            [
+                'label' => 'Não emitidas',
+                'count' => $auditoriaTotalInvoices,
+                'href' => $auditoriaUrl,
+                'color' => '#c0392b',
+                'desc' => $auditoriaDescription,
+            ],
         ];
         foreach ($attentionItems as $item) {
-            echo '<a href="' . $h((string) $item['href']) . '" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid #f0f0f0;text-decoration:none;color:inherit;">';
-            echo '<div><div style="font-size:13px;font-weight:600;color:#333;">' . $h((string) $item['label']) . '</div><div style="font-size:11px;color:#777;">' . $h((string) $item['desc']) . '</div></div>';
-            echo '<span style="display:inline-block;min-width:30px;text-align:center;padding:3px 8px;border-radius:999px;background:' . $h((string) $item['color']) . ';color:#fff;font-size:11px;font-weight:700;">' . $h((string) $item['count']) . '</span>';
+            echo '<a href="' . $h((string) $item['href']) . '" class="opennfse-dashboard__attention-item">';
+            echo '<div><div class="opennfse-dashboard__attention-title">' . $h((string) $item['label']) . '</div><div class="opennfse-dashboard__attention-desc">' . $h((string) $item['desc']) . '</div></div>';
+            echo '<span class="opennfse-dashboard__count-badge" style="--accent:' . $h((string) $item['color']) . ';">' . $h((string) $item['count']) . '</span>';
             echo '</a>';
         }
         echo '</div>';
         echo '</div>';
-        $renderRecentList('Últimas emissões', $recentEmitidas, 'Nenhuma emissão no período.', function (array $item) use ($h) {
+        echo '</div>';
+        $emitidasListAction = '<a href="' . $h('addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986)) . '" class="opennfse-dashboard__panel-action">Ver todos</a>';
+        $renderRecentList('Últimas emissões', $recentEmitidas, '— Nenhuma emissão no período', function (array $item) use ($h) {
             $invoiceId = (int) ($item['invoiceid'] ?? 0);
             $numeroNf = trim((string) ($item['numero_nf'] ?? ''));
             $client = $this->resolveClientName($item);
             $data = $this->formatDate((string) ($item['data'] ?? ''), 'd/m/Y H:i');
-            echo '<a href="' . $h('invoices.php?action=edit&id=' . $invoiceId) . '" style="display:block;padding:10px 14px;border-top:1px solid #f2f2f2;text-decoration:none;color:inherit;">';
-            echo '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">';
-            echo '<div><div style="font-size:13px;font-weight:600;color:#333;">Invoice #' . $h((string) $invoiceId) . ($numeroNf !== '' ? ' • NFS-e ' . $h($numeroNf) : '') . '</div><div style="font-size:11px;color:#777;">' . $h($client) . '</div></div>';
-            echo '<div style="font-size:11px;color:#666;white-space:nowrap;">' . $h($data) . '</div>';
+            echo '<a href="' . $h('invoices.php?action=edit&id=' . $invoiceId) . '" class="opennfse-dashboard__list-row">';
+            echo '<div class="opennfse-dashboard__list-row-top">';
+            echo '<div><div class="opennfse-dashboard__list-primary">Invoice #' . $h((string) $invoiceId) . ($numeroNf !== '' ? ' • NFS-e ' . $h($numeroNf) : '') . '</div><div class="opennfse-dashboard__list-secondary">' . $h($client) . '</div></div>';
+            echo '<div class="opennfse-dashboard__list-tertiary">' . $h($data) . '</div>';
             echo '</div>';
             echo '</a>';
-        }, 'flex:1 1 260px;min-width:260px;border:1px solid #ddd;background:#fff;');
-        $renderRecentList('Últimos erros', $recentErros, 'Nenhum erro no período.', function (array $item) use ($h) {
+        }, '', '', 'opennfse-dashboard__empty--neutral', $emitidasListAction);
+        $cancelamentosListAction = '<a href="' . $h('addonmodules.php?module=OpenNfse&action=relatorios&tab=cancelamentos&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986)) . '" class="opennfse-dashboard__panel-action">Ver todos</a>';
+        $renderRecentList('Últimos cancelamentos', $recentCanceladas, '— Nenhum cancelamento no período', function (array $item) use ($h) {
+            $invoiceId = (int) ($item['invoiceid'] ?? 0);
+            $numeroNf = trim((string) ($item['numero_nf'] ?? ''));
+            $client = $this->resolveClientName($item);
+            $data = $this->formatDate((string) ($item['data'] ?? ''), 'd/m/Y H:i');
+            echo '<a href="' . $h('invoices.php?action=edit&id=' . $invoiceId) . '" class="opennfse-dashboard__list-row">';
+            echo '<div class="opennfse-dashboard__list-row-top">';
+            echo '<div><div class="opennfse-dashboard__list-primary">Invoice #' . $h((string) $invoiceId) . ($numeroNf !== '' ? ' • NFS-e ' . $h($numeroNf) : '') . '</div><div class="opennfse-dashboard__list-secondary">' . $h($client) . '</div></div>';
+            echo '<div class="opennfse-dashboard__list-tertiary">' . $h($data) . '</div>';
+            echo '</div>';
+            echo '</a>';
+        }, '', '', 'opennfse-dashboard__empty--neutral', $cancelamentosListAction);
+        $errosListAction = '<a href="' . $h('addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986)) . '" class="opennfse-dashboard__panel-action">Ver todos</a>';
+        $renderRecentList('Últimos erros', $recentErros, '✓ Nenhum erro no período', function (array $item) use ($h, $normalizeIssueMessage) {
             $invoiceId = (int) ($item['invoiceid'] ?? 0);
             $client = $this->resolveClientName($item);
             $status = trim((string) ($item['status'] ?? 'ERROR'));
+            $statusUpper = strtoupper($status);
+            $statusBadgeClass = 'opennfse-dashboard__status-badge';
+            if ($statusUpper === 'RESOLVIDO') {
+                $statusBadgeClass .= ' opennfse-dashboard__status-badge--resolved';
+            }
             $erro = trim((string) ($item['erro'] ?? ''));
-            if ($erro === '') {
-                $erro = '-';
-            }
-            if (mb_strlen($erro) > 70) {
-                $erro = mb_substr($erro, 0, 70) . '...';
-            }
+            $erro = $normalizeIssueMessage($erro);
             $data = $this->formatDate((string) ($item['data'] ?? ''), 'd/m/Y H:i');
-            echo '<a href="' . $h($invoiceId > 0 ? ('invoices.php?action=edit&id=' . $invoiceId) : 'addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas') . '" style="display:block;padding:10px 14px;border-top:1px solid #f2f2f2;text-decoration:none;color:inherit;">';
-            echo '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;margin-bottom:4px;">';
-            echo '<div style="font-size:13px;font-weight:600;color:#333;">' . $h($status) . ' • Invoice #' . $h((string) $invoiceId) . '</div>';
-            echo '<div style="font-size:11px;color:#666;white-space:nowrap;">' . $h($data) . '</div>';
+            $invoiceLabel = $invoiceId > 0 ? ('Invoice #' . $invoiceId) : 'Registro operacional';
+            echo '<a href="' . $h($invoiceId > 0 ? ('invoices.php?action=edit&id=' . $invoiceId) : 'addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas') . '" class="opennfse-dashboard__list-row">';
+            echo '<div class="opennfse-dashboard__list-row-top">';
+            echo '<div>';
+            echo '<div class="opennfse-dashboard__status-row"><span class="opennfse-dashboard__list-primary">' . $h($invoiceLabel) . '</span><span class="' . $h($statusBadgeClass) . '">' . $h($status) . '</span></div>';
+            echo '<div class="opennfse-dashboard__list-secondary">' . $h($client) . '</div>';
+            echo '<div class="opennfse-dashboard__error-message">' . $h($erro) . '</div>';
             echo '</div>';
-            echo '<div style="font-size:11px;color:#777;margin-bottom:4px;">' . $h($client) . '</div>';
-            echo '<div style="font-size:11px;color:#555;line-height:1.4;">' . $h($erro) . '</div>';
-            echo '</a>';
-        }, 'flex:1 1 260px;min-width:260px;border:1px solid #ddd;background:#fff;');
-        $renderRecentList('Últimos cancelamentos', $recentCanceladas, 'Nenhum cancelamento no período.', function (array $item) use ($h) {
-            $invoiceId = (int) ($item['invoiceid'] ?? 0);
-            $numeroNf = trim((string) ($item['numero_nf'] ?? ''));
-            $client = $this->resolveClientName($item);
-            $data = $this->formatDate((string) ($item['data'] ?? ''), 'd/m/Y H:i');
-            echo '<a href="' . $h('invoices.php?action=edit&id=' . $invoiceId) . '" style="display:block;padding:10px 14px;border-top:1px solid #f2f2f2;text-decoration:none;color:inherit;">';
-            echo '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">';
-            echo '<div><div style="font-size:13px;font-weight:600;color:#333;">Invoice #' . $h((string) $invoiceId) . ($numeroNf !== '' ? ' • NFS-e ' . $h($numeroNf) : '') . '</div><div style="font-size:11px;color:#777;">' . $h($client) . '</div></div>';
-            echo '<div style="font-size:11px;color:#666;white-space:nowrap;">' . $h($data) . '</div>';
+            echo '<div class="opennfse-dashboard__list-tertiary">' . $h($data) . '</div>';
             echo '</div>';
             echo '</a>';
-        }, 'flex:1 1 260px;min-width:260px;border:1px solid #ddd;background:#fff;');
+        }, '', '', 'opennfse-dashboard__empty--positive', $errosListAction);
         echo '</div>';
 
-        echo '<div style="margin-bottom:10px;border:1px solid #ddd;background:#fff;">';
-        echo '<div style="padding:12px 14px;border-bottom:1px solid #eee;background:#fafafa;">';
-        echo '<div style="font-size:13px;font-weight:700;color:#333;">Gráfico do período</div>';
-        echo '<div style="font-size:11px;color:#777;margin-top:4px;">Visualização diária sobreposta: barras para Emitidas, linha para Canceladas e curva/onda para Erros/Resolvidos.</div>';
+        echo '<div class="opennfse-dashboard__panel opennfse-dashboard__chart">';
+        echo '<div class="opennfse-dashboard__panel-header">';
+        echo '<div class="opennfse-dashboard__panel-title">Emissões no período</div>';
+        $chartInfoTitle = 'Cada ponto representa um dia do período. As barras continuam clicáveis para abrir o relatório filtrado naquela data.';
+        if ($chartRangeLimitedToToday) {
+            $chartInfoTitle = 'O gráfico mostra dias corridos até hoje quando o filtro inclui datas futuras. ' . $chartInfoTitle;
+        }
+        echo '<div class="opennfse-dashboard__panel-hint"><span class="opennfse-dashboard__info-pill" title="' . $h($chartInfoTitle) . '">i</span></div>';
         echo '</div>';
-        echo '<div style="padding:16px;">';
-        echo '<div style="overflow-x:auto;padding-bottom:4px;">';
-        echo '<div style="min-width:' . $h((string) $dailyChartSvgWidth) . 'px;padding:14px;border:1px solid #f0f0f0;background:linear-gradient(180deg,#ffffff 0%,#fafafa 100%);">';
-        echo '<svg viewBox="0 0 ' . $h((string) $dailyChartSvgWidth) . ' ' . $h((string) $dailyChartSvgHeight) . '" style="width:100%;height:auto;display:block;" role="img" aria-label="Gráfico diário do período">';
-        for ($gridIndex = 0; $gridIndex <= 4; $gridIndex++) {
-            $gridValue = (int) round(($dailyChartMax / 4) * (4 - $gridIndex));
-            $gridY = $dailyChartPaddingTop + (($dailyChartPlotHeight / 4) * $gridIndex);
-            echo '<line x1="' . $h((string) $dailyChartPaddingLeft) . '" y1="' . $h((string) round($gridY, 2)) . '" x2="' . $h((string) ($dailyChartPaddingLeft + $dailyChartPlotWidth)) . '" y2="' . $h((string) round($gridY, 2)) . '" stroke="#e6e6e6" stroke-width="1" />';
-            echo '<text x="' . $h((string) ($dailyChartPaddingLeft - 8)) . '" y="' . $h((string) round($gridY + 4, 2)) . '" text-anchor="end" font-size="11" fill="#777">' . $h((string) $gridValue) . '</text>';
-        }
-        if ($errosResolvidosAreaPath !== '') {
-            echo '<path d="' . $h($errosResolvidosAreaPath) . '" fill="rgba(245,124,0,0.18)" stroke="none" />';
-        }
-        foreach ($emitidasBars as $index => $bar) {
-            $seriesDay = $dailySeries[$index] ?? [];
-            $dateKey = (string) ($seriesDay['date'] ?? '');
-            $emitidasUrl = 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query(['data_inicial' => $dateKey, 'data_final' => $dateKey, 'status' => 'EMITIDA'], '', '&', PHP_QUERY_RFC3986);
-            echo '<a xlink:href="' . $h($emitidasUrl) . '">';
-            echo '<rect x="' . $h((string) round(((float) $bar['x']) - ($dailyChartBarWidth / 2), 2)) . '" y="' . $h((string) round((float) $bar['top'], 2)) . '" width="' . $h((string) $dailyChartBarWidth) . '" height="' . $h((string) round((float) $bar['height'], 2)) . '" rx="4" ry="4" fill="rgba(46,125,50,0.45)" stroke="rgba(46,125,50,0.9)" stroke-width="1"><title>Emitidas em ' . $h((string) ($bar['label'] ?? '')) . ': ' . $h((string) ($bar['value'] ?? 0)) . '</title></rect>';
-            echo '</a>';
-        }
-        if ($errosResolvidosLinePath !== '') {
-            echo '<path d="' . $h($errosResolvidosLinePath) . '" fill="none" stroke="#f57c00" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />';
-        }
-        if ($canceladasPath !== '') {
-            echo '<path d="' . $h($canceladasPath) . '" fill="none" stroke="#c62828" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />';
-        }
-        foreach ($errosResolvidosPoints as $point) {
-            echo '<circle cx="' . $h((string) round((float) $point['x'], 2)) . '" cy="' . $h((string) round((float) $point['y'], 2)) . '" r="3.5" fill="#f57c00" stroke="#fff" stroke-width="1.5"><title>Erros/Resolvidos em ' . $h((string) ($point['label'] ?? '')) . ': ' . $h((string) ($point['value'] ?? 0)) . '</title></circle>';
-        }
-        foreach ($canceladasPoints as $point) {
-            echo '<circle cx="' . $h((string) round((float) $point['x'], 2)) . '" cy="' . $h((string) round((float) $point['y'], 2)) . '" r="3" fill="#c62828" stroke="#fff" stroke-width="1.5"><title>Canceladas em ' . $h((string) ($point['label'] ?? '')) . ': ' . $h((string) ($point['value'] ?? 0)) . '</title></circle>';
-        }
-        $labelStep = max(1, (int) ceil(max(1, count($dailySeries)) / 10));
-        foreach (array_values($dailySeries) as $index => $seriesDay) {
-            if ($index % $labelStep !== 0 && $index !== count($dailySeries) - 1) {
-                continue;
+        echo '<div class="opennfse-dashboard__chart-body">';
+        if (empty($chartSeries)) {
+            echo '<div class="opennfse-dashboard__empty opennfse-dashboard__empty--neutral">— Sem dias corridos no intervalo até hoje</div>';
+        } else {
+            echo '<div class="opennfse-dashboard__chart-scroll">';
+            echo '<div class="opennfse-dashboard__chart-frame" style="min-width:' . $h((string) $dailyChartSvgWidth) . 'px;">';
+            echo '<svg viewBox="0 0 ' . $h((string) $dailyChartSvgWidth) . ' ' . $h((string) $dailyChartSvgHeight) . '" style="width:100%;height:auto;display:block;" role="img" aria-label="Gráfico diário do período">';
+            for ($gridIndex = 0; $gridIndex <= 4; $gridIndex++) {
+                $gridValue = (int) round(($dailyChartMax / 4) * (4 - $gridIndex));
+                $gridY = $dailyChartPaddingTop + (($dailyChartPlotHeight / 4) * $gridIndex);
+                echo '<line x1="' . $h((string) $dailyChartPaddingLeft) . '" y1="' . $h((string) round($gridY, 2)) . '" x2="' . $h((string) ($dailyChartPaddingLeft + $dailyChartPlotWidth)) . '" y2="' . $h((string) round($gridY, 2)) . '" stroke="rgba(100,116,139,0.09)" stroke-width="1" />';
+                $yAxisLabelX = $dailyChartPaddingLeft - ($chartPointCount <= 10 ? 12 : 8);
+                echo '<text x="' . $h((string) $yAxisLabelX) . '" y="' . $h((string) round($gridY + 4, 2)) . '" text-anchor="end" font-size="8" font-weight="400" fill="#7c8798">' . $h((string) $gridValue) . '</text>';
             }
-            $x = count($dailySeries) > 1
-                ? $dailyChartPaddingLeft + ($index * $dailyChartStep)
-                : $dailyChartPaddingLeft + ($dailyChartPlotWidth / 2);
-            echo '<text x="' . $h((string) round($x, 2)) . '" y="' . $h((string) ($dailyChartBaseY + 22)) . '" text-anchor="middle" font-size="10" fill="#666">' . $h((string) ($seriesDay['label'] ?? '')) . '</text>';
+            if ($errosResolvidosAreaPath !== '') {
+                echo '<path d="' . $h($errosResolvidosAreaPath) . '" fill="rgba(217,119,6,0.04)" stroke="none" />';
+            }
+            foreach ($emitidasBars as $index => $bar) {
+                $seriesDay = $chartSeries[$index] ?? [];
+                $dateKey = (string) ($seriesDay['date'] ?? '');
+                $emitidasUrl = 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query(['data_inicial' => $dateKey, 'data_final' => $dateKey, 'status' => 'EMITIDA'], '', '&', PHP_QUERY_RFC3986);
+                echo '<a xlink:href="' . $h($emitidasUrl) . '">';
+                echo '<rect x="' . $h((string) round(((float) $bar['x']) - ($dailyChartBarWidth / 2), 2)) . '" y="' . $h((string) round((float) $bar['top'], 2)) . '" width="' . $h((string) $dailyChartBarWidth) . '" height="' . $h((string) round((float) $bar['height'], 2)) . '" rx="3" ry="3" fill="rgba(46,125,50,0.16)" stroke="rgba(46,125,50,0.65)" stroke-width="1"><title>Emitidas em ' . $h((string) ($bar['label'] ?? '')) . ': ' . $h((string) ($bar['value'] ?? 0)) . '</title></rect>';
+                echo '</a>';
+            }
+            if ($errosResolvidosLinePath !== '') {
+                echo '<path d="' . $h($errosResolvidosLinePath) . '" fill="none" stroke="#d97706" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />';
+            }
+            if ($canceladasPath !== '') {
+                echo '<path d="' . $h($canceladasPath) . '" fill="none" stroke="#c94a4a" stroke-opacity="0.72" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />';
+            }
+            foreach ($errosResolvidosPoints as $point) {
+                echo '<circle cx="' . $h((string) round((float) $point['x'], 2)) . '" cy="' . $h((string) round((float) $point['y'], 2)) . '" r="2" fill="#d97706"><title>Erros/Resolvidos em ' . $h((string) ($point['label'] ?? '')) . ': ' . $h((string) ($point['value'] ?? 0)) . '</title></circle>';
+            }
+            foreach ($canceladasPoints as $point) {
+                echo '<circle cx="' . $h((string) round((float) $point['x'], 2)) . '" cy="' . $h((string) round((float) $point['y'], 2)) . '" r="2" fill="#c94a4a" fill-opacity="0.9"><title>Canceladas em ' . $h((string) ($point['label'] ?? '')) . ': ' . $h((string) ($point['value'] ?? 0)) . '</title></circle>';
+            }
+            $labelStep = max(1, (int) ceil(max(1, $chartPointCount) / 10));
+            foreach (array_values($chartSeries) as $index => $seriesDay) {
+                if ($index % $labelStep !== 0 && $index !== $chartPointCount - 1) {
+                    continue;
+                }
+                $x = $chartPointCount > 1
+                    ? $dailyChartPaddingLeft + ($index * $dailyChartStep)
+                    : $dailyChartPaddingLeft + ($dailyChartPlotWidth / 2);
+                $xAxisLabelY = $dailyChartBaseY + ($chartPointCount <= 10 ? 24 : 18);
+                echo '<text x="' . $h((string) round($x, 2)) . '" y="' . $h((string) $xAxisLabelY) . '" text-anchor="middle" font-size="8" font-weight="400" fill="#7c8798">' . $h((string) ($seriesDay['label'] ?? '')) . '</text>';
+            }
+            echo '</svg>';
+            echo '</div>';
+            echo '</div>';
+            echo '<div class="opennfse-dashboard__chart-legend">';
+            echo '<div class="opennfse-dashboard__legend-item"><span class="opennfse-dashboard__legend-dot" style="background:#2e7d32;"></span><span>Emitidas</span></div>';
+            echo '<div class="opennfse-dashboard__legend-item"><span class="opennfse-dashboard__legend-dot" style="background:#c62828;"></span><span>Canceladas</span></div>';
+            echo '<div class="opennfse-dashboard__legend-item"><span class="opennfse-dashboard__legend-dot" style="background:#f57c00;"></span><span>Erros/Resolvidos</span></div>';
+            echo '</div>';
         }
-        echo '</svg>';
         echo '</div>';
-        echo '</div>';
-        echo '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;">';
-        echo '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#666;"><span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:#2e7d32;"></span><span>Emitidas</span></div>';
-        echo '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#666;"><span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:#c62828;"></span><span>Canceladas</span></div>';
-        echo '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#666;"><span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:#f57c00;"></span><span>Erros/Resolvidos</span></div>';
-        echo '</div>';
-        echo '<div style="font-size:11px;color:#777;margin-top:10px;">Cada ponto representa um dia do período. As barras permanecem clicáveis para abrir o relatório filtrado naquela data.</div>';
         echo '</div>';
         echo '</div>';
 

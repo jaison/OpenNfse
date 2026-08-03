@@ -29,6 +29,31 @@ final class ReportsController
 {
     use AdminHelpersTrait;
 
+    public function getAuditoriaDashboardSummary(?string $month = null): array
+    {
+        $requestedMonth = trim((string) ($month ?? ''));
+        $gatewayMap = $this->getAuditoriaActiveGatewayMap();
+        $gatewayKeys = array_keys($gatewayMap);
+        [$selectedMonth, $dataInicial, $dataFinal] = $this->resolveAuditoriaMonthRange($requestedMonth !== '' ? $requestedMonth : date('Y-m'));
+
+        $filters = [
+            'data_inicial' => $dataInicial,
+            'data_final' => $dataFinal,
+            'gateways' => $gatewayKeys,
+        ];
+
+        $summary = (new ReportRepository())->summaryAuditoriaInvoices($filters);
+
+        return [
+            'selected_month' => $selectedMonth,
+            'data_inicial' => $dataInicial,
+            'data_final' => $dataFinal,
+            'has_gateways' => !empty($gatewayKeys),
+            'total_invoices' => (int) ($summary['total_invoices'] ?? 0),
+            'total_valor' => (float) ($summary['total_valor'] ?? 0),
+        ];
+    }
+
     public function showRelatorios(): void
     {
         $active = trim((string) ($_GET['tab'] ?? 'auditoria'));

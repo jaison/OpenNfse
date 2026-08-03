@@ -502,14 +502,14 @@ final class ReportRepository
             ->join('tblclients as c', 'c.id', '=', 'i.userid')
             ->select([
                 'q.invoiceid',
-                Capsule::raw("'ERROR' as status"),
+                'q.status as status',
                 'q.last_error as erro',
                 'q.updated_at as data',
                 'c.companyname',
                 'c.firstname',
                 'c.lastname',
             ])
-            ->where('q.status', 'ERROR')
+            ->whereIn('q.status', ['ERROR', 'RESOLVIDO'])
             ->whereBetween('q.updated_at', [$start, $end])
             ->orderBy('q.updated_at', 'desc')
             ->limit(max(1, min(20, $limit)))
