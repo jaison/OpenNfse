@@ -346,6 +346,7 @@ final class AdminController
         $recentEmitidas = $repo->dashboardRecentEmitidas((string) ($metrics['range_start'] ?? ''), (string) ($metrics['range_end'] ?? ''), 5);
         $recentErros = $repo->dashboardRecentIssues((string) ($metrics['range_start'] ?? ''), (string) ($metrics['range_end'] ?? ''), 5);
         $recentCanceladas = $repo->dashboardRecentCancelamentos((string) ($metrics['range_start'] ?? ''), (string) ($metrics['range_end'] ?? ''), 5);
+        $dailySeries = $repo->dashboardDailySeries((string) ($metrics['range_start'] ?? ''), (string) ($metrics['range_end'] ?? ''));
         $config = (new ConfigRepository())->get();
         $updateStatus = (new UpdateCheckService())->getStatus($config);
 
@@ -369,6 +370,11 @@ final class AdminController
 
             return 'addonmodules.php?' . http_build_query($base, '', '&', PHP_QUERY_RFC3986);
         };
+        $systemUrl = '';
+        if (isset($GLOBALS['CONFIG']['SystemURL']) && is_string($GLOBALS['CONFIG']['SystemURL'])) {
+            $systemUrl = rtrim((string) $GLOBALS['CONFIG']['SystemURL'], '/');
+        }
+        $logoUrl = $systemUrl !== '' ? $systemUrl . '/modules/addons/OpenNfse/assets/opennsfe_logo.png' : '';
         $relatorioParams = [
             'data_inicial' => (string) ($metrics['range_start'] ?? ''),
             'data_final' => (string) ($metrics['range_end'] ?? ''),
@@ -380,6 +386,7 @@ final class AdminController
         $aguardandoStatus = (int) ($metrics['aguardando_status'] ?? 0);
         $comErro = (int) ($metrics['com_erro'] ?? 0);
         $comErroPeriodo = (int) ($metrics['com_erro_periodo'] ?? 0);
+        $errosResolvidosPeriodo = (int) ($metrics['erros_resolvidos_periodo'] ?? 0);
         $movimentadas = (int) ($metrics['movimentadas'] ?? 0);
         $xmls = (int) ($metrics['xmls'] ?? 0);
         $valorTotal = (float) ($metrics['valor_total'] ?? 0);
@@ -423,8 +430,9 @@ final class AdminController
             echo '</div>';
             echo '</a>';
         };
-        $renderRecentList = function (string $title, array $items, string $emptyMessage, callable $rowRenderer) use ($h): void {
-            echo '<div style="flex:1 1 320px;min-width:320px;border:1px solid #ddd;background:#fff;">';
+        $renderRecentList = function (string $title, array $items, string $emptyMessage, callable $rowRenderer, string $wrapperStyle = '') use ($h): void {
+            $resolvedWrapperStyle = $wrapperStyle !== '' ? $wrapperStyle : 'flex:1 1 320px;min-width:320px;border:1px solid #ddd;background:#fff;';
+            echo '<div style="' . $h($resolvedWrapperStyle) . '">';
             echo '<div style="padding:12px 14px;border-bottom:1px solid #eee;background:#fafafa;font-size:13px;font-weight:700;color:#333;">' . $h($title) . '</div>';
             if (empty($items)) {
                 echo '<div style="padding:14px;color:#777;font-size:12px;">' . $h($emptyMessage) . '</div>';
@@ -480,7 +488,15 @@ final class AdminController
 
         echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
         echo '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">';
-        echo '<div style="font-size:15px;font-weight:700;color:#333;">Dashboard operacional</div>';
+        echo '<div style="display:flex;align-items:center;gap:12px;">';
+        if ($logoUrl !== '') {
+            echo '<img src="' . $h($logoUrl) . '" alt="OpenNfse" style="width:42px;height:42px;object-fit:contain;display:block;" />';
+        }
+        echo '<div>';
+        echo '<div style="font-size:18px;font-weight:700;color:#333;line-height:1.1;">OpenNfse</div>';
+        echo '<div style="font-size:12px;color:#666;margin-top:3px;">Dashboard operacional</div>';
+        echo '</div>';
+        echo '</div>';
         echo '<div style="font-size:12px;color:#666;">' . $h($rangeSummary) . '</div>';
         echo '</div>';
         echo '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">';
@@ -524,6 +540,99 @@ final class AdminController
         if ($ultimoErro !== null) {
             $ultimoErroLabel = strtoupper(trim((string) ($ultimoErro['status'] ?? 'ERRO'))) . ' na invoice #' . (int) ($ultimoErro['invoiceid'] ?? 0) . ' em ' . $this->formatDate((string) ($ultimoErro['data'] ?? ''), 'd/m/Y H:i');
         }
+        $dailyChartMax = 1;
+        foreach ($dailySeries as $seriesDay) {
+            $dailyChartMax = max(
+                $dailyChartMax,
+                (int) ($seriesDay['emitidas'] ?? 0),
+                (int) ($seriesDay['canceladas'] ?? 0),
+                (int) ($seriesDay['erros_resolvidos'] ?? 0)
+            );
+        }
+        $dailyChartSvgWidth = max(760, 62 + (count($dailySeries) * 30));
+        $dailyChartSvgHeight = 320;
+        $dailyChartPaddingLeft = 44;
+        $dailyChartPaddingRight = 18;
+        $dailyChartPaddingTop = 18;
+        $dailyChartPaddingBottom = 42;
+        $dailyChartPlotWidth = max(620, $dailyChartSvgWidth - $dailyChartPaddingLeft - $dailyChartPaddingRight);
+        $dailyChartPlotHeight = max(180, $dailyChartSvgHeight - $dailyChartPaddingTop - $dailyChartPaddingBottom);
+        $dailyChartStep = count($dailySeries) > 1 ? ($dailyChartPlotWidth / (count($dailySeries) - 1)) : 0.0;
+        $dailyChartBarWidth = (int) max(8, min(16, floor((count($dailySeries) > 1 ? $dailyChartStep : $dailyChartPlotWidth / 3) * 0.45)));
+        $dailyChartBaseY = $dailyChartPaddingTop + $dailyChartPlotHeight;
+        $chartY = static function (int $value) use ($dailyChartMax, $dailyChartPaddingTop, $dailyChartPlotHeight): float {
+            return $dailyChartPaddingTop + $dailyChartPlotHeight - (($value / max(1, $dailyChartMax)) * $dailyChartPlotHeight);
+        };
+        $buildSmoothPath = static function (array $points): string {
+            $count = count($points);
+            if ($count === 0) {
+                return '';
+            }
+            if ($count === 1) {
+                return 'M ' . round((float) $points[0]['x'], 2) . ' ' . round((float) $points[0]['y'], 2);
+            }
+
+            $path = 'M ' . round((float) $points[0]['x'], 2) . ' ' . round((float) $points[0]['y'], 2);
+            for ($i = 1; $i < $count - 1; $i++) {
+                $midX = (((float) $points[$i]['x']) + ((float) $points[$i + 1]['x'])) / 2;
+                $midY = (((float) $points[$i]['y']) + ((float) $points[$i + 1]['y'])) / 2;
+                $path .= ' Q ' . round((float) $points[$i]['x'], 2) . ' ' . round((float) $points[$i]['y'], 2) . ' ' . round($midX, 2) . ' ' . round($midY, 2);
+            }
+
+            $path .= ' Q ' . round((float) $points[$count - 2]['x'], 2) . ' ' . round((float) $points[$count - 2]['y'], 2) . ' ' . round((float) $points[$count - 1]['x'], 2) . ' ' . round((float) $points[$count - 1]['y'], 2);
+
+            return $path;
+        };
+        $buildAreaPath = static function (array $points, float $baseY, callable $lineBuilder): string {
+            if (empty($points)) {
+                return '';
+            }
+
+            $first = $points[0];
+            $last = $points[count($points) - 1];
+            return $lineBuilder($points)
+                . ' L ' . round((float) $last['x'], 2) . ' ' . round($baseY, 2)
+                . ' L ' . round((float) $first['x'], 2) . ' ' . round($baseY, 2)
+                . ' Z';
+        };
+        $emitidasBars = [];
+        $canceladasPoints = [];
+        $errosResolvidosPoints = [];
+        foreach (array_values($dailySeries) as $index => $seriesDay) {
+            $x = count($dailySeries) > 1
+                ? $dailyChartPaddingLeft + ($index * $dailyChartStep)
+                : $dailyChartPaddingLeft + ($dailyChartPlotWidth / 2);
+            $emitidasValue = (int) ($seriesDay['emitidas'] ?? 0);
+            $canceladasValue = (int) ($seriesDay['canceladas'] ?? 0);
+            $errosResolvidosValue = (int) ($seriesDay['erros_resolvidos'] ?? 0);
+
+            $emitidasTop = $chartY($emitidasValue);
+            $canceladasY = $chartY($canceladasValue);
+            $errosResolvidosY = $chartY($errosResolvidosValue);
+
+            $emitidasBars[] = [
+                'x' => $x,
+                'top' => $emitidasTop,
+                'height' => max(0, $dailyChartBaseY - $emitidasTop),
+                'value' => $emitidasValue,
+                'label' => (string) ($seriesDay['label'] ?? ''),
+            ];
+            $canceladasPoints[] = [
+                'x' => $x,
+                'y' => $canceladasY,
+                'value' => $canceladasValue,
+                'label' => (string) ($seriesDay['label'] ?? ''),
+            ];
+            $errosResolvidosPoints[] = [
+                'x' => $x,
+                'y' => $errosResolvidosY,
+                'value' => $errosResolvidosValue,
+                'label' => (string) ($seriesDay['label'] ?? ''),
+            ];
+        }
+        $canceladasPath = $buildSmoothPath($canceladasPoints);
+        $errosResolvidosLinePath = $buildSmoothPath($errosResolvidosPoints);
+        $errosResolvidosAreaPath = $buildAreaPath($errosResolvidosPoints, (float) $dailyChartBaseY, $buildSmoothPath);
 
         echo '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:15px;">';
         $renderMiniCard('Total processadas', (string) $movimentadas, 'Notas movimentadas no período selecionado', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'EMITIDA,CANCELADA'], '', '&', PHP_QUERY_RFC3986), '#2f2f2f');
@@ -535,7 +644,7 @@ final class AdminController
         echo '</div>';
 
         echo '<div style="display:flex;gap:15px;align-items:stretch;flex-wrap:wrap;margin-bottom:15px;">';
-        echo '<div style="flex:1 1 360px;min-width:360px;border:1px solid #ddd;background:#fff;">';
+        echo '<div style="flex:1 1 260px;min-width:260px;border:1px solid #ddd;background:#fff;">';
         echo '<div style="padding:12px 14px;border-bottom:1px solid #eee;background:#fafafa;font-size:13px;font-weight:700;color:#333;">Exigem atenção</div>';
         echo '<div style="padding:10px 14px;">';
         $attentionItems = [
@@ -576,22 +685,6 @@ final class AdminController
         }
         echo '</div>';
         echo '</div>';
-
-        echo '<div style="flex:1 1 360px;min-width:360px;border:1px solid #ddd;background:#fff;">';
-        echo '<div style="padding:12px 14px;border-bottom:1px solid #eee;background:#fafafa;font-size:13px;font-weight:700;color:#333;">Ações rápidas</div>';
-        echo '<div style="padding:12px 14px;display:flex;gap:8px;flex-wrap:wrap;">';
-        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=fila&status=ERROR">Ir para fila com erro</a>';
-        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=notas&status=REJEITADA&updated_from=' . $h((string) ($metrics['range_start'] ?? '')) . '&updated_to=' . $h((string) ($metrics['range_end'] ?? '')) . '">Ir para notas rejeitadas</a>';
-        echo $this->renderPostActionButton('relatoriosExportZip', 'Baixar XMLs do período', ['tab' => 'emitidas'] + $relatorioParams + ['status' => 'EMITIDA,CANCELADA'], 'btn btn-xs btn-default');
-        echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV emitidas', ['tab' => 'emitidas'] + $relatorioParams + ['status' => 'EMITIDA,CANCELADA'], 'btn btn-xs btn-default');
-        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas&' . $h(http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986)) . '">Abrir falhas do período</a>';
-        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=logs&data_inicial=' . $h((string) ($metrics['range_start'] ?? '')) . '&data_final=' . $h((string) ($metrics['range_end'] ?? '')) . '">Abrir logs do período</a>';
-        echo '</div>';
-        echo '<div style="padding:0 14px 14px 14px;font-size:11px;color:#777;line-height:1.4;">Atalhos para o fechamento mensal, investigação de falhas e acompanhamento da fila.</div>';
-        echo '</div>';
-        echo '</div>';
-
-        echo '<div style="display:flex;gap:15px;align-items:flex-start;flex-wrap:wrap;margin-bottom:10px;">';
         $renderRecentList('Últimas emissões', $recentEmitidas, 'Nenhuma emissão no período.', function (array $item) use ($h) {
             $invoiceId = (int) ($item['invoiceid'] ?? 0);
             $numeroNf = trim((string) ($item['numero_nf'] ?? ''));
@@ -603,7 +696,7 @@ final class AdminController
             echo '<div style="font-size:11px;color:#666;white-space:nowrap;">' . $h($data) . '</div>';
             echo '</div>';
             echo '</a>';
-        });
+        }, 'flex:1 1 260px;min-width:260px;border:1px solid #ddd;background:#fff;');
         $renderRecentList('Últimos erros', $recentErros, 'Nenhum erro no período.', function (array $item) use ($h) {
             $invoiceId = (int) ($item['invoiceid'] ?? 0);
             $client = $this->resolveClientName($item);
@@ -624,7 +717,7 @@ final class AdminController
             echo '<div style="font-size:11px;color:#777;margin-bottom:4px;">' . $h($client) . '</div>';
             echo '<div style="font-size:11px;color:#555;line-height:1.4;">' . $h($erro) . '</div>';
             echo '</a>';
-        });
+        }, 'flex:1 1 260px;min-width:260px;border:1px solid #ddd;background:#fff;');
         $renderRecentList('Últimos cancelamentos', $recentCanceladas, 'Nenhum cancelamento no período.', function (array $item) use ($h) {
             $invoiceId = (int) ($item['invoiceid'] ?? 0);
             $numeroNf = trim((string) ($item['numero_nf'] ?? ''));
@@ -636,7 +729,67 @@ final class AdminController
             echo '<div style="font-size:11px;color:#666;white-space:nowrap;">' . $h($data) . '</div>';
             echo '</div>';
             echo '</a>';
-        });
+        }, 'flex:1 1 260px;min-width:260px;border:1px solid #ddd;background:#fff;');
+        echo '</div>';
+
+        echo '<div style="margin-bottom:10px;border:1px solid #ddd;background:#fff;">';
+        echo '<div style="padding:12px 14px;border-bottom:1px solid #eee;background:#fafafa;">';
+        echo '<div style="font-size:13px;font-weight:700;color:#333;">Gráfico do período</div>';
+        echo '<div style="font-size:11px;color:#777;margin-top:4px;">Visualização diária sobreposta: barras para Emitidas, linha para Canceladas e curva/onda para Erros/Resolvidos.</div>';
+        echo '</div>';
+        echo '<div style="padding:16px;">';
+        echo '<div style="overflow-x:auto;padding-bottom:4px;">';
+        echo '<div style="min-width:' . $h((string) $dailyChartSvgWidth) . 'px;padding:14px;border:1px solid #f0f0f0;background:linear-gradient(180deg,#ffffff 0%,#fafafa 100%);">';
+        echo '<svg viewBox="0 0 ' . $h((string) $dailyChartSvgWidth) . ' ' . $h((string) $dailyChartSvgHeight) . '" style="width:100%;height:auto;display:block;" role="img" aria-label="Gráfico diário do período">';
+        for ($gridIndex = 0; $gridIndex <= 4; $gridIndex++) {
+            $gridValue = (int) round(($dailyChartMax / 4) * (4 - $gridIndex));
+            $gridY = $dailyChartPaddingTop + (($dailyChartPlotHeight / 4) * $gridIndex);
+            echo '<line x1="' . $h((string) $dailyChartPaddingLeft) . '" y1="' . $h((string) round($gridY, 2)) . '" x2="' . $h((string) ($dailyChartPaddingLeft + $dailyChartPlotWidth)) . '" y2="' . $h((string) round($gridY, 2)) . '" stroke="#e6e6e6" stroke-width="1" />';
+            echo '<text x="' . $h((string) ($dailyChartPaddingLeft - 8)) . '" y="' . $h((string) round($gridY + 4, 2)) . '" text-anchor="end" font-size="11" fill="#777">' . $h((string) $gridValue) . '</text>';
+        }
+        if ($errosResolvidosAreaPath !== '') {
+            echo '<path d="' . $h($errosResolvidosAreaPath) . '" fill="rgba(245,124,0,0.18)" stroke="none" />';
+        }
+        foreach ($emitidasBars as $index => $bar) {
+            $seriesDay = $dailySeries[$index] ?? [];
+            $dateKey = (string) ($seriesDay['date'] ?? '');
+            $emitidasUrl = 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query(['data_inicial' => $dateKey, 'data_final' => $dateKey, 'status' => 'EMITIDA'], '', '&', PHP_QUERY_RFC3986);
+            echo '<a xlink:href="' . $h($emitidasUrl) . '">';
+            echo '<rect x="' . $h((string) round(((float) $bar['x']) - ($dailyChartBarWidth / 2), 2)) . '" y="' . $h((string) round((float) $bar['top'], 2)) . '" width="' . $h((string) $dailyChartBarWidth) . '" height="' . $h((string) round((float) $bar['height'], 2)) . '" rx="4" ry="4" fill="rgba(46,125,50,0.45)" stroke="rgba(46,125,50,0.9)" stroke-width="1"><title>Emitidas em ' . $h((string) ($bar['label'] ?? '')) . ': ' . $h((string) ($bar['value'] ?? 0)) . '</title></rect>';
+            echo '</a>';
+        }
+        if ($errosResolvidosLinePath !== '') {
+            echo '<path d="' . $h($errosResolvidosLinePath) . '" fill="none" stroke="#f57c00" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />';
+        }
+        if ($canceladasPath !== '') {
+            echo '<path d="' . $h($canceladasPath) . '" fill="none" stroke="#c62828" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />';
+        }
+        foreach ($errosResolvidosPoints as $point) {
+            echo '<circle cx="' . $h((string) round((float) $point['x'], 2)) . '" cy="' . $h((string) round((float) $point['y'], 2)) . '" r="3.5" fill="#f57c00" stroke="#fff" stroke-width="1.5"><title>Erros/Resolvidos em ' . $h((string) ($point['label'] ?? '')) . ': ' . $h((string) ($point['value'] ?? 0)) . '</title></circle>';
+        }
+        foreach ($canceladasPoints as $point) {
+            echo '<circle cx="' . $h((string) round((float) $point['x'], 2)) . '" cy="' . $h((string) round((float) $point['y'], 2)) . '" r="3" fill="#c62828" stroke="#fff" stroke-width="1.5"><title>Canceladas em ' . $h((string) ($point['label'] ?? '')) . ': ' . $h((string) ($point['value'] ?? 0)) . '</title></circle>';
+        }
+        $labelStep = max(1, (int) ceil(max(1, count($dailySeries)) / 10));
+        foreach (array_values($dailySeries) as $index => $seriesDay) {
+            if ($index % $labelStep !== 0 && $index !== count($dailySeries) - 1) {
+                continue;
+            }
+            $x = count($dailySeries) > 1
+                ? $dailyChartPaddingLeft + ($index * $dailyChartStep)
+                : $dailyChartPaddingLeft + ($dailyChartPlotWidth / 2);
+            echo '<text x="' . $h((string) round($x, 2)) . '" y="' . $h((string) ($dailyChartBaseY + 22)) . '" text-anchor="middle" font-size="10" fill="#666">' . $h((string) ($seriesDay['label'] ?? '')) . '</text>';
+        }
+        echo '</svg>';
+        echo '</div>';
+        echo '</div>';
+        echo '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;">';
+        echo '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#666;"><span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:#2e7d32;"></span><span>Emitidas</span></div>';
+        echo '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#666;"><span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:#c62828;"></span><span>Canceladas</span></div>';
+        echo '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#666;"><span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:#f57c00;"></span><span>Erros/Resolvidos</span></div>';
+        echo '</div>';
+        echo '<div style="font-size:11px;color:#777;margin-top:10px;">Cada ponto representa um dia do período. As barras permanecem clicáveis para abrir o relatório filtrado naquela data.</div>';
+        echo '</div>';
         echo '</div>';
 
         Module::ui()->renderFooter();

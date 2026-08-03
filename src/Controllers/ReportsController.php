@@ -1082,7 +1082,9 @@ final class ReportsController
             throw new NfseModuleException('Nenhum XML foi encontrado para exportação em lote.');
         }
 
-        $filename = 'nfse_xml_' . $tab . '_' . date('Ymd_His') . '.zip';
+        $filename = $useCompetenciaLayout
+            ? $this->buildCompetenciaZipFilename($dataInicial)
+            : 'nfse_xml_' . $tab . '_' . date('Ymd_His') . '.zip';
         header('Content-Type: application/zip');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
         header('Content-Length: ' . (string) filesize($zipPath));
@@ -1250,6 +1252,26 @@ final class ReportsController
         }
 
         return $directory !== '' ? ($directory . '/' . $filenameWithInvoice) : $filenameWithInvoice;
+    }
+
+    private function buildCompetenciaZipFilename(string $dataInicial): string
+    {
+        $competencia = $this->extractCompetenciaMonthToken($dataInicial);
+        return 'nfse_xml_' . $competencia . '.zip';
+    }
+
+    private function extractCompetenciaMonthToken(string $dataInicial): string
+    {
+        $dataInicial = trim($dataInicial);
+        if (preg_match('/^(\d{4})-(\d{2})-\d{2}$/', $dataInicial, $matches)) {
+            return $matches[2] . $matches[1];
+        }
+
+        try {
+            return (new \DateTimeImmutable($dataInicial))->format('mY');
+        } catch (\Throwable $e) {
+            return date('mY');
+        }
     }
 
 

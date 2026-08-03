@@ -140,6 +140,95 @@ final class ReportRepository
         return $this->dashboardOverview(date('Y-m-01'), date('Y-m-t'));
     }
 
+    public function dashboardDailySeries(string $fromDate = '', string $toDate = ''): array
+    {
+        [$startDate, $endDate, $start, $end] = $this->normalizeDashboardRange($fromDate, $toDate);
+
+        $series = [];
+        $cursor = new \DateTimeImmutable($startDate);
+        $endCursor = new \DateTimeImmutable($endDate);
+        while ($cursor <= $endCursor) {
+            $key = $cursor->format('Y-m-d');
+            $series[$key] = [
+                'date' => $key,
+                'label' => $cursor->format('d/m'),
+                'emitidas' => 0,
+                'canceladas' => 0,
+                'erros_resolvidos' => 0,
+            ];
+            $cursor = $cursor->modify('+1 day');
+        }
+
+        foreach (Capsule::table('mod_opennfse_notas as n')
+            ->select([
+                Capsule::raw('DATE(n.emitida_em) as dia'),
+                Capsule::raw('COUNT(*) as total'),
+            ])
+            ->where('n.status', 'EMITIDA')
+            ->whereBetween('n.emitida_em', [$start, $end])
+            ->groupBy(Capsule::raw('DATE(n.emitida_em)'))
+            ->get() as $row) {
+            $dia = (string) ($row->dia ?? '');
+            if (isset($series[$dia])) {
+                $series[$dia]['emitidas'] = (int) ($row->total ?? 0);
+            }
+        }
+
+        foreach (Capsule::table('mod_opennfse_notas as n')
+            ->select([
+                Capsule::raw('DATE(n.cancelado_em) as dia'),
+                Capsule::raw('COUNT(*) as total'),
+            ])
+            ->whereNotNull('n.cancelado_em')
+            ->whereBetween('n.cancelado_em', [$start, $end])
+            ->groupBy(Capsule::raw('DATE(n.cancelado_em)'))
+            ->get() as $row) {
+            $dia = (string) ($row->dia ?? '');
+            if (isset($series[$dia])) {
+                $series[$dia]['canceladas'] = (int) ($row->total ?? 0);
+            }
+        }
+
+        $issueSets = [];
+        foreach (Capsule::table('mod_opennfse_notas as n')
+            ->select([
+                'n.invoiceid',
+                Capsule::raw('DATE(n.updated_at) as dia'),
+            ])
+            ->whereIn('n.status', ['ERRO', 'REJEITADA'])
+            ->whereBetween('n.updated_at', [$start, $end])
+            ->get() as $row) {
+            $dia = (string) ($row->dia ?? '');
+            $invoiceId = (int) ($row->invoiceid ?? 0);
+            if ($invoiceId > 0 && isset($series[$dia])) {
+                $issueSets[$dia][$invoiceId] = true;
+            }
+        }
+
+        foreach (Capsule::table('mod_opennfse_queue as q')
+            ->select([
+                'q.invoiceid',
+                Capsule::raw('DATE(q.updated_at) as dia'),
+            ])
+            ->whereIn('q.status', ['ERROR', 'RESOLVIDO'])
+            ->whereBetween('q.updated_at', [$start, $end])
+            ->get() as $row) {
+            $dia = (string) ($row->dia ?? '');
+            $invoiceId = (int) ($row->invoiceid ?? 0);
+            if ($invoiceId > 0 && isset($series[$dia])) {
+                $issueSets[$dia][$invoiceId] = true;
+            }
+        }
+
+        foreach ($issueSets as $dia => $invoiceIds) {
+            if (isset($series[$dia])) {
+                $series[$dia]['erros_resolvidos'] = count($invoiceIds);
+            }
+        }
+
+        return array_values($series);
+    }
+
     public function dashboardOverview(string $fromDate = '', string $toDate = ''): array
     {
         [$startDate, $endDate, $start, $end] = $this->normalizeDashboardRange($fromDate, $toDate);
@@ -212,6 +301,25 @@ final class ReportRepository
         }
         unset($erroPeriodoSet[0]);
         $comErroPeriodo = count($erroPeriodoSet);
+
+        $erroResolvidoPeriodoSet = [];
+        foreach (Capsule::table('mod_opennfse_notas as n')
+            ->select(['n.invoiceid'])
+            ->whereIn('n.status', ['ERRO', 'REJEITADA'])
+            ->whereBetween('n.updated_at', [$start, $end])
+            ->get() as $r) {
+            $erroResolvidoPeriodoSet[(int) ($r->invoiceid ?? 0)] = true;
+        }
+        foreach (Capsule::table('mod_opennfse_queue as q')
+            ->select(['q.invoiceid'])
+            ->whereIn('q.status', ['ERROR', 'RESOLVIDO'])
+            ->whereBetween('q.updated_at', [$start, $end])
+            ->distinct()
+            ->get() as $r) {
+            $erroResolvidoPeriodoSet[(int) ($r->invoiceid ?? 0)] = true;
+        }
+        unset($erroResolvidoPeriodoSet[0]);
+        $errosResolvidosPeriodo = count($erroResolvidoPeriodoSet);
 
         $row = Capsule::table('mod_opennfse_notas as n')
             ->join('tblinvoices as i', 'i.id', '=', 'n.invoiceid')
@@ -300,6 +408,7 @@ final class ReportRepository
             'aguardando_status' => $aguardandoStatus,
             'com_erro' => $comErro,
             'com_erro_periodo' => $comErroPeriodo,
+            'erros_resolvidos_periodo' => $errosResolvidosPeriodo,
             'valor_total' => (float) $total,
             'taxa_sucesso' => $taxaSucesso,
             'xmls' => $xmls,
