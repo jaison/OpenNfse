@@ -1,8 +1,12 @@
 # OpenNFS-e
 
-![Screenshot do OpenNFS-e](opennfse.png)
+![Logo do OpenNFS-e](assets/logo_horizontal.png)
 
 Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emissão automática quando a fatura é paga, controle de automação por gateway de pagamento, configuração de NBS e código de serviço, geração de DANFS-e em PDF, armazenamento de XML organizado por ambiente e série, consulta de status, fila de processamento e envio de XML/PDF por e-mail ao cliente.
+
+## Screenshot
+
+![Screenshot do OpenNFS-e](opennfse.png)
 
 > **Aviso importante**
 >
