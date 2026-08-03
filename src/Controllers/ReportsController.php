@@ -168,6 +168,31 @@ final class ReportsController
         $rows = $repo->listNotas($filters, 200);
         $summary = $repo->summaryNotas($filters);
 
+        $recentCompetencias = $this->buildRecentCompetenciaZipPresets();
+        if (!empty($recentCompetencias)) {
+            echo '<div style="margin-bottom:14px;border:1px solid #d6e9d2;background:#f7fcf5;padding:12px;">';
+            echo '<div style="font-size:13px;font-weight:700;color:#2e5f2d;margin-bottom:4px;">Baixar XMLs por competência</div>';
+            echo '<div style="font-size:12px;color:#4f6b4f;line-height:1.45;margin-bottom:10px;">Atalhos rápidos para baixar os XMLs ZIPados dos 3 últimos meses fechados separadamente, considerando todas as notas Emitidas e Canceladas.</div>';
+            echo '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+            foreach ($recentCompetencias as $preset) {
+                echo $this->renderPostActionButton(
+                    'relatoriosExportZip',
+                    (string) ($preset['label'] ?? ''),
+                    [
+                        'tab' => 'emitidas',
+                        'data_inicial' => (string) ($preset['data_inicial'] ?? ''),
+                        'data_final' => (string) ($preset['data_final'] ?? ''),
+                        'status' => 'EMITIDA,CANCELADA',
+                        'cliente' => '',
+                        'zip_layout' => 'competencia',
+                    ],
+                    'btn btn-xs btn-success'
+                );
+            }
+            echo '</div>';
+            echo '</div>';
+        }
+
         echo '<form method="get" action="addonmodules.php">';
         echo '<input type="hidden" name="module" value="OpenNfse" />';
         echo '<input type="hidden" name="action" value="relatorios" />';
@@ -213,22 +238,6 @@ final class ReportsController
         echo '</div>';
         echo '</div>';
         echo '</form>';
-        echo '<div style="margin:-4px 0 10px 0;display:flex;gap:6px;flex-wrap:wrap;">';
-        echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
-            'tab' => 'emitidas',
-            'data_inicial' => $dataInicial,
-            'data_final' => $dataFinal,
-            'status' => $status,
-            'cliente' => $cliente,
-        ], 'btn btn-xs btn-default');
-        echo $this->renderPostActionButton('relatoriosExportZip', 'Baixar XMLs ZIP', [
-            'tab' => 'emitidas',
-            'data_inicial' => $dataInicial,
-            'data_final' => $dataFinal,
-            'status' => $status,
-            'cliente' => $cliente,
-        ], 'btn btn-xs btn-default');
-        echo '</div>';
 
         echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
         echo '<tr>';
@@ -280,6 +289,22 @@ final class ReportsController
         } else {
             echo 'Valor total: <strong>' . htmlspecialchars($this->formatMoney((float) ($summary['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</strong>';
         }
+        echo '</div>';
+        echo '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">';
+        echo $this->renderPostActionButton('relatoriosExportZip', 'Baixar XMLs do período escolhido', [
+            'tab' => 'emitidas',
+            'data_inicial' => $dataInicial,
+            'data_final' => $dataFinal,
+            'status' => $status,
+            'cliente' => $cliente,
+        ], 'btn btn-xs btn-default');
+        echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
+            'tab' => 'emitidas',
+            'data_inicial' => $dataInicial,
+            'data_final' => $dataFinal,
+            'status' => $status,
+            'cliente' => $cliente,
+        ], 'btn btn-xs btn-default');
         echo '</div>';
     }
 
@@ -991,6 +1016,7 @@ final class ReportsController
         $dataFinal = trim((string) ($_REQUEST['data_final'] ?? ''));
         $cliente = trim((string) ($_REQUEST['cliente'] ?? ''));
         $status = $tab === 'emitidas' ? trim((string) ($_REQUEST['status'] ?? 'EMITIDA')) : '';
+        $zipLayout = trim((string) ($_REQUEST['zip_layout'] ?? ''));
 
         $filters = [
             'data_inicial' => $dataInicial,
@@ -1017,6 +1043,13 @@ final class ReportsController
             throw new NfseModuleException('Não foi possível criar o arquivo ZIP.');
         }
 
+        $useCompetenciaLayout = $zipLayout === 'competencia' && $tab === 'emitidas';
+        if ($useCompetenciaLayout) {
+            foreach ($this->getCompetenciaZipDirectories() as $directory) {
+                $zip->addEmptyDir($directory);
+            }
+        }
+
         $added = 0;
         foreach ($rows as $row) {
             $xmlPath = trim((string) ($row['xml_path'] ?? ''));
@@ -1034,10 +1067,8 @@ final class ReportsController
                 continue;
             }
 
-            $entryName = basename($absPath);
-            if ($zip->locateName($entryName) !== false) {
-                $entryName = 'invoice_' . (int) ($row['invoiceid'] ?? 0) . '_' . $entryName;
-            }
+            $directory = $useCompetenciaLayout ? $this->resolveCompetenciaZipDirectory($row) : '';
+            $entryName = $this->buildZipEntryName($zip, $row, $absPath, $directory);
 
             if ($zip->addFile($absPath, $entryName)) {
                 $added++;
@@ -1118,6 +1149,107 @@ final class ReportsController
         } catch (\Throwable $e) {
             return $month;
         }
+    }
+
+    private function buildRecentCompetenciaZipPresets(): array
+    {
+        $presets = [];
+        $monthNames = [
+            1 => 'Janeiro',
+            2 => 'Fevereiro',
+            3 => 'Marco',
+            4 => 'Abril',
+            5 => 'Maio',
+            6 => 'Junho',
+            7 => 'Julho',
+            8 => 'Agosto',
+            9 => 'Setembro',
+            10 => 'Outubro',
+            11 => 'Novembro',
+            12 => 'Dezembro',
+        ];
+
+        try {
+            $base = new \DateTimeImmutable('first day of this month');
+            for ($offset = 3; $offset >= 1; $offset--) {
+                $monthStart = $base->modify('-' . $offset . ' month');
+                if (!$monthStart instanceof \DateTimeImmutable) {
+                    continue;
+                }
+
+                $monthNumber = (int) $monthStart->format('n');
+                $presets[] = [
+                    'label' => $monthNames[$monthNumber] ?? $monthStart->format('m/Y'),
+                    'data_inicial' => $monthStart->format('Y-m-01'),
+                    'data_final' => $monthStart->modify('last day of this month')->format('Y-m-d'),
+                ];
+            }
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        return $presets;
+    }
+
+    private function getCompetenciaZipDirectories(): array
+    {
+        return [
+            'Emitidas',
+            'Canceladas',
+            'Emitidas para Estrangeiros',
+        ];
+    }
+
+    private function resolveCompetenciaZipDirectory(array $row): string
+    {
+        $status = strtoupper(trim((string) ($row['status'] ?? '')));
+        if ($status === 'CANCELADA') {
+            return 'Canceladas';
+        }
+
+        if ($this->isExteriorReportRow($row)) {
+            return 'Emitidas para Estrangeiros';
+        }
+
+        return 'Emitidas';
+    }
+
+    private function isExteriorReportRow(array $row): bool
+    {
+        $country = strtoupper(trim((string) ($row['country'] ?? '')));
+        return $country !== 'BR';
+    }
+
+    private function buildZipEntryName(\ZipArchive $zip, array $row, string $absPath, string $directory = ''): string
+    {
+        $directory = trim($directory, '/');
+        $filename = basename($absPath);
+        $entryName = $directory !== '' ? ($directory . '/' . $filename) : $filename;
+        if ($zip->locateName($entryName) === false) {
+            return $entryName;
+        }
+
+        $filenameWithInvoice = 'invoice_' . (int) ($row['invoiceid'] ?? 0) . '_' . $filename;
+        $entryName = $directory !== '' ? ($directory . '/' . $filenameWithInvoice) : $filenameWithInvoice;
+        if ($zip->locateName($entryName) === false) {
+            return $entryName;
+        }
+
+        $extension = pathinfo($filename, PATHINFO_EXTENSION);
+        $baseName = pathinfo($filename, PATHINFO_FILENAME);
+        $invoiceId = (int) ($row['invoiceid'] ?? 0);
+        for ($index = 2; $index <= 999; $index++) {
+            $candidate = $baseName . '_invoice_' . $invoiceId . '_' . $index;
+            if ($extension !== '') {
+                $candidate .= '.' . $extension;
+            }
+            $entryName = $directory !== '' ? ($directory . '/' . $candidate) : $candidate;
+            if ($zip->locateName($entryName) === false) {
+                return $entryName;
+            }
+        }
+
+        return $directory !== '' ? ($directory . '/' . $filenameWithInvoice) : $filenameWithInvoice;
     }
 
 

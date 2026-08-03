@@ -32,6 +32,7 @@ final class ReportRepository
                 'c.companyname',
                 'c.firstname',
                 'c.lastname',
+                'c.country',
                 'cur.prefix as currency_prefix',
                 'cur.suffix as currency_suffix',
             ]);
