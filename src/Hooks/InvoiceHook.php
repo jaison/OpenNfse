@@ -204,7 +204,7 @@ final class InvoiceHook
                 $html .= '<div><strong>Chave:</strong> ' . htmlspecialchars($chave !== '' ? $chave : '-', ENT_QUOTES, 'UTF-8') . '</div>';
             }
 
-            if (!empty($nota['erro_api'])) {
+            if (in_array($statusAtual, ['ERRO', 'REJEITADA'], true) && !empty($nota['erro_api'])) {
                 $err = (string) $nota['erro_api'];
                 $html .= '<div class="nfse-mt-6">';
                 $html .= '<textarea readonly class="nfse-error-textarea">' . htmlspecialchars($err, ENT_QUOTES, 'UTF-8') . '</textarea>';

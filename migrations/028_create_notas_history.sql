@@ -1,0 +1,36 @@
+ALTER TABLE mod_opennfse_notas
+  ADD COLUMN cancel_xml_path VARCHAR(255) NULL;
+
+CREATE TABLE IF NOT EXISTS mod_opennfse_notas_history (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  nota_id INT UNSIGNED NULL,
+  invoiceid INT UNSIGNED NOT NULL,
+  userid INT UNSIGNED NOT NULL,
+  tipo_registro VARCHAR(20) NOT NULL,
+  origem VARCHAR(20) NOT NULL DEFAULT 'runtime',
+  status_fiscal VARCHAR(20) NOT NULL,
+  numero_nf VARCHAR(30) NULL,
+  protocolo VARCHAR(80) NULL,
+  id_dps VARCHAR(60) NULL,
+  chave_acesso VARCHAR(60) NULL,
+  xml_path VARCHAR(255) NULL,
+  cancel_xml_path VARCHAR(255) NULL,
+  competencia VARCHAR(20) NULL,
+  emitida_em DATETIME NULL,
+  cancelado_em DATETIME NULL,
+  cancel_codigo_motivo VARCHAR(10) NULL,
+  cancel_motivo VARCHAR(255) NULL,
+  cancel_descricao VARCHAR(255) NULL,
+  erro_api MEDIUMTEXT NULL,
+  cancel_erro MEDIUMTEXT NULL,
+  fingerprint VARCHAR(64) NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_nfse_history_fingerprint (fingerprint),
+  KEY idx_nfse_history_invoice (invoiceid),
+  KEY idx_nfse_history_tipo (tipo_registro),
+  KEY idx_nfse_history_emitida (emitida_em),
+  KEY idx_nfse_history_cancelada (cancelado_em),
+  KEY idx_nfse_history_chave (chave_acesso)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -10,6 +10,7 @@ use OpenNfse\Helpers\CorrelationIdGenerator;
 use OpenNfse\Helpers\NfseXmlExtractor;
 use OpenNfse\Module;
 use OpenNfse\Repositories\ConfigRepository;
+use OpenNfse\Repositories\FiscalHistoryRepository;
 use OpenNfse\Repositories\LogRepository;
 use OpenNfse\Repositories\NotaRepository;
 use OpenNfse\Repositories\QueueRepository;
@@ -171,6 +172,10 @@ final class NfseService
             'emitida_em' => $emitidaEm,
             'erro_api' => null,
         ]);
+        $notaAtual = $notaRepo->findByInvoiceId($invoiceId);
+        if ($notaAtual !== null) {
+            (new FiscalHistoryRepository())->recordEmission($notaAtual, 'runtime');
+        }
         $this->resolvePreviousQueueErrors($invoiceId, $notaId, $logRepo, $correlationId);
 
         $logRepo->insert($notaId, 'EMISSAO_RESPONSE', null, $result->nfseXml ?? 'OK', $correlationId);
@@ -230,6 +235,7 @@ final class NfseService
                     'xml_path' => $xmlPath,
                     'numero_nf' => $numeroNf,
                     'competencia' => $competencia,
+                    'erro_api' => null,
                 ];
                 if ((string) ($nota['emitida_em'] ?? '') === '') {
                     if ($emitidaEm !== null) {
@@ -237,6 +243,10 @@ final class NfseService
                     }
                 }
                 $notaRepo->upsert($update);
+                $notaAtual = $notaRepo->findByInvoiceId($invoiceId);
+                if ($notaAtual !== null) {
+                    (new FiscalHistoryRepository())->recordEmission($notaAtual, 'consulta');
+                }
                 $statusAfter = (string) ($update['status'] ?? $statusBefore);
                 if ($statusAfter === 'EMITIDA') {
                     $this->resolvePreviousQueueErrors($invoiceId, $notaId, $logRepo, $correlationId);
@@ -274,6 +284,7 @@ final class NfseService
                 'invoiceid' => $invoiceId,
                 'userid' => (int) $nota['userid'],
                 'chave_acesso' => $resp->chaveAcesso,
+                'erro_api' => null,
             ];
             if ((string) ($nota['status'] ?? '') !== 'EMITIDA') {
                 $update['status'] = 'PROCESSANDO';
@@ -401,17 +412,40 @@ final class NfseService
             throw new NfseModuleException('Falha ao cancelar NFS-e: ' . $result->errorMessage);
         }
 
+        $canceladoEm = date('Y-m-d H:i:s');
+        $cancelamentoXmlPath = null;
+        $cancelamentoXml = $this->decodeCancelamentoXmlPayload((string) ($result->eventoXmlGZipB64 ?? ''));
+        if ($cancelamentoXml !== null) {
+            $cancelamentoXmlPath = (new StorageService())->saveCancelamentoXml(
+                $invoiceId,
+                $cancelamentoXml,
+                (string) ($nota['numero_nf'] ?? ''),
+                $canceladoEm,
+                (string) ($config['environment'] ?? ''),
+                (string) ($config['serie_dps'] ?? '')
+            );
+        }
+
         $notaRepo->upsert([
             'invoiceid' => $invoiceId,
             'userid' => (int) $nota['userid'],
             'status' => 'CANCELADA',
-            'cancelado_em' => date('Y-m-d H:i:s'),
+            'cancelado_em' => $canceladoEm,
+            'cancel_xml_path' => $cancelamentoXmlPath,
             'cancel_codigo_motivo' => $codigoMotivo,
             'cancel_motivo' => $xMotivo,
             'cancel_descricao' => $xDesc,
             'cancel_erro' => null,
         ]);
-        $logRepo->insert($notaId, 'CANCELAMENTO_RESPONSE', null, $result->eventoXmlGZipB64 ?? 'OK', $correlationId);
+        $notaAtual = $notaRepo->findByInvoiceId($invoiceId);
+        if ($notaAtual !== null) {
+            (new FiscalHistoryRepository())->recordCancellation($notaAtual, 'runtime');
+        }
+        $cancelResponsePayload = [
+            'cancelamento_xml_path' => $cancelamentoXmlPath,
+            'eventoXmlGZipB64' => $result->eventoXmlGZipB64,
+        ];
+        $logRepo->insert($notaId, 'CANCELAMENTO_RESPONSE', null, json_encode($cancelResponsePayload, JSON_UNESCAPED_UNICODE), $correlationId);
         (new InvoiceHistoryService())->append($invoiceId, 'NFS-e cancelada com sucesso. Motivo: ' . $xMotivo);
     }
 
@@ -440,9 +474,56 @@ final class NfseService
         return json_decode(json_encode($dps, JSON_UNESCAPED_UNICODE), true) ?: [];
     }
 
+    private function decodeCancelamentoXmlPayload(string $payload): ?string
+    {
+        $payload = trim($payload);
+        if ($payload === '') {
+            return null;
+        }
+
+        if (strpos($payload, '<') === 0) {
+            return $payload;
+        }
+
+        $binary = base64_decode($payload, true);
+        if ($binary === false || $binary === '') {
+            return null;
+        }
+
+        $candidates = [$binary];
+        if (function_exists('gzdecode')) {
+            $decoded = @gzdecode($binary);
+            if (is_string($decoded) && $decoded !== '') {
+                $candidates[] = $decoded;
+            }
+        }
+        if (function_exists('gzuncompress')) {
+            $decoded = @gzuncompress($binary);
+            if (is_string($decoded) && $decoded !== '') {
+                $candidates[] = $decoded;
+            }
+        }
+        if (function_exists('gzinflate')) {
+            $decoded = @gzinflate($binary);
+            if (is_string($decoded) && $decoded !== '') {
+                $candidates[] = $decoded;
+            }
+        }
+
+        foreach ($candidates as $candidate) {
+            $candidate = trim((string) $candidate);
+            if ($candidate !== '' && strpos($candidate, '<') === 0) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
     private function ensureMigrated(): void
     {
         Module::migrator()->up();
+        (new FiscalHistoryRepository())->backfillCurrentStateIfNeeded();
     }
 
     private function resolvePreviousQueueErrors(int $invoiceId, ?int $notaId, LogRepository $logRepo, ?string $correlationId): void

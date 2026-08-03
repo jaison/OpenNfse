@@ -350,7 +350,11 @@ final class AdminController
         $config = (new ConfigRepository())->get();
         $updateStatus = (new UpdateCheckService())->getStatus($config);
         $certificateInfo = $this->configController->evaluateCertificateFromConfig($config);
-        $auditoriaSummary = $this->reportsController->getAuditoriaDashboardSummary();
+        $auditoriaSummary = $this->reportsController->getAuditoriaDashboardSummary(
+            null,
+            (string) ($metrics['range_start'] ?? ''),
+            (string) ($metrics['range_end'] ?? '')
+        );
 
         Module::ui()->renderHeader('Dashboard - OpenNFS-e');
         $this->renderTabs('dashboard');
@@ -381,12 +385,15 @@ final class AdminController
             'data_inicial' => (string) ($metrics['range_start'] ?? ''),
             'data_final' => (string) ($metrics['range_end'] ?? ''),
         ];
+        $filaParams = [
+            'updated_from' => (string) ($metrics['range_start'] ?? ''),
+            'updated_to' => (string) ($metrics['range_end'] ?? ''),
+        ];
         $emitidas = (int) ($metrics['emitidas'] ?? 0);
         $canceladas = (int) ($metrics['canceladas'] ?? 0);
         $rejeitadas = (int) ($metrics['rejeitadas'] ?? 0);
         $pendentes = (int) ($metrics['pendentes'] ?? 0);
         $aguardandoStatus = (int) ($metrics['aguardando_status'] ?? 0);
-        $comErro = (int) ($metrics['com_erro'] ?? 0);
         $comErroPeriodo = (int) ($metrics['com_erro_periodo'] ?? 0);
         $movimentadas = (int) ($metrics['movimentadas'] ?? 0);
         $xmls = (int) ($metrics['xmls'] ?? 0);
@@ -535,11 +542,10 @@ final class AdminController
                 return $dateKey <= $chartEndDate;
             }
         ));
-        $auditoriaMonth = trim((string) ($auditoriaSummary['selected_month'] ?? date('Y-m')));
         $auditoriaTotalInvoices = (int) ($auditoriaSummary['total_invoices'] ?? 0);
         $auditoriaHasGateways = (bool) ($auditoriaSummary['has_gateways'] ?? false);
         $auditoriaDescription = $auditoriaHasGateways ? 'Faturas pagas sem nota' : 'Sem gateways ativos para auditoria';
-        $auditoriaUrl = 'addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria&mes=' . rawurlencode($auditoriaMonth);
+        $auditoriaUrl = 'addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986);
         if (!empty($updateStatus['update_available'])) {
             $latestVersion = trim((string) ($updateStatus['latest_version'] ?? ''));
             $currentVersion = trim((string) ($updateStatus['current_version'] ?? ''));
@@ -628,8 +634,8 @@ final class AdminController
         $renderMetricCard('Emitidas', (string) $emitidas, '', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'EMITIDA'], '', '&', PHP_QUERY_RFC3986), '#2e7d32');
         $renderMetricCard('Canceladas', (string) $canceladas, '', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=cancelamentos&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986), '#c75b12');
         $renderMetricCard('Rejeitadas', (string) $rejeitadas, '', 'addonmodules.php?module=OpenNfse&action=notas&status=REJEITADA&updated_from=' . rawurlencode((string) ($metrics['range_start'] ?? '')) . '&updated_to=' . rawurlencode((string) ($metrics['range_end'] ?? '')), '#8e44ad');
-        $renderMetricCard('Pendentes', (string) $pendentes, '', 'addonmodules.php?module=OpenNfse&action=fila', '#c77d02');
-        $renderMetricCard('Com erro', (string) $comErro, '', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986), '#c62828');
+        $renderMetricCard('Pendentes', (string) $pendentes, '', 'addonmodules.php?module=OpenNfse&action=fila&' . http_build_query($filaParams, '', '&', PHP_QUERY_RFC3986), '#c77d02');
+        $renderMetricCard('Com erro', (string) $comErroPeriodo, '', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986), '#c62828');
         $renderMetricCard('Valor emitido', $this->formatMoney($valorTotal, 'R$ ', ''), '', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'EMITIDA'], '', '&', PHP_QUERY_RFC3986), '#23527c', 'opennfse-dashboard__metric-value--money');
         echo '</div>';
 
@@ -765,25 +771,25 @@ final class AdminController
         echo '<div class="opennfse-dashboard__attention-body">';
         $attentionItems = [
             [
-                'label' => 'Com erro agora',
-                'count' => $comErro,
+                'label' => 'Com erro no período',
+                'count' => $comErroPeriodo,
                 'href' => 'addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986),
                 'color' => '#c62828',
-                'desc' => 'Falhas operacionais abertas',
+                'desc' => 'Falhas operacionais no intervalo',
             ],
             [
-                'label' => 'Pendentes agora',
+                'label' => 'Pendentes no período',
                 'count' => $pendentes,
-                'href' => 'addonmodules.php?module=OpenNfse&action=fila',
+                'href' => 'addonmodules.php?module=OpenNfse&action=fila&' . http_build_query($filaParams, '', '&', PHP_QUERY_RFC3986),
                 'color' => '#c77d02',
-                'desc' => 'Fila aguardando processamento',
+                'desc' => 'Fila movimentada no intervalo',
             ],
             [
-                'label' => 'Aguardando status',
+                'label' => 'Aguardando status no período',
                 'count' => $aguardandoStatus,
-                'href' => 'addonmodules.php?module=OpenNfse&action=fila&status=WAIT_STATUS',
+                'href' => 'addonmodules.php?module=OpenNfse&action=fila&status=WAIT_STATUS&' . http_build_query($filaParams, '', '&', PHP_QUERY_RFC3986),
                 'color' => '#8a6d3b',
-                'desc' => 'Notas em consulta de status',
+                'desc' => 'Consultas de status no intervalo',
             ],
             [
                 'label' => 'Rejeitadas no período',

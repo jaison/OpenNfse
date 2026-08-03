@@ -8,9 +8,10 @@ use WHMCS\Database\Capsule;
 
 final class ReportRepository
 {
-    public function listNotas(array $filters, int $limit): array
+    public function listNotas(array $filters, int $limit, int $offset = 0): array
     {
-        $limit = max(1, min(500, $limit));
+        $limit = max(1, min(5000, $limit));
+        $offset = max(0, $offset);
 
         $q = Capsule::table('mod_opennfse_notas as n')
             ->join('tblinvoices as i', 'i.id', '=', 'n.invoiceid')
@@ -44,6 +45,10 @@ final class ReportRepository
             $q->orderBy('n.cancelado_em', 'desc');
         } else {
             $q->orderByRaw('COALESCE(n.emitida_em, n.updated_at) DESC');
+        }
+
+        if ($offset > 0) {
+            $q->offset($offset);
         }
 
         $out = [];
@@ -257,17 +262,31 @@ final class ReportRepository
             ->count();
 
         $pendSet = [];
-        foreach (Capsule::table('mod_opennfse_notas as n')->select(['n.invoiceid'])->where('n.status', 'PROCESSANDO')->get() as $r) {
+        foreach (Capsule::table('mod_opennfse_notas as n')
+            ->select(['n.invoiceid'])
+            ->where('n.status', 'PROCESSANDO')
+            ->whereBetween('n.updated_at', [$start, $end])
+            ->get() as $r) {
             $pendSet[(int) ($r->invoiceid ?? 0)] = true;
         }
-        foreach (Capsule::table('mod_opennfse_queue as q')->select(['q.invoiceid'])->whereIn('q.status', ['PENDING', 'RUNNING', 'WAIT_STATUS'])->distinct()->get() as $r) {
+        foreach (Capsule::table('mod_opennfse_queue as q')
+            ->select(['q.invoiceid'])
+            ->whereIn('q.status', ['PENDING', 'RUNNING', 'WAIT_STATUS'])
+            ->whereBetween('q.updated_at', [$start, $end])
+            ->distinct()
+            ->get() as $r) {
             $pendSet[(int) ($r->invoiceid ?? 0)] = true;
         }
         unset($pendSet[0]);
         $pendentes = count($pendSet);
 
         $waitStatusSet = [];
-        foreach (Capsule::table('mod_opennfse_queue as q')->select(['q.invoiceid'])->where('q.status', 'WAIT_STATUS')->distinct()->get() as $r) {
+        foreach (Capsule::table('mod_opennfse_queue as q')
+            ->select(['q.invoiceid'])
+            ->where('q.status', 'WAIT_STATUS')
+            ->whereBetween('q.updated_at', [$start, $end])
+            ->distinct()
+            ->get() as $r) {
             $waitStatusSet[(int) ($r->invoiceid ?? 0)] = true;
         }
         unset($waitStatusSet[0]);

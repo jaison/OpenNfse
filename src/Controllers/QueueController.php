@@ -49,6 +49,8 @@ final class QueueController
 
         $statusFilter = trim((string) ($_REQUEST['status'] ?? ''));
         $invoiceFilter = trim((string) ($_REQUEST['invoiceid'] ?? ''));
+        $updatedFrom = trim((string) ($_REQUEST['updated_from'] ?? ''));
+        $updatedTo = trim((string) ($_REQUEST['updated_to'] ?? ''));
 
         echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
         echo '<form id="nfse-fila-filters" method="get" action="addonmodules.php" style="margin:0;">';
@@ -76,6 +78,14 @@ final class QueueController
             echo '<option value="' . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . '"' . $sel . '>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
         }
         echo '</select>';
+        echo '</div>';
+        echo '<div style="min-width:150px;">';
+        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Atualizado de</div>';
+        echo '<input type="date" name="updated_from" value="' . htmlspecialchars($updatedFrom, ENT_QUOTES, 'UTF-8') . '" style="width:150px;" />';
+        echo '</div>';
+        echo '<div style="min-width:150px;">';
+        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Atualizado ate</div>';
+        echo '<input type="date" name="updated_to" value="' . htmlspecialchars($updatedTo, ENT_QUOTES, 'UTF-8') . '" style="width:150px;" />';
         echo '</div>';
         echo '</div>';
         echo '</form>';
@@ -105,6 +115,12 @@ final class QueueController
         }
         if ($invoiceFilter !== '' && ctype_digit($invoiceFilter)) {
             $q->where('invoiceid', (int) $invoiceFilter);
+        }
+        if ($updatedFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $updatedFrom)) {
+            $q->where('updated_at', '>=', $updatedFrom . ' 00:00:00');
+        }
+        if ($updatedTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $updatedTo)) {
+            $q->where('updated_at', '<=', $updatedTo . ' 23:59:59');
         }
         $rows = $q->limit(100)->get();
 

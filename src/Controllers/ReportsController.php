@@ -6,7 +6,9 @@ namespace OpenNfse\Controllers;
 
 use OpenNfse\Exceptions\NfseModuleException;
 use OpenNfse\Module;
+use OpenNfse\Repositories\ApiAuditRepository;
 use OpenNfse\Repositories\ConfigRepository;
+use OpenNfse\Repositories\FiscalHistoryRepository;
 use OpenNfse\Repositories\GroupServiceCodeRepository;
 use OpenNfse\Repositories\NotaRepository;
 use OpenNfse\Repositories\PaymentGatewaySettingsRepository;
@@ -16,6 +18,7 @@ use OpenNfse\Repositories\ServiceNbsCatalogRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
 use OpenNfse\Repositories\WhmcsPaymentGatewayRepository;
 use OpenNfse\Services\CryptoService;
+use OpenNfse\Services\ApiAuditService;
 use OpenNfse\Services\InvoiceEmailService;
 use OpenNfse\Services\NfseService;
 use OpenNfse\Services\QueueErrorClassifierService;
@@ -29,12 +32,18 @@ final class ReportsController
 {
     use AdminHelpersTrait;
 
-    public function getAuditoriaDashboardSummary(?string $month = null): array
+    public function getAuditoriaDashboardSummary(?string $month = null, ?string $fromDate = null, ?string $toDate = null): array
     {
         $requestedMonth = trim((string) ($month ?? ''));
         $gatewayMap = $this->getAuditoriaActiveGatewayMap();
         $gatewayKeys = array_keys($gatewayMap);
-        [$selectedMonth, $dataInicial, $dataFinal] = $this->resolveAuditoriaMonthRange($requestedMonth !== '' ? $requestedMonth : date('Y-m'));
+        $dataInicial = trim((string) ($fromDate ?? ''));
+        $dataFinal = trim((string) ($toDate ?? ''));
+        $selectedMonth = '';
+
+        if ($dataInicial === '' || $dataFinal === '') {
+            [$selectedMonth, $dataInicial, $dataFinal] = $this->resolveAuditoriaMonthRange($requestedMonth !== '' ? $requestedMonth : date('Y-m'));
+        }
 
         $filters = [
             'data_inicial' => $dataInicial,
@@ -56,15 +65,8 @@ final class ReportsController
 
     public function showRelatorios(): void
     {
-        $active = trim((string) ($_GET['tab'] ?? 'auditoria'));
+        $active = trim((string) ($_GET['tab'] ?? 'emitidas'));
         $tabMeta = [
-            'auditoria' => [
-                'label' => 'Auditoria',
-                'badge' => 'Conferência',
-                'badge_bg' => '#e8f0fe',
-                'badge_color' => '#23527c',
-                'summary' => 'Lista faturas pagas em gateways ativos que não geraram NFS-e e também não entraram na fila.',
-            ],
             'emitidas' => [
                 'label' => 'NFS-e Emitidas',
                 'badge' => 'Fiscal',
@@ -72,12 +74,26 @@ final class ReportsController
                 'badge_color' => '#2e7d32',
                 'summary' => 'Acompanha notas emitidas e canceladas, com totais e exportações do período.',
             ],
-            'falhas' => [
-                'label' => 'Falhas',
-                'badge' => 'Atenção',
-                'badge_bg' => '#fff8e1',
-                'badge_color' => '#8a6d3b',
-                'summary' => 'Concentra erros de emissão, rejeições e problemas que exigem correção manual.',
+            'auditoria' => [
+                'label' => 'Auditoria Emissão',
+                'badge' => 'Conferência',
+                'badge_bg' => '#e8f0fe',
+                'badge_color' => '#23527c',
+                'summary' => 'Lista faturas pagas em gateways ativos que não geraram NFS-e e também não entraram na fila.',
+            ],
+            'xml_auditoria' => [
+                'label' => 'Auditoria XML',
+                'badge' => 'Técnico',
+                'badge_bg' => '#eef2f7',
+                'badge_color' => '#5f6b7a',
+                'summary' => 'Compara a pasta mensal de XMLs com o xml_path atual das notas para encontrar órfãos e referências inconsistentes.',
+            ],
+            'historico_fiscal' => [
+                'label' => 'Historico Fiscal',
+                'badge' => 'Fiscal',
+                'badge_bg' => '#f3e8ff',
+                'badge_color' => '#6b21a8',
+                'summary' => 'Preserva os documentos e eventos fiscais da invoice ao longo do tempo, inclusive emissões, cancelamentos e snapshots de migracao.',
             ],
             'cancelamentos' => [
                 'label' => 'Cancelamentos',
@@ -85,6 +101,13 @@ final class ReportsController
                 'badge_bg' => '#fff3e0',
                 'badge_color' => '#a67c00',
                 'summary' => 'Mostra cancelamentos do período com foco em conferência fiscal e contábil.',
+            ],
+            'falhas' => [
+                'label' => 'Falhas',
+                'badge' => 'Atenção',
+                'badge_bg' => '#fff8e1',
+                'badge_color' => '#8a6d3b',
+                'summary' => 'Concentra erros de emissão, rejeições e problemas que exigem correção manual.',
             ],
             'logs' => [
                 'label' => 'Logs',
@@ -158,6 +181,12 @@ final class ReportsController
             $this->showRelatorioCancelamentos(true);
         } elseif ($active === 'auditoria') {
             $this->showRelatorioAuditoria(true);
+        } elseif ($active === 'xml_auditoria') {
+            $this->showRelatorioXmlAuditoria(true);
+        } elseif ($active === 'historico_fiscal') {
+            $this->showRelatorioHistoricoFiscal(true);
+        } elseif ($active === 'auditoria_api') {
+            $this->showRelatorioAuditoriaApi(true);
         } elseif ($active === 'logs') {
             $this->showRelatorioLogs(true);
         } else {
@@ -181,6 +210,10 @@ final class ReportsController
         $dataFinal = trim((string) ($_REQUEST['data_final'] ?? ''));
         $status = trim((string) ($_REQUEST['status'] ?? 'EMITIDA,CANCELADA'));
         $cliente = trim((string) ($_REQUEST['cliente'] ?? ''));
+        $page = (int) ($_REQUEST['page'] ?? 1);
+        if ($page < 1) {
+            $page = 1;
+        }
 
         $filters = [
             'data_inicial' => $dataInicial,
@@ -190,8 +223,15 @@ final class ReportsController
         ];
 
         $repo = new ReportRepository();
-        $rows = $repo->listNotas($filters, 200);
         $summary = $repo->summaryNotas($filters);
+        $perPage = 1000;
+        $totalNotas = (int) ($summary['total_notas'] ?? 0);
+        $totalPages = max(1, (int) ceil($totalNotas / $perPage));
+        if ($page > $totalPages) {
+            $page = $totalPages;
+        }
+        $offset = ($page - 1) * $perPage;
+        $rows = $repo->listNotas($filters, $perPage, $offset);
 
         $recentCompetencias = $this->buildRecentCompetenciaZipPresets();
         if (!empty($recentCompetencias)) {
@@ -274,6 +314,10 @@ final class ReportsController
         echo '<th style="width:20%;">Status</th>';
         echo '</tr>';
 
+        if (empty($rows)) {
+            echo '<tr><td colspan="6" style="text-align:center;color:#666;">Nenhuma nota encontrada para os critérios selecionados.</td></tr>';
+        }
+
         foreach ($rows as $row) {
             $invoiceId = (int) ($row['invoiceid'] ?? 0);
             $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
@@ -314,6 +358,35 @@ final class ReportsController
         } else {
             echo 'Valor total: <strong>' . htmlspecialchars($this->formatMoney((float) ($summary['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</strong>';
         }
+        echo '</div>';
+        echo '<div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">';
+        $firstItem = $totalNotas > 0 ? ($offset + 1) : 0;
+        $lastItem = min($offset + count($rows), $totalNotas);
+        echo '<div>Exibindo <strong>' . $firstItem . '-' . $lastItem . '</strong> de <strong>' . $totalNotas . '</strong> registros</div>';
+
+        $baseParams = [
+            'module' => 'OpenNfse',
+            'action' => 'relatorios',
+            'tab' => 'emitidas',
+            'data_inicial' => $dataInicial,
+            'data_final' => $dataFinal,
+            'status' => $status,
+            'cliente' => $cliente,
+        ];
+
+        echo '<div>';
+        if ($page > 1) {
+            $prevParams = $baseParams;
+            $prevParams['page'] = $page - 1;
+            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a> ';
+        }
+        echo '<span style="margin:0 6px;">Página ' . $page . ' / ' . $totalPages . '</span>';
+        if ($page < $totalPages) {
+            $nextParams = $baseParams;
+            $nextParams['page'] = $page + 1;
+            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
+        }
+        echo '</div>';
         echo '</div>';
         echo '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">';
         echo $this->renderPostActionButton('relatoriosExportZip', 'Baixar XMLs do período escolhido', [
@@ -606,6 +679,597 @@ final class ReportsController
         echo '<div style="margin-top:10px;">';
         echo 'Total de faturas: <strong>' . (int) ($summary['total_invoices'] ?? 0) . '</strong> &nbsp; ';
         echo 'Valor total: <strong>' . htmlspecialchars($this->formatMoney((float) ($summary['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</strong>';
+        echo '</div>';
+    }
+
+
+    public function showRelatorioXmlAuditoria(bool $embedded = false): void
+    {
+        if (!$embedded) {
+            $this->redirectRelatorios('xml_auditoria');
+        }
+
+        $requestedMonth = trim((string) ($_REQUEST['mes'] ?? ''));
+        $defaultMonth = $this->getXmlAuditDefaultMonth();
+        [$selectedMonth] = $this->resolveAuditoriaMonthRange($requestedMonth !== '' ? $requestedMonth : $defaultMonth);
+
+        $audit = $this->buildXmlAuditData($selectedMonth);
+        $periodLabel = $this->formatAuditoriaMonthLabel($selectedMonth);
+        $issueCount = (int) ($audit['orphan_count'] ?? 0)
+            + (int) ($audit['missing_reference_count'] ?? 0)
+            + (int) ($audit['unexpected_status_count'] ?? 0)
+            + (int) ($audit['duplicate_reference_count'] ?? 0);
+
+        echo '<form method="get" action="addonmodules.php">';
+        echo '<input type="hidden" name="module" value="OpenNfse" />';
+        echo '<input type="hidden" name="action" value="relatorios" />';
+        echo '<input type="hidden" name="tab" value="xml_auditoria" />';
+        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
+        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
+        echo '<div style="min-width:180px;">';
+        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Mês de referência</div>';
+        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:180px;" />';
+        echo '</div>';
+        echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
+        echo '<button type="submit" class="btn btn-xs btn-default">Auditar</button>';
+        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=xml_auditoria">Limpar</a>';
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+        echo '</form>';
+
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #d9e1ea;background:#fbfcfe;">';
+        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:6px;">Escopo da auditoria</div>';
+        echo '<div style="font-size:12px;color:#5b6776;line-height:1.55;">';
+        echo 'Comparando a pasta <strong>' . htmlspecialchars((string) ($audit['relative_dir'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</strong> referente a <strong>' . htmlspecialchars($periodLabel, ENT_QUOTES, 'UTF-8') . '</strong> ';
+        echo 'com o campo <code>xml_path</code> atual da base. Ambiente: <strong>' . htmlspecialchars((string) ($audit['environment_label'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
+        echo '&nbsp; Serie: <strong>' . htmlspecialchars((string) ($audit['serie_label'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</strong>. ';
+        echo 'Arquivos <code>cancelamento_nfse_*</code> sao contabilizados separadamente e nao entram como orfaos tecnicos.';
+        echo '</div>';
+        echo '</div>';
+
+        $metricCards = [
+            ['label' => 'Arquivos no disco', 'value' => (int) ($audit['physical_count'] ?? 0), 'color' => '#23527c'],
+            ['label' => 'Cancelamentos no disco', 'value' => (int) ($audit['cancelamento_file_count'] ?? 0), 'color' => '#a67c00'],
+            ['label' => 'XMLs referenciados', 'value' => (int) ($audit['db_reference_count'] ?? 0), 'color' => '#2e7d32'],
+            ['label' => 'Orfaos no disco', 'value' => (int) ($audit['orphan_count'] ?? 0), 'color' => '#b45f06'],
+            ['label' => 'Referencias quebradas', 'value' => (int) ($audit['missing_reference_count'] ?? 0), 'color' => '#a94442'],
+            ['label' => 'Status inconsistente', 'value' => (int) ($audit['unexpected_status_count'] ?? 0), 'color' => '#8a6d3b'],
+            ['label' => 'Referencias duplicadas', 'value' => (int) ($audit['duplicate_reference_count'] ?? 0), 'color' => '#6a1b9a'],
+        ];
+        echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">';
+        foreach ($metricCards as $card) {
+            echo '<div style="border:1px solid #d9e1ea;background:#fff;padding:12px 14px;">';
+            echo '<div style="font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;">' . htmlspecialchars((string) $card['label'], ENT_QUOTES, 'UTF-8') . '</div>';
+            echo '<div style="font-size:26px;line-height:1.1;font-weight:700;color:' . htmlspecialchars((string) $card['color'], ENT_QUOTES, 'UTF-8') . ';">' . (int) $card['value'] . '</div>';
+            echo '</div>';
+        }
+        echo '</div>';
+
+        if ($issueCount > 0) {
+            echo '<div class="alert alert-warning" style="margin-bottom:14px;">Foram encontradas <strong>' . $issueCount . '</strong> divergencias tecnicas entre filesystem e base para este mes.</div>';
+        } else {
+            echo '<div class="alert alert-success" style="margin-bottom:14px;">Nenhuma divergencia tecnica foi encontrada entre a pasta mensal e o xml_path atual das notas.</div>';
+        }
+
+        $statusSummary = $this->buildXmlAuditStatusSummary((array) ($audit['status_counts'] ?? []));
+        if ($statusSummary !== '') {
+            echo '<div style="margin-bottom:14px;font-size:12px;color:#5b6776;">Status atuais das notas que apontam para esta pasta: ' . htmlspecialchars($statusSummary, ENT_QUOTES, 'UTF-8') . '.</div>';
+        }
+
+        $unexpectedRows = (array) ($audit['unexpected_status_rows'] ?? []);
+        echo '<div style="margin-bottom:16px;">';
+        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Notas com XML salvo e status diferente de Emitida/Cancelada</div>';
+        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
+        echo '<tr>';
+        echo '<th style="width:10%;">Data</th>';
+        echo '<th style="width:10%;">Invoice</th>';
+        echo '<th style="width:26%;">Cliente</th>';
+        echo '<th style="width:12%;">Status</th>';
+        echo '<th style="width:12%;">NFS-e</th>';
+        echo '<th style="width:30%;">xml_path</th>';
+        echo '</tr>';
+        if (empty($unexpectedRows)) {
+            echo '<tr><td colspan="6" style="text-align:center;color:#666;">Nenhuma nota inconsistente encontrada.</td></tr>';
+        }
+        foreach ($unexpectedRows as $row) {
+            $invoiceId = (int) ($row['invoiceid'] ?? 0);
+            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
+            $dataRef = (string) ($row['emitida_em'] ?? $row['nfse_updated_at'] ?? '');
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars($this->formatDate($dataRef, 'd/m/Y'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($this->resolveClientName($row), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) ($row['status'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) (($row['numero_nf'] ?? '') !== '' ? $row['numero_nf'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($row['xml_path_normalized'] ?? $row['xml_path'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '</tr>';
+        }
+        echo '</table>';
+        echo '</div>';
+
+        $missingRows = (array) ($audit['missing_reference_rows'] ?? []);
+        echo '<div style="margin-bottom:16px;">';
+        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Referencias quebradas na base</div>';
+        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
+        echo '<tr>';
+        echo '<th style="width:10%;">Data</th>';
+        echo '<th style="width:10%;">Invoice</th>';
+        echo '<th style="width:26%;">Cliente</th>';
+        echo '<th style="width:12%;">Status</th>';
+        echo '<th style="width:12%;">NFS-e</th>';
+        echo '<th style="width:30%;">xml_path</th>';
+        echo '</tr>';
+        if (empty($missingRows)) {
+            echo '<tr><td colspan="6" style="text-align:center;color:#666;">Nenhuma referencia quebrada encontrada.</td></tr>';
+        }
+        foreach ($missingRows as $row) {
+            $invoiceId = (int) ($row['invoiceid'] ?? 0);
+            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
+            $dataRef = (string) ($row['emitida_em'] ?? $row['nfse_updated_at'] ?? '');
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars($this->formatDate($dataRef, 'd/m/Y'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($this->resolveClientName($row), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) ($row['status'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) (($row['numero_nf'] ?? '') !== '' ? $row['numero_nf'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($row['xml_path_normalized'] ?? $row['xml_path'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '</tr>';
+        }
+        echo '</table>';
+        echo '</div>';
+
+        $orphanFiles = (array) ($audit['orphan_files'] ?? []);
+        echo '<div style="margin-bottom:16px;">';
+        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Arquivos orfaos no disco</div>';
+        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
+        echo '<tr>';
+        echo '<th style="width:24%;">Arquivo</th>';
+        echo '<th style="width:46%;">Caminho</th>';
+        echo '<th style="width:15%;">Modificado em</th>';
+        echo '<th style="width:15%;">Tamanho</th>';
+        echo '</tr>';
+        if (empty($orphanFiles)) {
+            echo '<tr><td colspan="4" style="text-align:center;color:#666;">Nenhum arquivo orfao encontrado.</td></tr>';
+        }
+        foreach ($orphanFiles as $file) {
+            echo '<tr>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($file['filename'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($file['relative_path'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) ($file['modified_at'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars($this->formatAuditBytes((int) ($file['size'] ?? 0)), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '</tr>';
+        }
+        echo '</table>';
+        echo '</div>';
+
+        $duplicateReferences = (array) ($audit['duplicate_references'] ?? []);
+        echo '<div style="margin-bottom:16px;">';
+        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Referencias duplicadas ao mesmo xml_path</div>';
+        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
+        echo '<tr>';
+        echo '<th style="width:46%;">xml_path</th>';
+        echo '<th style="width:14%;">Ocorrencias</th>';
+        echo '<th style="width:40%;">Invoices</th>';
+        echo '</tr>';
+        if (empty($duplicateReferences)) {
+            echo '<tr><td colspan="3" style="text-align:center;color:#666;">Nenhuma referencia duplicada encontrada.</td></tr>';
+        }
+        foreach ($duplicateReferences as $duplicate) {
+            $invoiceLinks = [];
+            foreach ((array) ($duplicate['rows'] ?? []) as $row) {
+                $invoiceId = (int) ($row['invoiceid'] ?? 0);
+                if ($invoiceId <= 0) {
+                    continue;
+                }
+                $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
+                $invoiceLinks[] = '<a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a>';
+            }
+
+            echo '<tr>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($duplicate['xml_path'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . (int) ($duplicate['count'] ?? 0) . '</td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . (!empty($invoiceLinks) ? implode(', ', $invoiceLinks) : '-') . '</td>';
+            echo '</tr>';
+        }
+        echo '</table>';
+        echo '</div>';
+    }
+
+
+    public function showRelatorioHistoricoFiscal(bool $embedded = false): void
+    {
+        if (!$embedded) {
+            $this->redirectRelatorios('historico_fiscal');
+        }
+
+        $this->ensureFiscalHistoryReady();
+
+        $requestedMonth = trim((string) ($_REQUEST['mes'] ?? ''));
+        $tipoRegistro = strtoupper(trim((string) ($_REQUEST['tipo_registro'] ?? '')));
+        $invoiceFilter = trim((string) ($_REQUEST['invoiceid'] ?? ''));
+        $page = (int) ($_REQUEST['page'] ?? 1);
+        if ($page < 1) {
+            $page = 1;
+        }
+
+        $defaultMonth = $this->getXmlAuditDefaultMonth();
+        [$selectedMonth] = $this->resolveAuditoriaMonthRange($requestedMonth !== '' ? $requestedMonth : $defaultMonth);
+
+        $filters = [
+            'month' => $selectedMonth,
+            'tipo_registro' => $tipoRegistro,
+            'invoiceid' => $invoiceFilter,
+        ];
+
+        $repo = new FiscalHistoryRepository();
+        $summary = $repo->summaryHistory($filters);
+        $perPage = 1000;
+        $totalDocs = (int) ($summary['total_docs'] ?? 0);
+        $totalPages = max(1, (int) ceil($totalDocs / $perPage));
+        if ($page > $totalPages) {
+            $page = $totalPages;
+        }
+
+        $offset = ($page - 1) * $perPage;
+        $rows = $repo->listHistory($filters, $perPage, $offset);
+
+        echo '<form method="get" action="addonmodules.php">';
+        echo '<input type="hidden" name="module" value="OpenNfse" />';
+        echo '<input type="hidden" name="action" value="relatorios" />';
+        echo '<input type="hidden" name="tab" value="historico_fiscal" />';
+        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
+        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
+        echo '<div style="min-width:180px;">';
+        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Mês de referência</div>';
+        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:180px;" />';
+        echo '</div>';
+        echo '<div style="min-width:180px;">';
+        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Tipo</div>';
+        echo '<select name="tipo_registro" style="width:180px;">';
+        $typeOptions = [
+            '' => 'Todos os registros',
+            'EMISSAO' => 'Emissão',
+            'CANCELAMENTO' => 'Cancelamento',
+            'SNAPSHOT' => 'Snapshot legado',
+        ];
+        foreach ($typeOptions as $value => $label) {
+            $selected = $value === $tipoRegistro ? ' selected' : '';
+            echo '<option value="' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '"' . $selected . '>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
+        }
+        echo '</select>';
+        echo '</div>';
+        echo '<div style="min-width:140px;">';
+        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Invoice ID</div>';
+        echo '<input type="text" name="invoiceid" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" style="width:140px;" />';
+        echo '</div>';
+        echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
+        echo '<button type="submit" class="btn btn-xs btn-default">Filtrar</button>';
+        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=historico_fiscal">Limpar</a>';
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+        echo '</form>';
+
+        echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">';
+        $historyCards = [
+            ['label' => 'Documentos no periodo', 'value' => (int) ($summary['total_docs'] ?? 0), 'color' => '#23527c'],
+            ['label' => 'Emissoes', 'value' => (int) ($summary['total_emissoes'] ?? 0), 'color' => '#2e7d32'],
+            ['label' => 'Cancelamentos', 'value' => (int) ($summary['total_cancelamentos'] ?? 0), 'color' => '#a67c00'],
+            ['label' => 'Snapshots legado', 'value' => (int) ($summary['total_snapshots'] ?? 0), 'color' => '#6b7280'],
+        ];
+        foreach ($historyCards as $card) {
+            echo '<div style="border:1px solid #d9e1ea;background:#fff;padding:12px 14px;">';
+            echo '<div style="font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;">' . htmlspecialchars((string) $card['label'], ENT_QUOTES, 'UTF-8') . '</div>';
+            echo '<div style="font-size:26px;line-height:1.1;font-weight:700;color:' . htmlspecialchars((string) $card['color'], ENT_QUOTES, 'UTF-8') . ';">' . (int) $card['value'] . '</div>';
+            echo '</div>';
+        }
+        echo '</div>';
+
+        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
+        echo '<tr>';
+        echo '<th style="width:12%;">Data</th>';
+        echo '<th style="width:10%;">Tipo</th>';
+        echo '<th style="width:10%;">Status</th>';
+        echo '<th style="width:9%;">NFS-e</th>';
+        echo '<th style="width:23%;">Cliente</th>';
+        echo '<th style="width:8%;">Invoice</th>';
+        echo '<th style="width:10%;">Valor</th>';
+        echo '<th style="width:9%;">Origem</th>';
+        echo '<th style="width:9%;">XMLs</th>';
+        echo '</tr>';
+
+        if (empty($rows)) {
+            echo '<tr><td colspan="9" style="text-align:center;color:#666;">Nenhum registro fiscal encontrado para os critérios selecionados.</td></tr>';
+        }
+
+        foreach ($rows as $row) {
+            $invoiceId = (int) ($row['invoiceid'] ?? 0);
+            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
+            $eventDate = $this->resolveFiscalHistoryEventDate($row);
+            $xmlBadges = [];
+            if (trim((string) ($row['xml_path'] ?? '')) !== '') {
+                $xmlBadges[] = 'NF';
+            }
+            if (trim((string) ($row['cancel_xml_path'] ?? '')) !== '') {
+                $xmlBadges[] = 'CAN';
+            }
+
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars($this->formatDate($eventDate, 'd/m/Y H:i'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) ($row['tipo_registro'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) ($row['status_fiscal'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) (($row['numero_nf'] ?? '') !== '' ? $row['numero_nf'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($this->resolveClientName($row), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
+            echo '<td>' . htmlspecialchars($this->formatMoney((float) ($row['invoice_total'] ?? 0), (string) ($row['currency_prefix'] ?? 'R$ '), (string) ($row['currency_suffix'] ?? '')), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) ($row['origem'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars(!empty($xmlBadges) ? implode(' / ', $xmlBadges) : '-', ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '</tr>';
+        }
+
+        echo '</table>';
+
+        echo '<div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">';
+        $firstItem = $totalDocs > 0 ? ($offset + 1) : 0;
+        $lastItem = min($offset + count($rows), $totalDocs);
+        echo '<div>Exibindo <strong>' . $firstItem . '-' . $lastItem . '</strong> de <strong>' . $totalDocs . '</strong> registros</div>';
+
+        $baseParams = [
+            'module' => 'OpenNfse',
+            'action' => 'relatorios',
+            'tab' => 'historico_fiscal',
+            'mes' => $selectedMonth,
+            'tipo_registro' => $tipoRegistro,
+            'invoiceid' => $invoiceFilter,
+        ];
+        echo '<div>';
+        if ($page > 1) {
+            $prevParams = $baseParams;
+            $prevParams['page'] = $page - 1;
+            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a> ';
+        }
+        echo '<span style="margin:0 6px;">Página ' . $page . ' / ' . $totalPages . '</span>';
+        if ($page < $totalPages) {
+            $nextParams = $baseParams;
+            $nextParams['page'] = $page + 1;
+            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
+        }
+        echo '</div>';
+        echo '</div>';
+    }
+
+    public function showRelatorioAuditoriaApi(bool $embedded = false): void
+    {
+        if (!$embedded) {
+            $this->redirectRelatorios('auditoria_api');
+        }
+
+        $this->ensureFiscalHistoryReady();
+
+        $requestedMonth = trim((string) ($_REQUEST['mes'] ?? ''));
+        $defaultMonth = $this->getXmlAuditDefaultMonth();
+        [$selectedMonth] = $this->resolveAuditoriaMonthRange($requestedMonth !== '' ? $requestedMonth : $defaultMonth);
+
+        $syncRequested = (string) ($_REQUEST['sync_nsu'] ?? '') === '1';
+        $syncResult = null;
+        $syncError = null;
+        if ($syncRequested) {
+            try {
+                $syncResult = (new ApiAuditService())->syncByNsu(10);
+            } catch (\Throwable $e) {
+                $syncError = $e->getMessage();
+            }
+        }
+
+        $config = (new ConfigRepository())->get();
+        $environment = trim((string) ($config['environment'] ?? 'producao'));
+        $apiRepo = new ApiAuditRepository();
+        $state = $apiRepo->getSyncState($environment);
+        $diagnostics = json_decode((string) ($state['last_diagnostics_json'] ?? ''), true);
+        if (!is_array($diagnostics)) {
+            $diagnostics = [];
+        }
+        $apiSummary = $apiRepo->summaryDistributedDocumentsByMonth($environment, $selectedMonth);
+        $apiRows = $apiRepo->listDistributedDocumentsByMonth($environment, $selectedMonth);
+
+        $historyRepo = new FiscalHistoryRepository();
+        $localSummary = $historyRepo->summaryComparableHistoryByMonth($selectedMonth);
+        $localRows = $historyRepo->listComparableHistoryByMonth($selectedMonth);
+        $comparison = $this->buildApiAuditComparison($apiRows, $localRows);
+
+        echo '<form method="get" action="addonmodules.php">';
+        echo '<input type="hidden" name="module" value="OpenNfse" />';
+        echo '<input type="hidden" name="action" value="relatorios" />';
+        echo '<input type="hidden" name="tab" value="auditoria_api" />';
+        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
+        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
+        echo '<div style="min-width:180px;">';
+        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Mês de referência</div>';
+        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:180px;" />';
+        echo '</div>';
+        echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
+        echo '<button type="submit" class="btn btn-xs btn-default">Filtrar</button>';
+        echo '<button type="submit" name="sync_nsu" value="1" class="btn btn-xs btn-success">Sincronizar NSU agora</button>';
+        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria_api">Limpar</a>';
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+        echo '</form>';
+
+        if ($syncError !== null) {
+            echo '<div class="alert alert-danger" style="margin-bottom:14px;">Falha ao sincronizar a distribuicao da API: ' . htmlspecialchars($syncError, ENT_QUOTES, 'UTF-8') . '</div>';
+        } elseif (is_array($syncResult)) {
+            $processedCount = (int) ($syncResult['processed_count'] ?? 0);
+            $alertClass = $processedCount > 0 ? 'success' : 'warning';
+            $messagePrefix = $processedCount > 0 ? 'Sincronizacao concluida.' : 'Sincronizacao concluida sem retorno de documentos.';
+            echo '<div class="alert alert-' . $alertClass . '" style="margin-bottom:14px;">' . $messagePrefix . ' Foram processados <strong>' . $processedCount . '</strong> documentos em <strong>' . (int) ($syncResult['batch_count'] ?? 0) . '</strong> lote(s), usando o modo <strong>' . htmlspecialchars((string) ($syncResult['mode'] ?? 'com_cnpj'), ENT_QUOTES, 'UTF-8') . '</strong>.</div>';
+        }
+
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #d9e1ea;background:#fbfcfe;">';
+        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:6px;">Estado da sincronização</div>';
+        echo '<div style="font-size:12px;color:#5b6776;line-height:1.55;">';
+        echo 'Ambiente: <strong>' . htmlspecialchars($environment !== '' ? $environment : 'producao', ENT_QUOTES, 'UTF-8') . '</strong> ';
+        echo '&nbsp; CNPJ consulta: <strong>' . htmlspecialchars((string) (($state['cnpj_consulta'] ?? '') !== '' ? $state['cnpj_consulta'] : '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
+        echo '&nbsp; Ultimo NSU: <strong>' . (int) ($state['ultimo_nsu'] ?? 0) . '</strong> ';
+        echo '&nbsp; Maior NSU conhecido: <strong>' . (int) ($state['maior_nsu'] ?? 0) . '</strong> ';
+        echo '&nbsp; Ultimo sync: <strong>' . htmlspecialchars((string) (($state['ultimo_sync_em'] ?? '') !== '' ? $this->formatDate((string) $state['ultimo_sync_em'], 'd/m/Y H:i') : '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
+        echo '&nbsp; Modo usado: <strong>' . htmlspecialchars((string) (($state['last_sync_mode'] ?? '') !== '' ? $state['last_sync_mode'] : '-'), ENT_QUOTES, 'UTF-8') . '</strong>.';
+        echo '</div>';
+        echo '</div>';
+
+        if (!empty($diagnostics)) {
+            echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #d9e1ea;background:#fff;">';
+            echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Diagnostico da distribuicao</div>';
+            if (!empty($diagnostics['tested_at'])) {
+                echo '<div style="font-size:12px;color:#5b6776;margin-bottom:10px;">Ultimo teste em <strong>' . htmlspecialchars($this->formatDate((string) $diagnostics['tested_at'], 'd/m/Y H:i:s'), ENT_QUOTES, 'UTF-8') . '</strong>, partindo do NSU <strong>' . (int) ($diagnostics['initial_nsu'] ?? 0) . '</strong>.</div>';
+            }
+
+            $diagModes = [
+                'with_cnpj' => 'Consulta com CNPJ',
+                'without_cnpj' => 'Consulta sem CNPJ',
+            ];
+
+            foreach ($diagModes as $diagKey => $diagLabel) {
+                $diag = $diagnostics[$diagKey] ?? null;
+                if (!is_array($diag)) {
+                    continue;
+                }
+
+                echo '<div style="border:1px solid #eef2f7;background:#fbfcfe;padding:10px 12px;margin-bottom:10px;">';
+                echo '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px;">' . htmlspecialchars($diagLabel, ENT_QUOTES, 'UTF-8') . '</div>';
+                echo '<div style="font-size:12px;color:#5b6776;line-height:1.6;">';
+                echo 'Modo: <strong>' . htmlspecialchars((string) ($diag['mode'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
+                echo '&nbsp; CNPJ: <strong>' . htmlspecialchars((string) (($diag['cnpj_consulta'] ?? '') !== '' ? $diag['cnpj_consulta'] : '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
+                echo '&nbsp; Processados: <strong>' . (int) ($diag['processed_count'] ?? 0) . '</strong> ';
+                echo '&nbsp; Lotes: <strong>' . (int) ($diag['batch_count'] ?? 0) . '</strong> ';
+                echo '&nbsp; Respostas vazias: <strong>' . (int) ($diag['empty_response_count'] ?? 0) . '</strong> ';
+                echo '&nbsp; Ultimo NSU: <strong>' . (int) ($diag['ultimo_nsu'] ?? 0) . '</strong> ';
+                echo '&nbsp; Maior NSU: <strong>' . (int) ($diag['maior_nsu'] ?? 0) . '</strong>.';
+                echo '</div>';
+
+                if (!empty($diag['error_message'])) {
+                    echo '<div class="alert alert-danger" style="margin:10px 0 0 0;">' . htmlspecialchars((string) $diag['error_message'], ENT_QUOTES, 'UTF-8') . '</div>';
+                }
+
+                $alerts = is_array($diag['alertas'] ?? null) ? $diag['alertas'] : [];
+                if (!empty($alerts)) {
+                    echo '<div style="margin-top:8px;font-size:12px;color:#8a6d3b;"><strong>Alertas:</strong> ';
+                    $parts = [];
+                    foreach ($alerts as $message) {
+                        if (!is_array($message)) {
+                            continue;
+                        }
+                        $text = trim((string) (($message['mensagem'] ?? '') !== '' ? $message['mensagem'] : ($message['descricao'] ?? '')));
+                        if ($text !== '') {
+                            $parts[] = $text;
+                        }
+                    }
+                    echo htmlspecialchars(!empty($parts) ? implode(' | ', $parts) : '-', ENT_QUOTES, 'UTF-8');
+                    echo '</div>';
+                }
+
+                $errors = is_array($diag['errors'] ?? null) ? $diag['errors'] : [];
+                if (!empty($errors)) {
+                    echo '<div style="margin-top:8px;font-size:12px;color:#a94442;"><strong>Erros:</strong> ';
+                    $parts = [];
+                    foreach ($errors as $message) {
+                        if (!is_array($message)) {
+                            continue;
+                        }
+                        $text = trim((string) (($message['mensagem'] ?? '') !== '' ? $message['mensagem'] : ($message['descricao'] ?? '')));
+                        if ($text !== '') {
+                            $parts[] = $text;
+                        }
+                    }
+                    echo htmlspecialchars(!empty($parts) ? implode(' | ', $parts) : '-', ENT_QUOTES, 'UTF-8');
+                    echo '</div>';
+                }
+
+                if (!empty($diag['raw_response_summary'])) {
+                    echo '<div style="margin-top:8px;font-size:12px;color:#5b6776;word-break:break-word;overflow-wrap:anywhere;"><strong>Resumo bruto:</strong> ' . htmlspecialchars((string) $diag['raw_response_summary'], ENT_QUOTES, 'UTF-8') . '</div>';
+                }
+                echo '</div>';
+            }
+            echo '</div>';
+        }
+
+        $cards = [
+            ['label' => 'API no periodo', 'value' => (int) ($apiSummary['total_docs'] ?? 0), 'color' => '#176b46'],
+            ['label' => 'Local no periodo', 'value' => (int) ($localSummary['total_docs'] ?? 0), 'color' => '#23527c'],
+            ['label' => 'API sem local', 'value' => count((array) ($comparison['missing_local'] ?? [])), 'color' => '#b45f06'],
+            ['label' => 'Local sem API', 'value' => count((array) ($comparison['missing_api'] ?? [])), 'color' => '#a94442'],
+            ['label' => 'Correspondencias', 'value' => (int) ($comparison['matched_count'] ?? 0), 'color' => '#2e7d32'],
+        ];
+        echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">';
+        foreach ($cards as $card) {
+            echo '<div style="border:1px solid #d9e1ea;background:#fff;padding:12px 14px;">';
+            echo '<div style="font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;">' . htmlspecialchars((string) $card['label'], ENT_QUOTES, 'UTF-8') . '</div>';
+            echo '<div style="font-size:26px;line-height:1.1;font-weight:700;color:' . htmlspecialchars((string) $card['color'], ENT_QUOTES, 'UTF-8') . ';">' . (int) $card['value'] . '</div>';
+            echo '</div>';
+        }
+        echo '</div>';
+
+        echo '<div style="margin-bottom:16px;">';
+        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Documentos recebidos da API sem correspondente local</div>';
+        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
+        echo '<tr>';
+        echo '<th style="width:10%;">Data</th>';
+        echo '<th style="width:10%;">Tipo</th>';
+        echo '<th style="width:14%;">NSU</th>';
+        echo '<th style="width:16%;">Chave</th>';
+        echo '<th style="width:10%;">NFS-e</th>';
+        echo '<th style="width:14%;">Evento</th>';
+        echo '<th style="width:26%;">Chave de comparacao</th>';
+        echo '</tr>';
+        $missingLocal = (array) ($comparison['missing_local'] ?? []);
+        if (empty($missingLocal)) {
+            echo '<tr><td colspan="7" style="text-align:center;color:#666;">Nenhum documento da API ficou sem correspondente local no período.</td></tr>';
+        }
+        foreach ($missingLocal as $row) {
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars($this->formatDate((string) ($row['referencia_em'] ?? ''), 'd/m/Y H:i'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) ($row['tipo_documento'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . (int) ($row['nsu'] ?? 0) . '</td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) (($row['chave_acesso'] ?? '') !== '' ? $row['chave_acesso'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) (($row['numero_nf'] ?? '') !== '' ? $row['numero_nf'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) (($row['tipo_evento'] ?? '') !== '' ? $row['tipo_evento'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($row['_compare_key'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '</tr>';
+        }
+        echo '</table>';
+        echo '</div>';
+
+        echo '<div style="margin-bottom:16px;">';
+        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Historico local sem correspondente na API distribuida</div>';
+        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
+        echo '<tr>';
+        echo '<th style="width:10%;">Data</th>';
+        echo '<th style="width:10%;">Tipo</th>';
+        echo '<th style="width:16%;">Chave</th>';
+        echo '<th style="width:10%;">NFS-e</th>';
+        echo '<th style="width:12%;">Invoice</th>';
+        echo '<th style="width:20%;">Cliente</th>';
+        echo '<th style="width:22%;">Chave de comparacao</th>';
+        echo '</tr>';
+        $missingApi = (array) ($comparison['missing_api'] ?? []);
+        if (empty($missingApi)) {
+            echo '<tr><td colspan="7" style="text-align:center;color:#666;">Nenhum registro local ficou sem correspondente na API distribuida para o período.</td></tr>';
+        }
+        foreach ($missingApi as $row) {
+            $invoiceId = (int) ($row['invoiceid'] ?? 0);
+            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars($this->formatDate((string) ($row['_event_date'] ?? ''), 'd/m/Y H:i'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) ($row['tipo_registro'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) (($row['chave_acesso'] ?? '') !== '' ? $row['chave_acesso'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) (($row['numero_nf'] ?? '') !== '' ? $row['numero_nf'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($this->resolveClientName($row), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($row['_compare_key'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '</tr>';
+        }
+        echo '</table>';
         echo '</div>';
     }
 
@@ -1116,6 +1780,320 @@ final class ReportsController
         readfile($zipPath);
         @unlink($zipPath);
         exit;
+    }
+
+    private function ensureFiscalHistoryReady(): void
+    {
+        Module::migrator()->up();
+        (new FiscalHistoryRepository())->backfillCurrentStateIfNeeded();
+    }
+
+    private function resolveFiscalHistoryEventDate(array $row): string
+    {
+        $canceladoEm = trim((string) ($row['cancelado_em'] ?? ''));
+        if ($canceladoEm !== '') {
+            return $canceladoEm;
+        }
+
+        $emitidaEm = trim((string) ($row['emitida_em'] ?? ''));
+        if ($emitidaEm !== '') {
+            return $emitidaEm;
+        }
+
+        return (string) ($row['created_at'] ?? '');
+    }
+
+    private function buildApiAuditComparison(array $apiRows, array $localRows): array
+    {
+        $apiComparable = [];
+        foreach ($apiRows as $row) {
+            $type = strtoupper(trim((string) ($row['tipo_documento'] ?? '')));
+            if (!in_array($type, ['EMISSAO', 'CANCELAMENTO'], true)) {
+                continue;
+            }
+
+            $key = $this->buildApiAuditCompareKey(
+                $type,
+                (string) ($row['chave_acesso'] ?? ''),
+                (string) ($row['numero_nf'] ?? ''),
+                (string) ($row['referencia_em'] ?? '')
+            );
+            if ($key === '') {
+                continue;
+            }
+
+            $row['_compare_key'] = $key;
+            $apiComparable[$key] = $row;
+        }
+
+        $localComparable = [];
+        foreach ($localRows as $row) {
+            $type = strtoupper(trim((string) ($row['tipo_registro'] ?? '')));
+            if (!in_array($type, ['EMISSAO', 'CANCELAMENTO'], true)) {
+                continue;
+            }
+
+            $eventDate = $this->resolveFiscalHistoryEventDate($row);
+            $key = $this->buildApiAuditCompareKey(
+                $type,
+                (string) ($row['chave_acesso'] ?? ''),
+                (string) ($row['numero_nf'] ?? ''),
+                $eventDate
+            );
+            if ($key === '') {
+                continue;
+            }
+
+            $row['_compare_key'] = $key;
+            $row['_event_date'] = $eventDate;
+            $localComparable[$key] = $row;
+        }
+
+        $missingLocal = [];
+        foreach ($apiComparable as $key => $row) {
+            if (!isset($localComparable[$key])) {
+                $missingLocal[] = $row;
+            }
+        }
+
+        $missingApi = [];
+        foreach ($localComparable as $key => $row) {
+            if (!isset($apiComparable[$key])) {
+                $missingApi[] = $row;
+            }
+        }
+
+        usort($missingLocal, static function (array $a, array $b): int {
+            return strcmp((string) ($b['referencia_em'] ?? ''), (string) ($a['referencia_em'] ?? ''));
+        });
+        usort($missingApi, static function (array $a, array $b): int {
+            return strcmp((string) ($b['_event_date'] ?? ''), (string) ($a['_event_date'] ?? ''));
+        });
+
+        return [
+            'matched_count' => count(array_intersect(array_keys($apiComparable), array_keys($localComparable))),
+            'missing_local' => $missingLocal,
+            'missing_api' => $missingApi,
+        ];
+    }
+
+    private function buildApiAuditCompareKey(string $type, string $chaveAcesso, string $numeroNf, string $referenceDate): string
+    {
+        $type = strtoupper(trim($type));
+        $chaveAcesso = trim($chaveAcesso);
+        $numeroNf = trim($numeroNf);
+        $date = trim($referenceDate) !== '' ? substr(trim($referenceDate), 0, 10) : '';
+
+        if ($chaveAcesso !== '') {
+            return $type . '|CH|' . $chaveAcesso;
+        }
+        if ($numeroNf !== '') {
+            return $type . '|NF|' . $numeroNf . '|' . $date;
+        }
+        if ($date !== '') {
+            return $type . '|DT|' . $date;
+        }
+
+        return '';
+    }
+
+    private function buildXmlAuditData(string $selectedMonth): array
+    {
+        $config = (new ConfigRepository())->get();
+        $environment = trim((string) ($config['environment'] ?? ''));
+        $serie = trim((string) ($config['serie_dps'] ?? ''));
+
+        $storage = new StorageService();
+        $filesystem = $storage->listXmlFilesByMonth($selectedMonth, $environment, $serie);
+        $relativeDir = (string) ($filesystem['relative_dir'] ?? '');
+
+        $physicalFiles = [];
+        $cancelamentoFiles = [];
+        foreach ((array) ($filesystem['files'] ?? []) as $file) {
+            $relativePath = $this->normalizeAuditStoragePath((string) ($file['relative_path'] ?? ''));
+            if ($relativePath === '') {
+                continue;
+            }
+
+            $file['relative_path'] = $relativePath;
+            if ($this->isCancelamentoXmlFilename((string) ($file['filename'] ?? ''))) {
+                $cancelamentoFiles[$relativePath] = $file;
+            } else {
+                $physicalFiles[$relativePath] = $file;
+            }
+        }
+
+        $dbRows = $this->listXmlAuditDatabaseRows($relativeDir);
+        $dbRowsByPath = [];
+        $unexpectedStatusRows = [];
+        $missingReferenceRows = [];
+        $duplicateReferences = [];
+        $statusCounts = [];
+
+        foreach ($dbRows as $row) {
+            $normalizedPath = $this->normalizeAuditStoragePath((string) ($row['xml_path'] ?? ''));
+            if ($normalizedPath === '') {
+                continue;
+            }
+
+            $row['xml_path_normalized'] = $normalizedPath;
+            $status = strtoupper(trim((string) ($row['status'] ?? '')));
+            $statusKey = $status !== '' ? $status : 'SEM_STATUS';
+            $statusCounts[$statusKey] = (int) ($statusCounts[$statusKey] ?? 0) + 1;
+            $dbRowsByPath[$normalizedPath][] = $row;
+
+            if (!in_array($status, ['EMITIDA', 'CANCELADA'], true)) {
+                $unexpectedStatusRows[] = $row;
+            }
+        }
+
+        $orphanFiles = [];
+        foreach ($physicalFiles as $relativePath => $file) {
+            if (!isset($dbRowsByPath[$relativePath])) {
+                $orphanFiles[] = $file;
+            }
+        }
+
+        foreach ($dbRowsByPath as $relativePath => $rows) {
+            if (!isset($physicalFiles[$relativePath])) {
+                foreach ($rows as $row) {
+                    $missingReferenceRows[] = $row;
+                }
+            }
+
+            if (count($rows) > 1) {
+                $duplicateReferences[] = [
+                    'xml_path' => $relativePath,
+                    'count' => count($rows),
+                    'rows' => $rows,
+                ];
+            }
+        }
+
+        ksort($statusCounts, SORT_NATURAL | SORT_FLAG_CASE);
+
+        usort($unexpectedStatusRows, static function (array $a, array $b): int {
+            return strcmp((string) ($b['nfse_updated_at'] ?? $b['emitida_em'] ?? ''), (string) ($a['nfse_updated_at'] ?? $a['emitida_em'] ?? ''));
+        });
+        usort($missingReferenceRows, static function (array $a, array $b): int {
+            return strcmp((string) ($b['nfse_updated_at'] ?? $b['emitida_em'] ?? ''), (string) ($a['nfse_updated_at'] ?? $a['emitida_em'] ?? ''));
+        });
+        usort($orphanFiles, static function (array $a, array $b): int {
+            return strcmp((string) ($b['modified_at'] ?? ''), (string) ($a['modified_at'] ?? ''));
+        });
+        usort($duplicateReferences, static function (array $a, array $b): int {
+            return strcmp((string) ($a['xml_path'] ?? ''), (string) ($b['xml_path'] ?? ''));
+        });
+
+        return [
+            'relative_dir' => $relativeDir,
+            'environment_label' => $environment !== '' ? $environment : 'padrao',
+            'serie_label' => $serie !== '' ? $serie : 'sem-serie',
+            'physical_count' => count($physicalFiles) + count($cancelamentoFiles),
+            'emissao_file_count' => count($physicalFiles),
+            'cancelamento_file_count' => count($cancelamentoFiles),
+            'db_reference_count' => count($dbRowsByPath),
+            'orphan_count' => count($orphanFiles),
+            'missing_reference_count' => count($missingReferenceRows),
+            'unexpected_status_count' => count($unexpectedStatusRows),
+            'duplicate_reference_count' => count($duplicateReferences),
+            'status_counts' => $statusCounts,
+            'orphan_files' => $orphanFiles,
+            'cancelamento_files' => array_values($cancelamentoFiles),
+            'missing_reference_rows' => $missingReferenceRows,
+            'unexpected_status_rows' => $unexpectedStatusRows,
+            'duplicate_references' => $duplicateReferences,
+        ];
+    }
+
+    private function listXmlAuditDatabaseRows(string $relativeDir): array
+    {
+        if ($relativeDir === '') {
+            return [];
+        }
+
+        $rows = [];
+        $query = Capsule::table('mod_opennfse_notas as n')
+            ->join('tblclients as c', 'c.id', '=', 'n.userid')
+            ->select([
+                'n.invoiceid',
+                'n.userid',
+                'n.numero_nf',
+                'n.status',
+                'n.emitida_em',
+                'n.cancelado_em',
+                'n.xml_path',
+                'n.updated_at as nfse_updated_at',
+                'c.companyname',
+                'c.firstname',
+                'c.lastname',
+            ])
+            ->whereNotNull('n.xml_path')
+            ->where('n.xml_path', '<>', '')
+            ->where(static function ($where) use ($relativeDir) {
+                $where->where('n.xml_path', 'like', $relativeDir . '/%')
+                    ->orWhere('n.xml_path', 'like', 'attachments/' . $relativeDir . '/%');
+            })
+            ->orderByRaw('COALESCE(n.emitida_em, n.updated_at) DESC');
+
+        foreach ($query->get() as $row) {
+            $rows[] = (array) $row;
+        }
+
+        return $rows;
+    }
+
+    private function normalizeAuditStoragePath(string $path): string
+    {
+        $path = ltrim(str_replace('\\', '/', trim($path)), '/');
+        if (strpos($path, 'attachments/') === 0) {
+            $path = ltrim(substr($path, strlen('attachments/')), '/');
+        }
+
+        return $path;
+    }
+
+    private function isCancelamentoXmlFilename(string $filename): bool
+    {
+        return strpos(strtolower(trim($filename)), 'cancelamento_nfse_') === 0;
+    }
+
+    private function buildXmlAuditStatusSummary(array $statusCounts): string
+    {
+        if (empty($statusCounts)) {
+            return '';
+        }
+
+        $parts = [];
+        foreach ($statusCounts as $status => $count) {
+            $parts[] = $status . ': ' . (int) $count;
+        }
+
+        return implode(' | ', $parts);
+    }
+
+    private function getXmlAuditDefaultMonth(): string
+    {
+        try {
+            return (new \DateTimeImmutable('first day of last month'))->format('Y-m');
+        } catch (\Throwable $e) {
+            return date('Y-m');
+        }
+    }
+
+    private function formatAuditBytes(int $bytes): string
+    {
+        if ($bytes < 1024) {
+            return $bytes . ' B';
+        }
+        if ($bytes < 1048576) {
+            return number_format($bytes / 1024, 1, ',', '.') . ' KB';
+        }
+        if ($bytes < 1073741824) {
+            return number_format($bytes / 1048576, 1, ',', '.') . ' MB';
+        }
+
+        return number_format($bytes / 1073741824, 1, ',', '.') . ' GB';
     }
 
     private function getAuditoriaActiveGatewayMap(): array

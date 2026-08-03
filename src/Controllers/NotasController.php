@@ -205,7 +205,7 @@ final class NotasController
             }
             echo '<td>' . htmlspecialchars($emitidaEm, ENT_QUOTES, 'UTF-8') . '</td>';
             echo '<td>' . htmlspecialchars($updated, ENT_QUOTES, 'UTF-8') . '</td>';
-            if (trim($erroApi) === '') {
+            if (!in_array($status, ['ERRO', 'REJEITADA'], true) || trim($erroApi) === '') {
                 echo '<td style="word-break:break-word;overflow-wrap:anywhere;">-</td>';
             } else {
                 $short = $truncateError($erroApi);
