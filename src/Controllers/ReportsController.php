@@ -8,6 +8,7 @@ use OpenNfse\Exceptions\NfseModuleException;
 use OpenNfse\Module;
 use OpenNfse\Repositories\ApiAuditRepository;
 use OpenNfse\Repositories\ConfigRepository;
+use OpenNfse\Repositories\DpsApiAuditRepository;
 use OpenNfse\Repositories\FiscalHistoryRepository;
 use OpenNfse\Repositories\GroupServiceCodeRepository;
 use OpenNfse\Repositories\NotaRepository;
@@ -19,6 +20,7 @@ use OpenNfse\Repositories\WhmcsInvoiceRepository;
 use OpenNfse\Repositories\WhmcsPaymentGatewayRepository;
 use OpenNfse\Services\CryptoService;
 use OpenNfse\Services\ApiAuditService;
+use OpenNfse\Services\DpsApiAuditService;
 use OpenNfse\Services\InvoiceEmailService;
 use OpenNfse\Services\NfseService;
 use OpenNfse\Services\QueueErrorClassifierService;
@@ -66,6 +68,7 @@ final class ReportsController
     public function showRelatorios(): void
     {
         $active = trim((string) ($_GET['tab'] ?? 'emitidas'));
+        $isAjaxRequest = (string) ($_REQUEST['ajax'] ?? '') === '1';
         $tabMeta = [
             'emitidas' => [
                 'label' => 'NFS-e Emitidas',
@@ -95,6 +98,13 @@ final class ReportsController
                 'badge_color' => '#6b21a8',
                 'summary' => 'Preserva os documentos e eventos fiscais da invoice ao longo do tempo, inclusive emissões, cancelamentos e snapshots de migracao.',
             ],
+            'auditoria_api_dps' => [
+                'label' => 'Auditoria API DPS',
+                'badge' => 'API',
+                'badge_bg' => '#eaf7f1',
+                'badge_color' => '#176b46',
+                'summary' => 'Confere as DPS do período diretamente na API e verifica lacunas na sequência numérica do emissor.',
+            ],
             'cancelamentos' => [
                 'label' => 'Cancelamentos',
                 'badge' => 'Auditoria',
@@ -123,6 +133,13 @@ final class ReportsController
         }
         if (!isset($allowed[$active])) {
             $active = 'emitidas';
+        }
+
+        // Requests AJAX da auditoria DPS precisam sair antes do layout completo
+        // para evitar contaminar a resposta JSON com o HTML do módulo.
+        if ($isAjaxRequest && $active === 'auditoria_api_dps') {
+            $this->showRelatorioAuditoriaApiDps(true);
+            return;
         }
 
         Module::ui()->renderHeader('Relatórios - OpenNFS-e');
@@ -185,6 +202,8 @@ final class ReportsController
             $this->showRelatorioXmlAuditoria(true);
         } elseif ($active === 'historico_fiscal') {
             $this->showRelatorioHistoricoFiscal(true);
+        } elseif ($active === 'auditoria_api_dps') {
+            $this->showRelatorioAuditoriaApiDps(true);
         } elseif ($active === 'auditoria_api') {
             $this->showRelatorioAuditoriaApi(true);
         } elseif ($active === 'logs') {
@@ -1160,6 +1179,451 @@ final class ReportsController
         }
         echo '</div>';
         echo '</div>';
+    }
+
+    public function showRelatorioAuditoriaApiDps(bool $embedded = false): void
+    {
+        if (!$embedded) {
+            $this->redirectRelatorios('auditoria_api_dps');
+        }
+
+        $this->ensureFiscalHistoryReady();
+
+        $requestedMonth = trim((string) ($_REQUEST['mes'] ?? ''));
+        $defaultMonth = $this->getXmlAuditDefaultMonth();
+        [$selectedMonth] = $this->resolveAuditoriaMonthRange($requestedMonth !== '' ? $requestedMonth : $defaultMonth);
+        $dpsPage = max(1, (int) ($_REQUEST['dps_page'] ?? 1));
+        $gapPage = max(1, (int) ($_REQUEST['gap_page'] ?? 1));
+        $runId = (int) ($_REQUEST['run_id'] ?? 0);
+        $startAudit = (string) ($_REQUEST['start_auditoria'] ?? '') === '1';
+        $action = trim((string) ($_REQUEST['dps_audit_action'] ?? ''));
+        $isAjax = (string) ($_REQUEST['ajax'] ?? '') === '1';
+        $service = new DpsApiAuditService();
+        $repo = new DpsApiAuditRepository();
+
+        if ($isAjax && $action === 'process_batch') {
+            header('Content-Type: application/json; charset=UTF-8');
+            try {
+                $payload = $service->processRunBatch($runId, 25);
+                echo json_encode(['success' => true, 'payload' => $payload], JSON_UNESCAPED_UNICODE);
+            } catch (\Throwable $e) {
+                http_response_code(500);
+                echo json_encode([
+                    'success' => false,
+                    'error' => $e->getMessage(),
+                    'payload' => $service->getRunPayload($runId),
+                ], JSON_UNESCAPED_UNICODE);
+            }
+            exit;
+        }
+
+        $auditError = null;
+        if ($startAudit) {
+            try {
+                $run = $service->createRun($selectedMonth);
+                $runId = (int) ($run['id'] ?? 0);
+            } catch (\Throwable $e) {
+                $auditError = $e->getMessage();
+            }
+        }
+
+        $run = $runId > 0 ? $repo->findRun($runId) : null;
+        if ($run !== null && (string) ($run['audit_month'] ?? '') !== $selectedMonth) {
+            $run = null;
+            $runId = 0;
+        }
+        if ($run === null) {
+            $run = $repo->findLatestRunByMonth($selectedMonth);
+        }
+        if ($run !== null) {
+            $runId = (int) ($run['id'] ?? 0);
+        }
+
+        echo '<form method="get" action="addonmodules.php">';
+        echo '<input type="hidden" name="module" value="OpenNfse" />';
+        echo '<input type="hidden" name="action" value="relatorios" />';
+        echo '<input type="hidden" name="tab" value="auditoria_api_dps" />';
+        if ($runId > 0 && is_array($run) && (string) ($run['audit_month'] ?? '') === $selectedMonth) {
+            echo '<input type="hidden" name="run_id" value="' . $runId . '" />';
+        }
+        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
+        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
+        echo '<div style="min-width:180px;">';
+        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Mês de referência</div>';
+        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:180px;" />';
+        echo '</div>';
+        echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
+        echo '<button type="submit" class="btn btn-xs btn-default">Atualizar</button>';
+        echo '<button type="submit" name="start_auditoria" value="1" class="btn btn-xs btn-success">Iniciar auditoria assíncrona</button>';
+        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria_api_dps">Limpar</a>';
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+        echo '</form>';
+
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #d9e1ea;background:#fbfcfe;">';
+        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:6px;">Por que esta função existe</div>';
+        echo '<div style="font-size:12px;color:#5b6776;line-height:1.6;">';
+        echo 'Esta auditoria existe para conferir se as DPS geradas localmente foram reconhecidas pela API, identificar divergências entre a chave local e a chave retornada pela consulta oficial, e apontar possíveis lacunas na sequência da DPS que indiquem tentativas perdidas, falhas de persistência ou saltos sem evidência técnica.';
+        echo '</div>';
+        echo '</div>';
+
+        if ($auditError !== null) {
+            echo '<div class="alert alert-danger" style="margin-bottom:14px;">Falha ao executar a auditoria API por DPS: ' . htmlspecialchars($auditError, ENT_QUOTES, 'UTF-8') . '</div>';
+            return;
+        }
+
+        if (!is_array($run)) {
+            echo '<div class="alert alert-info" style="margin-bottom:14px;">Selecione o mês desejado e clique em <strong>Iniciar auditoria assíncrona</strong> para criar uma execução em lotes da conferência por DPS.</div>';
+            return;
+        }
+
+        $statusCounts = [
+            'OK' => (int) ($run['ok_count'] ?? 0),
+            'LOCAL_SEM_CHAVE' => (int) ($run['local_sem_chave_count'] ?? 0),
+            'SEM_CHAVE_API' => (int) ($run['sem_chave_api_count'] ?? 0),
+            'NAO_ENCONTRADA' => (int) ($run['nao_encontrada_count'] ?? 0),
+            'CHAVE_DIVERGENTE' => (int) ($run['chave_divergente_count'] ?? 0),
+            'ERRO_API' => (int) ($run['erro_api_count'] ?? 0),
+            'SEM_ID_DPS' => (int) ($run['sem_id_dps_count'] ?? 0),
+        ];
+        $statusCards = [
+            ['label' => 'DPS locais', 'value' => (int) ($run['total_items'] ?? 0), 'color' => '#23527c'],
+            ['label' => 'Processadas', 'value' => (int) ($run['processed_items'] ?? 0), 'color' => '#176b46'],
+            ['label' => 'OK', 'value' => (int) ($statusCounts['OK'] ?? 0), 'color' => '#2e7d32'],
+            ['label' => 'Sem chave local', 'value' => (int) ($statusCounts['LOCAL_SEM_CHAVE'] ?? 0), 'color' => '#176b46'],
+            ['label' => 'Sem chave na API', 'value' => (int) ($statusCounts['SEM_CHAVE_API'] ?? 0), 'color' => '#8a6d3b'],
+            ['label' => 'Não encontradas', 'value' => (int) ($statusCounts['NAO_ENCONTRADA'] ?? 0), 'color' => '#b45f06'],
+            ['label' => 'Divergentes', 'value' => (int) ($statusCounts['CHAVE_DIVERGENTE'] ?? 0), 'color' => '#a94442'],
+            ['label' => 'Erros API', 'value' => (int) ($statusCounts['ERRO_API'] ?? 0), 'color' => '#8e44ad'],
+            ['label' => 'Sem ID DPS', 'value' => (int) ($statusCounts['SEM_ID_DPS'] ?? 0), 'color' => '#6b7280'],
+        ];
+        echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">';
+        foreach ($statusCards as $card) {
+            echo '<div style="border:1px solid #d9e1ea;background:#fff;padding:12px 14px;">';
+            echo '<div style="font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;">' . htmlspecialchars((string) $card['label'], ENT_QUOTES, 'UTF-8') . '</div>';
+            echo '<div style="font-size:26px;line-height:1.1;font-weight:700;color:' . htmlspecialchars((string) $card['color'], ENT_QUOTES, 'UTF-8') . ';">' . (int) $card['value'] . '</div>';
+            echo '</div>';
+        }
+        echo '</div>';
+
+        $status = (string) ($run['status'] ?? 'pending');
+        $progressPercent = (int) ($run['total_items'] ?? 0) > 0
+            ? round((((int) ($run['processed_items'] ?? 0)) / max(1, (int) ($run['total_items'] ?? 0))) * 100)
+            : 100;
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #d9e1ea;background:#fff;">';
+        echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px;">';
+        echo '<div style="font-size:13px;font-weight:700;color:#334155;">Execução assíncrona</div>';
+        echo '<div style="font-size:12px;color:#5b6776;">Run ID <strong>' . $runId . '</strong> &nbsp; Status <strong id="dps-audit-status-label">' . htmlspecialchars($status, ENT_QUOTES, 'UTF-8') . '</strong></div>';
+        echo '</div>';
+        echo '<div style="height:10px;background:#eef2f7;border-radius:999px;overflow:hidden;margin-bottom:8px;">';
+        echo '<div id="dps-audit-progress-bar" style="height:10px;background:#176b46;width:' . $progressPercent . '%;"></div>';
+        echo '</div>';
+        echo '<div id="dps-audit-progress-text" style="font-size:12px;color:#5b6776;">' . (int) ($run['processed_items'] ?? 0) . ' de ' . (int) ($run['total_items'] ?? 0) . ' DPS processadas (' . $progressPercent . '%).</div>';
+        $runtimeHintDisplay = ($status === 'running' || $status === 'pending') ? 'block' : 'none';
+        $lastRunError = trim((string) ($run['last_error'] ?? ''));
+        if ($status === 'running' || $status === 'pending') {
+            echo '<div id="dps-audit-runtime-hint" style="margin-top:6px;font-size:12px;color:#8a6d3b;">Processamento em andamento por lotes curtos. Mantenha esta página aberta até a conclusão, pois os próximos lotes e as retentativas automáticas dependem desta aba ativa no navegador.</div>';
+        }
+        echo '<div id="dps-audit-retry-state" style="display:' . $runtimeHintDisplay . ';margin-top:6px;font-size:12px;color:#8a6d3b;"></div>';
+        echo '<div id="dps-audit-last-error" style="display:' . ($lastRunError !== '' ? 'block' : 'none') . ';margin-top:8px;padding:10px 12px;border:1px solid #f2d6d6;background:#fff8f8;color:#8f2d2d;font-size:12px;line-height:1.5;white-space:pre-wrap;">' . htmlspecialchars($lastRunError, ENT_QUOTES, 'UTF-8') . '</div>';
+        echo '</div>';
+
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #d9e1ea;background:#fff;">';
+        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:6px;">Conferência da sequência DPS</div>';
+        echo '<div style="font-size:12px;color:#5b6776;line-height:1.6;">';
+        echo 'Primeiro número no período: <strong>' . htmlspecialchars((string) (($run['first_number'] ?? null) !== null ? $run['first_number'] : '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
+        echo '&nbsp; Último número no período: <strong>' . htmlspecialchars((string) (($run['last_number'] ?? null) !== null ? $run['last_number'] : '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
+        echo '&nbsp; Lacunas: <strong>' . (int) ($run['gap_count'] ?? 0) . '</strong> ';
+        echo '&nbsp; Último sequencial atual: <strong>' . htmlspecialchars((string) (($run['current_sequence_last_number'] ?? null) !== null ? $run['current_sequence_last_number'] : '-'), ENT_QUOTES, 'UTF-8') . '</strong>.';
+        echo '</div>';
+        echo '</div>';
+
+        $statusLabelMap = [
+            'OK' => ['OK', '#e8f5e9', '#2e7d32'],
+            'DIVERGENCIA_CANCELADA' => ['Diverg. cancelada', '#eef6ff', '#23527c'],
+            'DIVERGENCIA_REEMITIDA' => ['Diverg. reemitida', '#eef6ff', '#23527c'],
+            'LOCAL_SEM_CHAVE' => ['Local sem chave', '#eaf7f1', '#176b46'],
+            'SEM_CHAVE_API' => ['API sem chave', '#fff8e1', '#8a6d3b'],
+            'NAO_ENCONTRADA' => ['Não encontrada', '#fff3e0', '#b45f06'],
+            'CHAVE_DIVERGENTE' => ['Chave divergente', '#fdecec', '#a94442'],
+            'ERRO_API' => ['Erro API', '#f3e8ff', '#8e44ad'],
+            'SEM_ID_DPS' => ['Sem ID DPS', '#eef2f7', '#6b7280'],
+        ];
+
+        $dpsPerPage = 100;
+        $dpsTotal = $repo->countResults($runId, 'DPS');
+        $dpsPages = max(1, (int) ceil($dpsTotal / $dpsPerPage));
+        if ($dpsPage > $dpsPages) {
+            $dpsPage = $dpsPages;
+        }
+        $dpsRows = $repo->listResults($runId, 'DPS', $dpsPerPage, ($dpsPage - 1) * $dpsPerPage);
+
+        echo '<div style="margin-bottom:16px;">';
+        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Conferência local vs API por DPS</div>';
+        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
+        echo '<tr>';
+        echo '<th style="width:10%;">Data</th>';
+        echo '<th style="width:10%;">Invoice</th>';
+        echo '<th style="width:18%;">Cliente</th>';
+        echo '<th style="width:17%;">ID DPS</th>';
+        echo '<th style="width:8%;">Seq.</th>';
+        echo '<th style="width:10%;">NFS-e</th>';
+        echo '<th style="width:10%;">Status</th>';
+        echo '<th style="width:17%;">Chave local / API</th>';
+        echo '</tr>';
+        if (empty($dpsRows)) {
+            echo '<tr><td colspan="8" style="text-align:center;color:#666;">Nenhuma emissão com DPS foi encontrada no período selecionado.</td></tr>';
+        }
+        foreach ($dpsRows as $row) {
+            $invoiceId = (int) ($row['invoiceid'] ?? 0);
+            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
+            $statusKey = (string) ($row['audit_status'] ?? 'SEM_ID_DPS');
+            $statusMeta = $statusLabelMap[$statusKey] ?? [$statusKey, '#eef2f7', '#5f6b7a'];
+            $eventDate = (string) (($row['event_date'] ?? '') !== '' ? $row['event_date'] : (($row['created_at'] ?? '') !== '' ? $row['created_at'] : ''));
+            $localChave = trim((string) ($row['local_chave_acesso'] ?? ''));
+            $apiChave = trim((string) ($row['api_chave_acesso'] ?? ''));
+
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars($this->formatDate($eventDate, 'd/m/Y H:i'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($this->resolveClientName($row), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) (($row['id_dps'] ?? '') !== '' ? $row['id_dps'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) (($row['numero_dps'] ?? null) !== null ? $row['numero_dps'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) (($row['numero_nf'] ?? '') !== '' ? $row['numero_nf'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td><span style="display:inline-block;padding:2px 8px;border-radius:999px;background:' . htmlspecialchars((string) $statusMeta[1], ENT_QUOTES, 'UTF-8') . ';color:' . htmlspecialchars((string) $statusMeta[2], ENT_QUOTES, 'UTF-8') . ';font-size:10px;font-weight:700;">' . htmlspecialchars((string) $statusMeta[0], ENT_QUOTES, 'UTF-8') . '</span><div style="margin-top:4px;color:#6b7280;">' . htmlspecialchars((string) ($row['audit_message'] ?? ''), ENT_QUOTES, 'UTF-8') . '</div></td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">Local: ' . htmlspecialchars($localChave !== '' ? $localChave : '-', ENT_QUOTES, 'UTF-8') . '<br />API: ' . htmlspecialchars($apiChave !== '' ? $apiChave : '-', ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '</tr>';
+        }
+        echo '</table>';
+        $baseDpsParams = [
+            'module' => 'OpenNfse',
+            'action' => 'relatorios',
+            'tab' => 'auditoria_api_dps',
+            'mes' => $selectedMonth,
+            'run_id' => $runId,
+            'gap_page' => $gapPage,
+        ];
+        echo '<div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">';
+        $dpsFirst = $dpsTotal > 0 ? (($dpsPage - 1) * $dpsPerPage + 1) : 0;
+        $dpsLast = min(($dpsPage - 1) * $dpsPerPage + count($dpsRows), $dpsTotal);
+        echo '<div>Exibindo <strong>' . $dpsFirst . '-' . $dpsLast . '</strong> de <strong>' . $dpsTotal . '</strong> DPS</div>';
+        echo '<div>';
+        if ($dpsPage > 1) {
+            $prevParams = $baseDpsParams;
+            $prevParams['dps_page'] = $dpsPage - 1;
+            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a> ';
+        }
+        echo '<span style="margin:0 6px;">Página ' . $dpsPage . ' / ' . $dpsPages . '</span>';
+        if ($dpsPage < $dpsPages) {
+            $nextParams = $baseDpsParams;
+            $nextParams['dps_page'] = $dpsPage + 1;
+            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
+        }
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+
+        $gapPerPage = 100;
+        $gapTotal = $repo->countResults($runId, 'GAP');
+        $gapPages = max(1, (int) ceil($gapTotal / $gapPerPage));
+        if ($gapPage > $gapPages) {
+            $gapPage = $gapPages;
+        }
+        $gapRows = $repo->listResults($runId, 'GAP', $gapPerPage, ($gapPage - 1) * $gapPerPage);
+        echo '<div style="margin-bottom:16px;">';
+        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Lacunas na sequência DPS</div>';
+        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
+        echo '<tr>';
+        echo '<th style="width:10%;">Seq.</th>';
+        echo '<th style="width:24%;">ID DPS esperado</th>';
+        echo '<th style="width:18%;">Classificação</th>';
+        echo '<th style="width:12%;">Evidências</th>';
+        echo '<th style="width:36%;">Leitura</th>';
+        echo '</tr>';
+        if (empty($gapRows)) {
+            echo '<tr><td colspan="5" style="text-align:center;color:#666;">Nenhuma lacuna foi identificada na sequência das DPS do período.</td></tr>';
+        }
+        foreach ($gapRows as $row) {
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars((string) ($row['numero_dps'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) (($row['id_dps'] ?? '') !== '' ? $row['id_dps'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . htmlspecialchars((string) ($row['evidence_classification'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . (int) ($row['evidence_count'] ?? 0) . '</td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($row['audit_message'] ?? ''), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '</tr>';
+        }
+        echo '</table>';
+        $baseGapParams = [
+            'module' => 'OpenNfse',
+            'action' => 'relatorios',
+            'tab' => 'auditoria_api_dps',
+            'mes' => $selectedMonth,
+            'run_id' => $runId,
+            'dps_page' => $dpsPage,
+        ];
+        echo '<div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">';
+        $gapFirst = $gapTotal > 0 ? (($gapPage - 1) * $gapPerPage + 1) : 0;
+        $gapLast = min(($gapPage - 1) * $gapPerPage + count($gapRows), $gapTotal);
+        echo '<div>Exibindo <strong>' . $gapFirst . '-' . $gapLast . '</strong> de <strong>' . $gapTotal . '</strong> lacunas</div>';
+        echo '<div>';
+        if ($gapPage > 1) {
+            $prevParams = $baseGapParams;
+            $prevParams['gap_page'] = $gapPage - 1;
+            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a> ';
+        }
+        echo '<span style="margin:0 6px;">Página ' . $gapPage . ' / ' . $gapPages . '</span>';
+        if ($gapPage < $gapPages) {
+            $nextParams = $baseGapParams;
+            $nextParams['gap_page'] = $gapPage + 1;
+            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
+        }
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+
+        if ($status === 'running' || $status === 'pending') {
+            $ajaxBaseUrl = 'addonmodules.php?' . http_build_query([
+                'module' => 'OpenNfse',
+                'action' => 'relatorios',
+                'tab' => 'auditoria_api_dps',
+                'mes' => $selectedMonth,
+                'run_id' => $runId,
+                'ajax' => 1,
+                'dps_audit_action' => 'process_batch',
+            ], '', '&', PHP_QUERY_RFC3986);
+            $reloadUrl = 'addonmodules.php?' . http_build_query([
+                'module' => 'OpenNfse',
+                'action' => 'relatorios',
+                'tab' => 'auditoria_api_dps',
+                'mes' => $selectedMonth,
+                'run_id' => $runId,
+            ], '', '&', PHP_QUERY_RFC3986);
+            echo "<script>
+(() => {
+  const progressBar = document.getElementById('dps-audit-progress-bar');
+  const progressText = document.getElementById('dps-audit-progress-text');
+  const statusLabel = document.getElementById('dps-audit-status-label');
+  const runtimeHint = document.getElementById('dps-audit-runtime-hint');
+  const retryState = document.getElementById('dps-audit-retry-state');
+  const lastErrorBox = document.getElementById('dps-audit-last-error');
+  const ajaxBaseUrl = " . json_encode($ajaxBaseUrl) . ";
+  const reloadUrl = " . json_encode($reloadUrl) . ";
+  let retryCount = 0;
+  let inFlight = false;
+  let retryTimer = null;
+
+  function setLastError(detail) {
+    if (!lastErrorBox) {
+      return;
+    }
+    if (!detail) {
+      lastErrorBox.style.display = 'none';
+      lastErrorBox.textContent = '';
+      return;
+    }
+    lastErrorBox.style.display = 'block';
+    lastErrorBox.textContent = detail;
+  }
+
+  function scheduleRetry(kind, detail, delayMs) {
+    retryCount += 1;
+    if (runtimeHint) {
+      runtimeHint.textContent = kind === 'backend'
+        ? 'O lote retornou erro de aplicação. A retentativa automática permanece ativa.'
+        : 'Falha de comunicação detectada. A retentativa automática permanece ativa.';
+    }
+    if (retryState) {
+      retryState.style.display = 'block';
+      retryState.textContent = 'Tentativa automática #' + retryCount + ' agendada para ' + (delayMs / 1000) + 's. A execução continuará do ponto já persistido.';
+    }
+    setLastError(detail || 'Erro sem detalhe retornado.');
+    window.clearTimeout(retryTimer);
+    retryTimer = window.setTimeout(tick, delayMs);
+  }
+
+  function buildHttpDetail(response, bodyText) {
+    const statusText = response && response.status ? 'HTTP ' + response.status + (response.statusText ? ' ' + response.statusText : '') : 'Resposta HTTP inválida';
+    const snippet = String(bodyText || '').trim();
+    if (!snippet) {
+      return statusText;
+    }
+    return statusText + ': ' + snippet.slice(0, 800);
+  }
+
+  function applyPayload(payload) {
+    if (!payload || typeof payload !== 'object') {
+      return;
+    }
+    if (statusLabel) {
+      statusLabel.textContent = payload.status || 'running';
+    }
+    if (progressBar) {
+      progressBar.style.width = String(payload.progress_percent || 0) + '%';
+    }
+    if (progressText) {
+      progressText.textContent = String(payload.processed_items || 0) + ' de ' + String(payload.total_items || 0) + ' DPS processadas (' + String(payload.progress_percent || 0) + '%).';
+    }
+    if (payload.last_error) {
+      setLastError(payload.last_error);
+    } else if (retryCount === 0) {
+      setLastError('');
+    }
+  }
+
+  async function tick() {
+    if (inFlight) {
+      return;
+    }
+    inFlight = true;
+    try {
+      const response = await fetch(ajaxBaseUrl + '&_ts=' + Date.now(), { credentials: 'same-origin' });
+      const rawText = await response.text();
+      let data = null;
+      try {
+        data = rawText !== '' ? JSON.parse(rawText) : null;
+      } catch (parseError) {
+        throw new Error('Resposta inválida ao processar o lote. ' + buildHttpDetail(response, rawText));
+      }
+      if (!response.ok) {
+        applyPayload(data && data.payload ? data.payload : null);
+        scheduleRetry('backend', (data && data.error) ? String(data.error) : buildHttpDetail(response, rawText), 2500);
+        return;
+      }
+      if (!data || typeof data !== 'object') {
+        throw new Error('Resposta vazia ao processar o lote da auditoria.');
+      }
+      if (!data.success) {
+        applyPayload(data.payload || null);
+        scheduleRetry('backend', data.error || 'Falha ao processar um lote da auditoria.', 2500);
+        return;
+      }
+      const payload = data.payload || {};
+      retryCount = 0;
+      if (retryState) {
+        retryState.textContent = '';
+        retryState.style.display = 'none';
+      }
+      if (runtimeHint) {
+        runtimeHint.textContent = 'Processamento em andamento por lotes curtos. Mantenha esta página aberta até a conclusão, pois os próximos lotes e as retentativas automáticas dependem desta aba ativa no navegador.';
+      }
+      setLastError(payload.last_error || '');
+      applyPayload(payload);
+      if (payload.finished) {
+        window.location.href = reloadUrl;
+        return;
+      }
+      retryTimer = window.setTimeout(tick, 600);
+    } catch (error) {
+      scheduleRetry('communication', error && error.message ? error.message : String(error), 2500);
+    } finally {
+      inFlight = false;
+    }
+  }
+  retryTimer = window.setTimeout(tick, 300);
+})();
+</script>";
+        }
     }
 
     public function showRelatorioAuditoriaApi(bool $embedded = false): void

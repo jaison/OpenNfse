@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.10",
+  "latest_version": "0.1.11",
   "release_date": "2026-08-05",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Ajustes no fluxo fiscal e de auditoria: retentativa segura da CONSULTA_DPS em erros 503 sem reemissao indevida, cancelamento isolado de XML orfao com resolucao de chave por DPS, conciliacao da Auditoria XML com o historico fiscal e inclusao dos XMLs de cancelamento na exportacao por competencia."
+  "message": "Melhorias na Auditoria API por DPS: execucao assincrona em lotes com retentativa e detalhamento de erros, conciliacao correta da chave local com historico/estado atual e reclassificacao de divergencias explicadas por cancelamento ou reemissao."
 }

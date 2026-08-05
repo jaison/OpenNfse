@@ -294,6 +294,14 @@ final class NfseService
                 $update['status'] = 'PROCESSANDO';
             }
             $notaRepo->upsert($update);
+            $notaAtual = $notaRepo->findByInvoiceId($invoiceId);
+            if ($notaAtual !== null) {
+                if ((string) ($notaAtual['status'] ?? '') === 'EMITIDA') {
+                    (new FiscalHistoryRepository())->recordEmission($notaAtual, 'consulta');
+                } else {
+                    (new FiscalHistoryRepository())->recordSnapshot($notaAtual, 'consulta');
+                }
+            }
             if ($statusBefore === 'EMITIDA') {
                 (new InvoiceHistoryService())->append($invoiceId, 'Consulta de status localizou e salvou a chave da NFS-e.');
             } elseif ($statusBefore !== 'PROCESSANDO') {
