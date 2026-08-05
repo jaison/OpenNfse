@@ -238,8 +238,13 @@ final class QueueService
 
         $status = trim((string) ($nota['status'] ?? ''));
         $chave = trim((string) ($nota['chave_acesso'] ?? ''));
+        $idDps = trim((string) ($nota['id_dps'] ?? ''));
 
         if ($status === 'PROCESSANDO') {
+            return true;
+        }
+
+        if ($chave === '' && $idDps !== '' && !in_array($status, ['CANCELADA', 'REJEITADA'], true)) {
             return true;
         }
 

@@ -26,6 +26,7 @@ final class ReportRepository
                 'n.cancelado_em',
                 'n.chave_acesso',
                 'n.xml_path',
+                'n.cancel_xml_path',
                 'n.updated_at as nfse_updated_at',
                 'n.erro_api',
                 'i.total as invoice_total',

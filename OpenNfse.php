@@ -17,7 +17,7 @@ function opennfse_config(): array
         'name' => 'OpenNFS-e',
         'description' => 'Emissão automática de NFS-e Nacional integrada ao WHMCS.',
         'author' => '<a href="https://github.com/jaison/OpenNfse/" target="_blank" rel="noopener noreferrer">Jaison Perazza</a>',
-        'version' => '0.1.9',
+        'version' => '0.1.10',
         'language' => 'portuguese-br',
     ];
 }

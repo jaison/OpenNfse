@@ -193,6 +193,55 @@ final class FiscalHistoryRepository
         return $rows;
     }
 
+    public function findLatestEmissionByXmlPathOrChave(string $xmlPath, ?string $chaveAcesso = null): ?array
+    {
+        $normalizedPath = $this->normalizeStoragePath($xmlPath);
+        $chaveAcesso = $this->normalizeNullableString($chaveAcesso);
+        if ($normalizedPath === '' && $chaveAcesso === null) {
+            return null;
+        }
+
+        $query = Capsule::table(self::TABLE)
+            ->where('tipo_registro', 'EMISSAO');
+
+        $query->where(static function ($where) use ($normalizedPath, $chaveAcesso): void {
+            if ($normalizedPath !== '') {
+                $where->whereIn('xml_path', [
+                    $normalizedPath,
+                    'attachments/' . $normalizedPath,
+                ]);
+            }
+
+            if ($chaveAcesso !== null) {
+                if ($normalizedPath !== '') {
+                    $where->orWhere('chave_acesso', $chaveAcesso);
+                } else {
+                    $where->where('chave_acesso', $chaveAcesso);
+                }
+            }
+        });
+
+        $row = $query
+            ->orderByRaw('COALESCE(emitida_em, created_at) DESC')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        return $row ? (array) $row : null;
+    }
+
+    public function hasCancellationByChave(string $chaveAcesso): bool
+    {
+        $chaveAcesso = $this->normalizeNullableString($chaveAcesso);
+        if ($chaveAcesso === null) {
+            return false;
+        }
+
+        return Capsule::table(self::TABLE)
+            ->where('tipo_registro', 'CANCELAMENTO')
+            ->where('chave_acesso', $chaveAcesso)
+            ->exists();
+    }
+
     public function summaryComparableHistoryByMonth(string $month): array
     {
         $query = Capsule::table(self::TABLE . ' as h')
@@ -325,6 +374,16 @@ final class FiscalHistoryRepository
     {
         $value = trim((string) $value);
         return $value !== '' ? $value : null;
+    }
+
+    private function normalizeStoragePath(string $path): string
+    {
+        $path = ltrim(str_replace('\\', '/', trim($path)), '/');
+        if (strpos($path, 'attachments/') === 0) {
+            $path = ltrim(substr($path, strlen('attachments/')), '/');
+        }
+
+        return $path;
     }
 
     private function normalizeNullableDateTime($value): ?string

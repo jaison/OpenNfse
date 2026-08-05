@@ -699,6 +699,7 @@ final class ReportsController
             + (int) ($audit['missing_reference_count'] ?? 0)
             + (int) ($audit['unexpected_status_count'] ?? 0)
             + (int) ($audit['duplicate_reference_count'] ?? 0);
+        $flashMessage = trim((string) ($_GET['msg'] ?? ''));
 
         echo '<form method="get" action="addonmodules.php">';
         echo '<input type="hidden" name="module" value="OpenNfse" />';
@@ -750,6 +751,9 @@ final class ReportsController
             echo '<div class="alert alert-warning" style="margin-bottom:14px;">Foram encontradas <strong>' . $issueCount . '</strong> divergencias tecnicas entre filesystem e base para este mes.</div>';
         } else {
             echo '<div class="alert alert-success" style="margin-bottom:14px;">Nenhuma divergencia tecnica foi encontrada entre a pasta mensal e o xml_path atual das notas.</div>';
+        }
+        if ($flashMessage === 'orphan_cancel_done') {
+            echo '<div class="alert alert-success" style="margin-bottom:14px;">A NFS-e órfã foi cancelada e o evento foi registrado no histórico fiscal.</div>';
         }
 
         $statusSummary = $this->buildXmlAuditStatusSummary((array) ($audit['status_counts'] ?? []));
@@ -824,20 +828,35 @@ final class ReportsController
         echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Arquivos orfaos no disco</div>';
         echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
         echo '<tr>';
-        echo '<th style="width:24%;">Arquivo</th>';
-        echo '<th style="width:46%;">Caminho</th>';
-        echo '<th style="width:15%;">Modificado em</th>';
-        echo '<th style="width:15%;">Tamanho</th>';
+        echo '<th style="width:22%;">Arquivo</th>';
+        echo '<th style="width:40%;">Caminho</th>';
+        echo '<th style="width:13%;">Modificado em</th>';
+        echo '<th style="width:10%;">Tamanho</th>';
+        echo '<th style="width:15%;">Ação</th>';
         echo '</tr>';
         if (empty($orphanFiles)) {
-            echo '<tr><td colspan="4" style="text-align:center;color:#666;">Nenhum arquivo orfao encontrado.</td></tr>';
+            echo '<tr><td colspan="5" style="text-align:center;color:#666;">Nenhum arquivo orfao encontrado.</td></tr>';
         }
         foreach ($orphanFiles as $file) {
+            $xmlPath = (string) ($file['relative_path'] ?? '');
             echo '<tr>';
             echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($file['filename'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($file['relative_path'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($xmlPath !== '' ? $xmlPath : '-', ENT_QUOTES, 'UTF-8') . '</td>';
             echo '<td>' . htmlspecialchars((string) ($file['modified_at'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
             echo '<td>' . htmlspecialchars($this->formatAuditBytes((int) ($file['size'] ?? 0)), ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>';
+            if ($xmlPath !== '') {
+                echo '<form method="get" action="addonmodules.php" style="margin:0;">';
+                echo '<input type="hidden" name="module" value="OpenNfse" />';
+                echo '<input type="hidden" name="action" value="cancelOrphanXmlForm" />';
+                echo '<input type="hidden" name="xml_path" value="' . htmlspecialchars($xmlPath, ENT_QUOTES, 'UTF-8') . '" />';
+                echo '<input type="hidden" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" />';
+                echo '<button type="submit" class="btn btn-xs btn-warning">Cancelar</button>';
+                echo '</form>';
+            } else {
+                echo '-';
+            }
+            echo '</td>';
             echo '</tr>';
         }
         echo '</table>';
@@ -874,6 +893,110 @@ final class ReportsController
         }
         echo '</table>';
         echo '</div>';
+    }
+
+    public function showCancelOrphanXmlForm(): void
+    {
+        $xmlPath = trim((string) ($_REQUEST['xml_path'] ?? ''));
+        if ($xmlPath === '') {
+            Module::ui()->renderError('XML órfão inválido.');
+            return;
+        }
+
+        try {
+            $context = $this->buildOrphanXmlCancelContext($xmlPath);
+        } catch (\Throwable $e) {
+            Module::ui()->renderError('Erro ao preparar cancelamento do XML órfão: ' . $e->getMessage());
+            return;
+        }
+
+        Module::ui()->renderHeader('Cancelar NFS-e órfã');
+        $this->renderTabs('relatorios');
+
+        $selectedMonth = trim((string) ($_REQUEST['mes'] ?? ''));
+        $backUrl = 'addonmodules.php?module=OpenNfse&action=relatorios&tab=xml_auditoria';
+        if ($selectedMonth !== '') {
+            $backUrl .= '&mes=' . rawurlencode($selectedMonth);
+        }
+
+        $token = (new TokenService())->token();
+
+        echo '<div style="margin-bottom:10px;"><a class="btn btn-default" href="' . htmlspecialchars($backUrl, ENT_QUOTES, 'UTF-8') . '">Voltar para Auditoria XML</a></div>';
+        echo '<div class="alert alert-warning" style="margin-bottom:14px;">Esta ação cancela a NFS-e representada pelo XML órfão, sem alterar automaticamente a nota operacional atual da invoice.</div>';
+
+        echo '<table class="form" width="100%" border="0" cellspacing="2" cellpadding="3" style="margin-bottom:14px;">';
+        echo '<tr><td class="fieldlabel" width="25%">Arquivo</td><td class="fieldarea">' . htmlspecialchars((string) ($context['filename'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td></tr>';
+        echo '<tr><td class="fieldlabel">Caminho</td><td class="fieldarea" style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($context['xml_path'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td></tr>';
+        echo '<tr><td class="fieldlabel">Invoice</td><td class="fieldarea">' . htmlspecialchars((string) (($context['invoiceid'] ?? 0) > 0 ? (string) $context['invoiceid'] : '-'), ENT_QUOTES, 'UTF-8') . '</td></tr>';
+        echo '<tr><td class="fieldlabel">NFS-e</td><td class="fieldarea">' . htmlspecialchars((string) (($context['numero_nf'] ?? '') !== '' ? $context['numero_nf'] : '-'), ENT_QUOTES, 'UTF-8') . '</td></tr>';
+        echo '<tr><td class="fieldlabel">ID DPS</td><td class="fieldarea" style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) (($context['id_dps'] ?? '') !== '' ? $context['id_dps'] : '-'), ENT_QUOTES, 'UTF-8') . '</td></tr>';
+        echo '<tr><td class="fieldlabel">Chave de acesso</td><td class="fieldarea" style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($context['chave_acesso'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td></tr>';
+        echo '<tr><td class="fieldlabel">Emitida em</td><td class="fieldarea">' . htmlspecialchars($this->formatDate((string) ($context['emitida_em'] ?? ''), 'd/m/Y H:i:s'), ENT_QUOTES, 'UTF-8') . '</td></tr>';
+        echo '</table>';
+
+        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=cancelOrphanXml">';
+        if ($token !== '') {
+            echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
+        }
+        echo '<input type="hidden" name="xml_path" value="' . htmlspecialchars((string) ($context['xml_path'] ?? ''), ENT_QUOTES, 'UTF-8') . '" />';
+        if ($selectedMonth !== '') {
+            echo '<input type="hidden" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" />';
+        }
+        echo '<table class="form" width="100%" border="0" cellspacing="2" cellpadding="3">';
+        echo '<tr><td class="fieldlabel" width="25%">Código do motivo</td><td class="fieldarea"><select id="codigo_motivo" name="codigo_motivo" class="form-control">';
+        echo '<option value="1">1 - Erro na emissão da NFS-e (será emitida outra nota correta)</option>';
+        echo '<option value="2">2 - Serviço não prestado / cancelamento da prestação</option>';
+        echo '<option value="9" selected>9 - NFS-e emitida indevidamente</option>';
+        echo '</select></td></tr>';
+        echo '<tr><td class="fieldlabel" width="25%">Motivo</td><td class="fieldarea"><input id="motivo" type="text" name="motivo" class="form-control" value="Emissão indevida" /></td></tr>';
+        echo '<tr><td class="fieldlabel" width="25%">Descrição</td><td class="fieldarea"><input id="descricao" type="text" name="descricao" class="form-control" value="NFS-e cancelada por ter sido emitida indevidamente, pois outra nota fiscal já foi emitida corretamente para a mesma operação." /></td></tr>';
+        echo '</table>';
+        echo '<script>';
+        echo '(function(){';
+        echo 'var map={';
+        echo '"1":{m:"Erro na emissão",d:"NFS-e cancelada em razão de erro identificado na emissão. Será emitida nova nota fiscal com os dados corretos."},';
+        echo '"2":{m:"Serviço não prestado",d:"NFS-e cancelada porque o serviço não foi prestado ao tomador, não gerando efeitos fiscais para a operação."},';
+        echo '"9":{m:"Emissão indevida",d:"NFS-e cancelada por ter sido emitida indevidamente, pois outra nota fiscal já foi emitida corretamente para a mesma operação."}';
+        echo '};';
+        echo 'var sel=document.getElementById("codigo_motivo");';
+        echo 'var motivo=document.getElementById("motivo");';
+        echo 'var desc=document.getElementById("descricao");';
+        echo 'if(!sel||!motivo||!desc){return;}';
+        echo 'function apply(){var v=sel.value; if(!map[v]){return;} motivo.value=map[v].m; desc.value=map[v].d;}';
+        echo 'sel.addEventListener("change", apply);';
+        echo '})();';
+        echo '</script>';
+        echo '<p><button type="submit" class="btn btn-danger" onclick="return confirm(\'Cancelar esta NFS-e órfã é uma operação fiscal. Continuar?\');">Cancelar NFS-e órfã</button></p>';
+        echo '</form>';
+
+        Module::ui()->renderFooter();
+    }
+
+    public function cancelOrphanXml(): void
+    {
+        $xmlPath = trim((string) ($_REQUEST['xml_path'] ?? ''));
+        $codigo = trim((string) ($_REQUEST['codigo_motivo'] ?? ''));
+        $motivo = trim((string) ($_REQUEST['motivo'] ?? ''));
+        $descricao = trim((string) ($_REQUEST['descricao'] ?? ''));
+        if ($xmlPath === '' || $codigo === '' || $motivo === '' || $descricao === '') {
+            Module::ui()->renderError('Preencha os dados do cancelamento da NFS-e órfã.');
+            return;
+        }
+
+        try {
+            (new NfseService())->cancelarNfseOrfaPorXmlPath($xmlPath, $codigo, $motivo, $descricao);
+        } catch (\Throwable $e) {
+            Module::ui()->renderError('Erro ao cancelar NFS-e órfã: ' . $e->getMessage());
+            return;
+        }
+
+        $url = 'addonmodules.php?module=OpenNfse&action=relatorios&tab=xml_auditoria&msg=orphan_cancel_done';
+        $selectedMonth = trim((string) ($_REQUEST['mes'] ?? ''));
+        if ($selectedMonth !== '') {
+            $url .= '&mes=' . rawurlencode($selectedMonth);
+        }
+        header('Location: ' . $url);
+        exit;
     }
 
 
@@ -1741,26 +1864,27 @@ final class ReportsController
 
         $added = 0;
         foreach ($rows as $row) {
-            $xmlPath = trim((string) ($row['xml_path'] ?? ''));
-            if ($xmlPath === '') {
-                continue;
-            }
-
-            try {
-                $absPath = $storage->resolveAbsolutePath($xmlPath);
-            } catch (\Throwable $e) {
-                continue;
-            }
-
-            if (!is_file($absPath)) {
+            $paths = $this->extractZipXmlPathsFromRow($row);
+            if (empty($paths)) {
                 continue;
             }
 
             $directory = $useCompetenciaLayout ? $this->resolveCompetenciaZipDirectory($row) : '';
-            $entryName = $this->buildZipEntryName($zip, $row, $absPath, $directory);
+            foreach ($paths as $xmlPath) {
+                try {
+                    $absPath = $storage->resolveAbsolutePath($xmlPath);
+                } catch (\Throwable $e) {
+                    continue;
+                }
 
-            if ($zip->addFile($absPath, $entryName)) {
-                $added++;
+                if (!is_file($absPath)) {
+                    continue;
+                }
+
+                $entryName = $this->buildZipEntryName($zip, $row, $absPath, $directory);
+                if ($zip->addFile($absPath, $entryName)) {
+                    $added++;
+                }
             }
         }
 
@@ -1924,7 +2048,9 @@ final class ReportsController
         }
 
         $dbRows = $this->listXmlAuditDatabaseRows($relativeDir);
+        $historyRows = $this->listXmlAuditHistoryRows($relativeDir);
         $dbRowsByPath = [];
+        $historyRowsByPath = [];
         $unexpectedStatusRows = [];
         $missingReferenceRows = [];
         $duplicateReferences = [];
@@ -1947,9 +2073,19 @@ final class ReportsController
             }
         }
 
+        foreach ($historyRows as $row) {
+            $normalizedPath = $this->normalizeAuditStoragePath((string) ($row['xml_path'] ?? ''));
+            if ($normalizedPath === '') {
+                continue;
+            }
+
+            $row['xml_path_normalized'] = $normalizedPath;
+            $historyRowsByPath[$normalizedPath][] = $row;
+        }
+
         $orphanFiles = [];
         foreach ($physicalFiles as $relativePath => $file) {
-            if (!isset($dbRowsByPath[$relativePath])) {
+            if (!isset($dbRowsByPath[$relativePath]) && !isset($historyRowsByPath[$relativePath])) {
                 $orphanFiles[] = $file;
             }
         }
@@ -2041,6 +2177,94 @@ final class ReportsController
         }
 
         return $rows;
+    }
+
+    private function listXmlAuditHistoryRows(string $relativeDir): array
+    {
+        if ($relativeDir === '') {
+            return [];
+        }
+
+        $rows = [];
+        $query = Capsule::table('mod_opennfse_notas_history as h')
+            ->select([
+                'h.invoiceid',
+                'h.userid',
+                'h.numero_nf',
+                'h.status_fiscal as status',
+                'h.emitida_em',
+                'h.cancelado_em',
+                'h.xml_path',
+                'h.updated_at as nfse_updated_at',
+            ])
+            ->where('h.tipo_registro', 'EMISSAO')
+            ->whereNotNull('h.xml_path')
+            ->where('h.xml_path', '<>', '')
+            ->where(static function ($where) use ($relativeDir) {
+                $where->where('h.xml_path', 'like', $relativeDir . '/%')
+                    ->orWhere('h.xml_path', 'like', 'attachments/' . $relativeDir . '/%');
+            })
+            ->orderByRaw('COALESCE(h.emitida_em, h.updated_at) DESC');
+
+        foreach ($query->get() as $row) {
+            $rows[] = (array) $row;
+        }
+
+        return $rows;
+    }
+
+    private function buildOrphanXmlCancelContext(string $xmlPath): array
+    {
+        $normalizedPath = $this->normalizeAuditStoragePath($xmlPath);
+        if ($normalizedPath === '') {
+            throw new NfseModuleException('Caminho do XML órfão inválido.');
+        }
+
+        $storage = new StorageService();
+        $absolutePath = $storage->resolveAbsolutePath($normalizedPath);
+        $xml = @file_get_contents($absolutePath);
+        if (!is_string($xml) || trim($xml) === '') {
+            throw new NfseModuleException('Não foi possível ler o XML órfão.');
+        }
+
+        $chaveAcesso = trim((string) (\OpenNfse\Helpers\NfseXmlExtractor::extractChaveAcesso($xml) ?? ''));
+        $historyRepo = new FiscalHistoryRepository();
+        $history = $historyRepo->findLatestEmissionByXmlPathOrChave($normalizedPath, $chaveAcesso !== '' ? $chaveAcesso : null) ?? [];
+        $idDps = trim((string) (($history['id_dps'] ?? '') !== '' ? $history['id_dps'] : (\OpenNfse\Helpers\NfseXmlExtractor::extractIdDps($xml) ?? '')));
+        if ($chaveAcesso === '' && $idDps !== '') {
+            $chaveAcesso = trim((string) ((new NfseService())->consultarChaveAcessoPorIdDps($idDps) ?? ''));
+        }
+        if ($chaveAcesso === '') {
+            throw new NfseModuleException('Chave de acesso não encontrada no XML órfão e a DPS ainda não retornou a chave.');
+        }
+        if (empty($history)) {
+            $history = $historyRepo->findLatestEmissionByXmlPathOrChave($normalizedPath, $chaveAcesso) ?? [];
+        }
+        $invoiceId = (int) ($history['invoiceid'] ?? $this->extractInvoiceIdFromFilename(basename($absolutePath)));
+
+        return [
+            'filename' => basename($absolutePath),
+            'xml_path' => $normalizedPath,
+            'invoiceid' => $invoiceId,
+            'numero_nf' => (string) (($history['numero_nf'] ?? '') !== '' ? $history['numero_nf'] : (\OpenNfse\Helpers\NfseXmlExtractor::extractNumeroNfse($xml) ?? '')),
+            'id_dps' => $idDps,
+            'chave_acesso' => $chaveAcesso,
+            'emitida_em' => (string) (($history['emitida_em'] ?? '') !== '' ? $history['emitida_em'] : (\OpenNfse\Helpers\NfseXmlExtractor::extractEmitidaEm($xml) ?? '')),
+        ];
+    }
+
+    private function extractInvoiceIdFromFilename(string $filename): int
+    {
+        $filename = trim($filename);
+        if ($filename === '') {
+            return 0;
+        }
+
+        if (preg_match('/^nfse_.+_(\d+)_[0-9]{6}\.xml$/i', $filename, $matches) === 1) {
+            return (int) ($matches[1] ?? 0);
+        }
+
+        return 0;
     }
 
     private function normalizeAuditStoragePath(string $path): string
@@ -2217,6 +2441,21 @@ final class ReportsController
         }
 
         return 'Emitidas';
+    }
+
+    private function extractZipXmlPathsFromRow(array $row): array
+    {
+        $paths = [];
+        foreach (['xml_path', 'cancel_xml_path'] as $field) {
+            $path = trim((string) ($row[$field] ?? ''));
+            if ($path === '') {
+                continue;
+            }
+
+            $paths[$path] = $path;
+        }
+
+        return array_values($paths);
     }
 
     private function isExteriorReportRow(array $row): bool

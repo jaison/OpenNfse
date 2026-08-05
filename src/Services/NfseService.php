@@ -255,12 +255,16 @@ final class NfseService
                     (new InvoiceHistoryService())->append($invoiceId, 'Consulta de status atualizou a NFS-e para ' . $statusAfter . '.');
                 }
             } elseif ($resp->errorMessage) {
-                $notaRepo->upsert([
-                    'invoiceid' => $invoiceId,
-                    'userid' => (int) $nota['userid'],
-                    'status' => 'ERRO',
-                    'erro_api' => $resp->errorMessage,
-                ]);
+                if ($this->shouldRetryConsultaAfterServiceUnavailable($resp->errorMessage)) {
+                    $this->preserveStatusForPendingConsulta($notaRepo, $nota, $invoiceId);
+                } else {
+                    $notaRepo->upsert([
+                        'invoiceid' => $invoiceId,
+                        'userid' => (int) $nota['userid'],
+                        'status' => 'ERRO',
+                        'erro_api' => $resp->errorMessage,
+                    ]);
+                }
             }
             return;
         }
@@ -296,12 +300,16 @@ final class NfseService
                 (new InvoiceHistoryService())->append($invoiceId, 'Consulta de status localizou a chave da NFS-e e manteve a nota em processamento.');
             }
         } elseif ($resp->errorMessage) {
-            $notaRepo->upsert([
-                'invoiceid' => $invoiceId,
-                'userid' => (int) $nota['userid'],
-                'status' => 'ERRO',
-                'erro_api' => $resp->errorMessage,
-            ]);
+            if ($this->shouldRetryConsultaAfterServiceUnavailable($resp->errorMessage)) {
+                $this->preserveStatusForPendingConsulta($notaRepo, $nota, $invoiceId);
+            } else {
+                $notaRepo->upsert([
+                    'invoiceid' => $invoiceId,
+                    'userid' => (int) $nota['userid'],
+                    'status' => 'ERRO',
+                    'erro_api' => $resp->errorMessage,
+                ]);
+            }
         }
     }
 
@@ -449,6 +457,201 @@ final class NfseService
         (new InvoiceHistoryService())->append($invoiceId, 'NFS-e cancelada com sucesso. Motivo: ' . $xMotivo);
     }
 
+    public function consultarChaveAcessoPorIdDps(string $idDps): ?string
+    {
+        $this->ensureMigrated();
+
+        $idDps = trim($idDps);
+        if ($idDps === '') {
+            throw new NfseModuleException('ID DPS inválido para consulta.');
+        }
+
+        $config = (new ConfigRepository())->get();
+        if (empty($config)) {
+            throw new NfseModuleException('Configuração do módulo não encontrada.');
+        }
+
+        $sdkConfig = $this->buildSdkConfig($config);
+        $adapter = new NfsePhpSdkAdapter();
+        $resp = $adapter->consultarDps($sdkConfig, $idDps);
+        if ($resp->found && $resp->chaveAcesso) {
+            return trim((string) $resp->chaveAcesso);
+        }
+
+        if ($resp->errorMessage) {
+            if ($this->shouldRetryConsultaAfterServiceUnavailable($resp->errorMessage)) {
+                throw new NfseModuleException('A consulta da DPS ainda está indisponível no ambiente nacional. Tente novamente em alguns minutos.');
+            }
+
+            throw new NfseModuleException('Falha ao consultar DPS para obter a chave de acesso: ' . $resp->errorMessage);
+        }
+
+        return null;
+    }
+
+    public function cancelarNfseOrfaPorXmlPath(string $xmlPath, string $codigoMotivo, string $motivo, string $descricao, ?string $correlationId = null): void
+    {
+        $this->ensureMigrated();
+
+        $normalizedPath = $this->normalizeStorageRelativePath($xmlPath);
+        if ($normalizedPath === '') {
+            throw new NfseModuleException('XML órfão inválido para cancelamento.');
+        }
+
+        $config = (new ConfigRepository())->get();
+        if (empty($config)) {
+            throw new NfseModuleException('Configuração do módulo não encontrada.');
+        }
+
+        $storage = new StorageService();
+        $absolutePath = $storage->resolveAbsolutePath($normalizedPath);
+        $xml = @file_get_contents($absolutePath);
+        if (!is_string($xml) || trim($xml) === '') {
+            throw new NfseModuleException('Não foi possível ler o XML órfão selecionado.');
+        }
+
+        $chave = trim((string) (NfseXmlExtractor::extractChaveAcesso($xml) ?? ''));
+        $historyRepo = new FiscalHistoryRepository();
+        $historyEmission = $historyRepo->findLatestEmissionByXmlPathOrChave($normalizedPath, $chave !== '' ? $chave : null) ?? [];
+        $idDps = trim((string) (($historyEmission['id_dps'] ?? '') !== '' ? $historyEmission['id_dps'] : (NfseXmlExtractor::extractIdDps($xml) ?? '')));
+        if ($chave === '' && $idDps !== '') {
+            $chave = trim((string) ($this->consultarChaveAcessoPorIdDps($idDps) ?? ''));
+        }
+        if ($chave === '') {
+            throw new NfseModuleException('Chave de acesso não encontrada no XML órfão e a DPS ainda não retornou a chave.');
+        }
+        if ($historyRepo->hasCancellationByChave($chave)) {
+            throw new NfseModuleException('Esta NFS-e órfã já possui cancelamento registrado no histórico.');
+        }
+        if (empty($historyEmission)) {
+            $historyEmission = $historyRepo->findLatestEmissionByXmlPathOrChave($normalizedPath, $chave) ?? [];
+        }
+        $invoiceId = (int) ($historyEmission['invoiceid'] ?? $this->extractInvoiceIdFromXmlFilename(basename($absolutePath)));
+        if ($invoiceId <= 0) {
+            throw new NfseModuleException('Não foi possível identificar a invoice do XML órfão.');
+        }
+
+        $correlationId = $correlationId ?: CorrelationIdGenerator::generate($invoiceId);
+        $numeroNf = trim((string) (($historyEmission['numero_nf'] ?? '') !== '' ? $historyEmission['numero_nf'] : (NfseXmlExtractor::extractNumeroNfse($xml) ?? '')));
+        $emitidaEm = trim((string) (($historyEmission['emitida_em'] ?? '') !== '' ? $historyEmission['emitida_em'] : (NfseXmlExtractor::extractEmitidaEm($xml) ?? '')));
+        $notaId = (int) ($historyEmission['nota_id'] ?? 0) ?: null;
+        $userId = (int) ($historyEmission['userid'] ?? 0);
+        $logRepo = new LogRepository();
+
+        $codigoMotivo = trim($codigoMotivo);
+        if ($codigoMotivo === '3') {
+            $codigoMotivo = '9';
+        }
+        if (!in_array($codigoMotivo, ['1', '2', '9'], true)) {
+            throw new NfseModuleException('Código do motivo de cancelamento inválido.');
+        }
+
+        $cnpjAutor = preg_replace('/\D/', '', (string) ($config['cnpj_emissor'] ?? ''));
+        if (!$cnpjAutor || strlen($cnpjAutor) !== 14) {
+            throw new NfseModuleException('CNPJ do emissor inválido para cancelamento.');
+        }
+
+        $tpAmb = ($config['environment'] ?? 'homologacao') === 'producao' ? 1 : 2;
+
+        if (!class_exists(\Nfse\Dto\Nfse\PedRegEventoData::class)) {
+            throw new NfseModuleException('SDK nfse-nacional/nfse-php não encontrada para cancelamento.');
+        }
+
+        $xDesc = 'Cancelamento de NFS-e';
+        $xMotivo = trim($descricao);
+        if ($xMotivo === '') {
+            $xMotivo = trim($motivo);
+        } elseif (trim($motivo) !== '') {
+            $xMotivo = trim($motivo) . ' - ' . $xMotivo;
+        }
+        if (mb_strlen($xMotivo, 'UTF-8') < 15) {
+            throw new NfseModuleException('Motivo do cancelamento inválido (mínimo 15 caracteres).');
+        }
+        if (mb_strlen($xMotivo, 'UTF-8') > 255) {
+            throw new NfseModuleException('Motivo do cancelamento inválido (máximo 255 caracteres).');
+        }
+
+        $evento = new \Nfse\Dto\Nfse\PedRegEventoData([
+            'versao' => '1.01',
+            'infPedReg' => [
+                'tpAmb' => $tpAmb,
+                'verAplic' => 'WHMCS-NFSE-ADDON',
+                'dhEvento' => date('c'),
+                'chNFSe' => $chave,
+                'cnpjAutor' => $cnpjAutor,
+                'tipoEvento' => '101101',
+                'e101101' => [
+                    'xDesc' => $xDesc,
+                    'cMotivo' => $codigoMotivo,
+                    'xMotivo' => $xMotivo,
+                ],
+            ],
+        ]);
+
+        $payload = [
+            'invoiceid' => $invoiceId,
+            'xml_path' => $normalizedPath,
+            'chaveAcesso' => $chave,
+            'cMotivo' => $codigoMotivo,
+            'xMotivo' => $xMotivo,
+            'xDesc' => $xDesc,
+        ];
+        if (class_exists(\Nfse\Xml\EventosXmlBuilder::class)) {
+            $payload['_eventoXml'] = (new \Nfse\Xml\EventosXmlBuilder())->buildPedRegEvento($evento);
+        }
+        $logRepo->insert($notaId, 'CANCELAMENTO_ORFAO_REQUEST', json_encode($payload, JSON_UNESCAPED_UNICODE), null, $correlationId);
+
+        $sdkConfig = $this->buildSdkConfig($config);
+        $adapter = new NfsePhpSdkAdapter();
+        $result = $adapter->cancelarNfse($sdkConfig, $evento);
+        if (!$result->success) {
+            $logRepo->insert($notaId, 'CANCELAMENTO_ORFAO_RESPONSE', null, $result->rawResponse ?? $result->errorMessage, $correlationId);
+            throw new NfseModuleException('Falha ao cancelar NFS-e órfã: ' . $result->errorMessage);
+        }
+
+        $canceladoEm = date('Y-m-d H:i:s');
+        $cancelamentoXmlPath = null;
+        $cancelamentoXml = $this->decodeCancelamentoXmlPayload((string) ($result->eventoXmlGZipB64 ?? ''));
+        if ($cancelamentoXml !== null) {
+            $cancelamentoXmlPath = $storage->saveCancelamentoXml(
+                $invoiceId,
+                $cancelamentoXml,
+                $numeroNf !== '' ? $numeroNf : null,
+                $canceladoEm,
+                (string) ($config['environment'] ?? ''),
+                (string) ($config['serie_dps'] ?? '')
+            );
+        }
+
+        $historyRepo->recordCancellation([
+            'id' => $notaId,
+            'invoiceid' => $invoiceId,
+            'userid' => $userId,
+            'status' => 'CANCELADA',
+            'numero_nf' => $numeroNf,
+            'protocolo' => $historyEmission['protocolo'] ?? null,
+            'id_dps' => $idDps !== '' ? $idDps : ($historyEmission['id_dps'] ?? null),
+            'chave_acesso' => $chave,
+            'xml_path' => $historyEmission['xml_path'] ?? $normalizedPath,
+            'cancel_xml_path' => $cancelamentoXmlPath,
+            'competencia' => $historyEmission['competencia'] ?? null,
+            'emitida_em' => $emitidaEm !== '' ? $emitidaEm : ($historyEmission['emitida_em'] ?? null),
+            'cancelado_em' => $canceladoEm,
+            'cancel_codigo_motivo' => $codigoMotivo,
+            'cancel_motivo' => $xMotivo,
+            'cancel_descricao' => $xDesc,
+            'cancel_erro' => null,
+        ], 'runtime_orphan');
+
+        $cancelResponsePayload = [
+            'xml_path' => $normalizedPath,
+            'cancelamento_xml_path' => $cancelamentoXmlPath,
+            'eventoXmlGZipB64' => $result->eventoXmlGZipB64,
+        ];
+        $logRepo->insert($notaId, 'CANCELAMENTO_ORFAO_RESPONSE', null, json_encode($cancelResponsePayload, JSON_UNESCAPED_UNICODE), $correlationId);
+        (new InvoiceHistoryService())->append($invoiceId, 'NFS-e órfã cancelada com sucesso. Chave: ' . $chave . '. Motivo: ' . $xMotivo);
+    }
+
     private function buildSdkConfig(array $config): array
     {
         $crypto = new CryptoService();
@@ -524,6 +727,62 @@ final class NfseService
     {
         Module::migrator()->up();
         (new FiscalHistoryRepository())->backfillCurrentStateIfNeeded();
+    }
+
+    private function normalizeStorageRelativePath(string $path): string
+    {
+        $path = ltrim(str_replace('\\', '/', trim($path)), '/');
+        if (strpos($path, 'attachments/') === 0) {
+            $path = ltrim(substr($path, strlen('attachments/')), '/');
+        }
+
+        return $path;
+    }
+
+    private function extractInvoiceIdFromXmlFilename(string $filename): int
+    {
+        $filename = trim($filename);
+        if ($filename === '') {
+            return 0;
+        }
+
+        if (preg_match('/^nfse_.+_(\d+)_[0-9]{6}\.xml$/i', $filename, $matches) === 1) {
+            return (int) ($matches[1] ?? 0);
+        }
+
+        if (preg_match('/^cancelamento_nfse_.+_(\d+)_[0-9]{8}_[0-9]{6}\.xml$/i', $filename, $matches) === 1) {
+            return (int) ($matches[1] ?? 0);
+        }
+
+        return 0;
+    }
+
+    private function shouldRetryConsultaAfterServiceUnavailable(?string $message): bool
+    {
+        $message = mb_strtolower(trim((string) $message), 'UTF-8');
+        if ($message === '') {
+            return false;
+        }
+
+        return strpos($message, '503') !== false
+            || strpos($message, 'service unavailable') !== false
+            || strpos($message, 'the service is unavailable') !== false;
+    }
+
+    private function preserveStatusForPendingConsulta(NotaRepository $notaRepo, array $nota, int $invoiceId): void
+    {
+        $status = trim((string) ($nota['status'] ?? ''));
+        $update = [
+            'invoiceid' => $invoiceId,
+            'userid' => (int) ($nota['userid'] ?? 0),
+            'erro_api' => null,
+        ];
+
+        if ($status === '' || $status === 'ERRO') {
+            $update['status'] = 'PROCESSANDO';
+        }
+
+        $notaRepo->upsert($update);
     }
 
     private function resolvePreviousQueueErrors(int $invoiceId, ?int $notaId, LogRepository $logRepo, ?string $correlationId): void

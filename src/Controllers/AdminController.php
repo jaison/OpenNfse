@@ -228,6 +228,17 @@ final class AdminController
                 'requiresTokenMessage' => 'Método inválido para cancelamento de NFS-e.',
                 'handler' => [$this->notasController, 'cancelNfse'],
             ],
+            'cancelOrphanXmlForm' => [
+                'method' => 'GET',
+                'requiresToken' => false,
+                'handler' => [$this->reportsController, 'showCancelOrphanXmlForm'],
+            ],
+            'cancelOrphanXml' => [
+                'method' => 'POST',
+                'requiresToken' => true,
+                'requiresTokenMessage' => 'Método inválido para cancelamento de XML órfão.',
+                'handler' => [$this->reportsController, 'cancelOrphanXml'],
+            ],
             'filaCheckNow' => [
                 'method' => 'POST',
                 'requiresToken' => true,

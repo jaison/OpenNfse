@@ -105,6 +105,31 @@ final class NfseXmlExtractor
         });
     }
 
+    public static function extractIdDps(string $xml): ?string
+    {
+        return self::withDocument($xml, static function (\DOMXPath $xp): ?string {
+            $attributeNodes = $xp->query('//*[local-name()="infDPS" or local-name()="infDps"]/@Id');
+            if ($attributeNodes && $attributeNodes->length > 0) {
+                $value = trim((string) $attributeNodes->item(0)?->textContent);
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+
+            foreach (['idDPS', 'idDps', 'IdDPS', 'IdDps'] as $nodeName) {
+                $nodes = $xp->query('//*[local-name()="' . $nodeName . '"]');
+                if ($nodes && $nodes->length > 0) {
+                    $value = trim((string) $nodes->item(0)?->textContent);
+                    if ($value !== '') {
+                        return $value;
+                    }
+                }
+            }
+
+            return null;
+        });
+    }
+
     public static function extractEventType(string $xml): ?string
     {
         return self::withDocument($xml, static function (\DOMXPath $xp): ?string {
