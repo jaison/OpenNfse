@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.11",
+  "latest_version": "0.1.12",
   "release_date": "2026-08-05",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Melhorias na Auditoria API por DPS: execucao assincrona em lotes com retentativa e detalhamento de erros, conciliacao correta da chave local com historico/estado atual e reclassificacao de divergencias explicadas por cancelamento ou reemissao."
+  "message": "Corrigido o filtro de periodo fiscal das notas para usar a data de referencia da NFS-e sem contaminar o mes atual em consultas manuais de status. Consultas repetidas agora registram `last_status_checked_at`, preservam `updated_at` quando nao ha mudanca real e evitam reclassificar notas antigas por repeticao do mesmo erro da API, como o E2404."
 }

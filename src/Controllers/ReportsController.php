@@ -343,7 +343,7 @@ final class ReportsController
             $clienteNome = $this->resolveClientName($row);
             $numeroNfse = (string) ($row['numero_nf'] ?? '');
             $statusRow = (string) ($row['status'] ?? '');
-            $dataRef = (string) ($row['emitida_em'] ?? $row['nfse_updated_at'] ?? '');
+            $dataRef = (string) ($row['reference_date'] ?? $row['emitida_em'] ?? $row['nfse_updated_at'] ?? '');
             $dataFmt = $this->formatDate($dataRef, 'd/m/Y');
             $valor = (float) ($row['invoice_total'] ?? 0);
             $prefix = (string) ($row['currency_prefix'] ?? 'R$ ');
@@ -798,7 +798,7 @@ final class ReportsController
         foreach ($unexpectedRows as $row) {
             $invoiceId = (int) ($row['invoiceid'] ?? 0);
             $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
-            $dataRef = (string) ($row['emitida_em'] ?? $row['nfse_updated_at'] ?? '');
+            $dataRef = (string) ($row['reference_date'] ?? $row['emitida_em'] ?? $row['nfse_updated_at'] ?? '');
             echo '<tr>';
             echo '<td>' . htmlspecialchars($this->formatDate($dataRef, 'd/m/Y'), ENT_QUOTES, 'UTF-8') . '</td>';
             echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
@@ -829,7 +829,7 @@ final class ReportsController
         foreach ($missingRows as $row) {
             $invoiceId = (int) ($row['invoiceid'] ?? 0);
             $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
-            $dataRef = (string) ($row['emitida_em'] ?? $row['nfse_updated_at'] ?? '');
+            $dataRef = (string) ($row['reference_date'] ?? $row['emitida_em'] ?? $row['nfse_updated_at'] ?? '');
             echo '<tr>';
             echo '<td>' . htmlspecialchars($this->formatDate($dataRef, 'd/m/Y'), ENT_QUOTES, 'UTF-8') . '</td>';
             echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
@@ -2261,7 +2261,7 @@ final class ReportsController
 
         fputcsv($out, ['data', 'numero_nf', 'cliente', 'invoiceid', 'valor', 'status', 'chave_acesso'], ';');
         foreach ($rows as $r) {
-            $dataRef = (string) ($r['emitida_em'] ?? $r['nfse_updated_at'] ?? '');
+            $dataRef = (string) ($r['reference_date'] ?? $r['emitida_em'] ?? $r['nfse_updated_at'] ?? '');
             fputcsv($out, [
                 $dataRef,
                 (string) ($r['numero_nf'] ?? ''),

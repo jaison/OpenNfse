@@ -83,11 +83,11 @@ final class NotasController
         echo '</select>';
         echo '</div>';
         echo '<div style="min-width:150px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Atualizado de</div>';
+        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Referência de</div>';
         echo '<input type="date" name="updated_from" value="' . htmlspecialchars($updatedFrom, ENT_QUOTES, 'UTF-8') . '" style="width:150px;" />';
         echo '</div>';
         echo '<div style="min-width:150px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Atualizado ate</div>';
+        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Referência até</div>';
         echo '<input type="date" name="updated_to" value="' . htmlspecialchars($updatedTo, ENT_QUOTES, 'UTF-8') . '" style="width:150px;" />';
         echo '</div>';
         echo '</div>';
@@ -101,8 +101,9 @@ final class NotasController
         echo '</div>';
         echo '</form>';
 
+        $referenceDateSql = "COALESCE(emitida_em, CONCAT(competencia, ' 00:00:00'), created_at)";
         $q = Capsule::table('mod_opennfse_notas')
-            ->orderByRaw('competencia IS NULL, competencia DESC, emitida_em IS NULL, emitida_em DESC, updated_at DESC');
+            ->orderByRaw($referenceDateSql . ' DESC, updated_at DESC');
         if ($invoiceFilter > 0) {
             $q->where('invoiceid', $invoiceFilter);
         }
@@ -110,10 +111,10 @@ final class NotasController
             $q->where('status', $statusFilter);
         }
         if ($updatedFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $updatedFrom)) {
-            $q->where('updated_at', '>=', $updatedFrom . ' 00:00:00');
+            $q->whereRaw($referenceDateSql . ' >= ?', [$updatedFrom . ' 00:00:00']);
         }
         if ($updatedTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $updatedTo)) {
-            $q->where('updated_at', '<=', $updatedTo . ' 23:59:59');
+            $q->whereRaw($referenceDateSql . ' <= ?', [$updatedTo . ' 23:59:59']);
         }
         $rows = $q->limit(50)->get();
 
@@ -126,7 +127,7 @@ final class NotasController
         echo '<th style="width:10%;">DPS</th>';
         echo '<th style="width:14%;">Chave</th>';
         echo '<th style="width:10%;">Emitida</th>';
-        echo '<th style="width:10%;">Atualizado</th>';
+        echo '<th style="width:10%;">Alterado</th>';
         echo '<th style="width:10%;">Erro</th>';
         echo '<th style="width:13%;">Ações</th>';
         echo '</tr>';

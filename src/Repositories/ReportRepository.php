@@ -28,6 +28,7 @@ final class ReportRepository
                 'n.xml_path',
                 'n.cancel_xml_path',
                 'n.updated_at as nfse_updated_at',
+                Capsule::raw($this->notaReferenceDateExpression('n') . ' as reference_date'),
                 'n.erro_api',
                 'i.total as invoice_total',
                 'c.currency as invoice_currency_id',
@@ -45,7 +46,7 @@ final class ReportRepository
         if ($dateField === 'cancelado') {
             $q->orderBy('n.cancelado_em', 'desc');
         } else {
-            $q->orderByRaw('COALESCE(n.emitida_em, n.updated_at) DESC');
+            $q->orderByRaw($this->notaReferenceDateExpression('n') . ' DESC');
         }
 
         if ($offset > 0) {
@@ -676,7 +677,7 @@ final class ReportRepository
             $q->whereNotNull('n.cancelado_em');
             $this->applyDateFilter($q, (string) ($filters['data_inicial'] ?? ''), (string) ($filters['data_final'] ?? ''), 'n.cancelado_em');
         } else {
-            $this->applyDateFilter($q, (string) ($filters['data_inicial'] ?? ''), (string) ($filters['data_final'] ?? ''), 'COALESCE(n.emitida_em, n.updated_at)');
+            $this->applyDateFilter($q, (string) ($filters['data_inicial'] ?? ''), (string) ($filters['data_final'] ?? ''), $this->notaReferenceDateExpression('n'));
         }
 
         $this->applyClientFilter($q, (string) ($filters['cliente'] ?? ''), 'c');
@@ -720,5 +721,10 @@ final class ReportRepository
         if ($toOk) {
             $q->whereRaw($field . ' <= ?', [$to . ' 23:59:59']);
         }
+    }
+
+    private function notaReferenceDateExpression(string $alias = 'n'): string
+    {
+        return "COALESCE({$alias}.emitida_em, CONCAT({$alias}.competencia, ' 00:00:00'), {$alias}.created_at)";
     }
 }

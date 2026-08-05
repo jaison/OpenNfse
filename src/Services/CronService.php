@@ -100,7 +100,7 @@ final class CronService
 
         $notas = Capsule::table('mod_opennfse_notas')
             ->where('status', 'PROCESSANDO')
-            ->orderBy('updated_at', 'asc')
+            ->orderByRaw('COALESCE(last_status_checked_at, updated_at, created_at) ASC')
             ->limit(50)
             ->get();
 
@@ -143,7 +143,7 @@ final class CronService
             ->where(static function ($q) {
                 $q->whereNull('chave_acesso')->orWhere('chave_acesso', '');
             })
-            ->orderBy('updated_at', 'asc')
+            ->orderByRaw('COALESCE(last_status_checked_at, updated_at, created_at) ASC')
             ->limit(50);
 
         if (!empty($activeQueueInvoiceIds)) {

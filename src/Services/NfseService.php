@@ -242,7 +242,7 @@ final class NfseService
                         $update['emitida_em'] = $emitidaEm;
                     }
                 }
-                $notaRepo->upsert($update);
+                $notaRepo->upsert($update, ['touch_last_status_checked_at' => true]);
                 $notaAtual = $notaRepo->findByInvoiceId($invoiceId);
                 if ($notaAtual !== null) {
                     (new FiscalHistoryRepository())->recordEmission($notaAtual, 'consulta');
@@ -258,12 +258,15 @@ final class NfseService
                 if ($this->shouldRetryConsultaAfterServiceUnavailable($resp->errorMessage)) {
                     $this->preserveStatusForPendingConsulta($notaRepo, $nota, $invoiceId);
                 } else {
+                    $errorMessage = $this->shouldKeepExistingErrorTimestamp($statusBefore, $errorBefore, $resp->errorMessage)
+                        ? $errorBefore
+                        : $resp->errorMessage;
                     $notaRepo->upsert([
                         'invoiceid' => $invoiceId,
                         'userid' => (int) $nota['userid'],
                         'status' => 'ERRO',
-                        'erro_api' => $resp->errorMessage,
-                    ]);
+                        'erro_api' => $errorMessage,
+                    ], ['touch_last_status_checked_at' => true]);
                 }
             }
             return;
@@ -293,7 +296,7 @@ final class NfseService
             if ((string) ($nota['status'] ?? '') !== 'EMITIDA') {
                 $update['status'] = 'PROCESSANDO';
             }
-            $notaRepo->upsert($update);
+            $notaRepo->upsert($update, ['touch_last_status_checked_at' => true]);
             $notaAtual = $notaRepo->findByInvoiceId($invoiceId);
             if ($notaAtual !== null) {
                 if ((string) ($notaAtual['status'] ?? '') === 'EMITIDA') {
@@ -311,12 +314,15 @@ final class NfseService
             if ($this->shouldRetryConsultaAfterServiceUnavailable($resp->errorMessage)) {
                 $this->preserveStatusForPendingConsulta($notaRepo, $nota, $invoiceId);
             } else {
+                $errorMessage = $this->shouldKeepExistingErrorTimestamp($statusBefore, $errorBefore, $resp->errorMessage)
+                    ? $errorBefore
+                    : $resp->errorMessage;
                 $notaRepo->upsert([
                     'invoiceid' => $invoiceId,
                     'userid' => (int) $nota['userid'],
                     'status' => 'ERRO',
-                    'erro_api' => $resp->errorMessage,
-                ]);
+                    'erro_api' => $errorMessage,
+                ], ['touch_last_status_checked_at' => true]);
             }
         }
     }
@@ -777,6 +783,38 @@ final class NfseService
             || strpos($message, 'the service is unavailable') !== false;
     }
 
+    private function shouldKeepExistingErrorTimestamp(string $statusBefore, ?string $errorBefore, ?string $errorAfter): bool
+    {
+        if (trim($statusBefore) !== 'ERRO') {
+            return false;
+        }
+
+        $previousCode = $this->extractApiErrorCode($errorBefore);
+        $currentCode = $this->extractApiErrorCode($errorAfter);
+
+        return $previousCode !== null && $previousCode === $currentCode;
+    }
+
+    private function extractApiErrorCode(?string $message): ?string
+    {
+        $message = trim((string) $message);
+        if ($message === '') {
+            return null;
+        }
+
+        if (preg_match('/"codigo"\s*:\s*"([^"]+)"/u', $message, $matches) === 1) {
+            $code = trim((string) ($matches[1] ?? ''));
+            return $code !== '' ? $code : null;
+        }
+
+        if (preg_match('/\b(E\d{3,})\b/u', $message, $matches) === 1) {
+            $code = trim((string) ($matches[1] ?? ''));
+            return $code !== '' ? $code : null;
+        }
+
+        return null;
+    }
+
     private function preserveStatusForPendingConsulta(NotaRepository $notaRepo, array $nota, int $invoiceId): void
     {
         $status = trim((string) ($nota['status'] ?? ''));
@@ -790,7 +828,7 @@ final class NfseService
             $update['status'] = 'PROCESSANDO';
         }
 
-        $notaRepo->upsert($update);
+        $notaRepo->upsert($update, ['touch_last_status_checked_at' => true]);
     }
 
     private function resolvePreviousQueueErrors(int $invoiceId, ?int $notaId, LogRepository $logRepo, ?string $correlationId): void
