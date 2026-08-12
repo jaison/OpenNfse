@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenNfse\Services;
 
 use OpenNfse\Api\NfsePhpSdkAdapter;
+use OpenNfse\Dto\ConsultarDpsResult;
 use OpenNfse\Exceptions\NfseModuleException;
 use OpenNfse\Module;
 use OpenNfse\Repositories\ConfigRepository;
@@ -16,6 +17,7 @@ use WHMCS\Database\Capsule;
 final class DpsApiAuditService
 {
     private const DESCRIPTION = 'Esta auditoria existe para conferir se as DPS geradas localmente foram reconhecidas pela API e se a sequência numérica do emissor/série permaneceu íntegra, sem lacunas não explicadas.';
+    private const TRANSIENT_API_RETRY_DELAYS_MS = [800, 1800, 3200];
 
     public function createRun(string $month): array
     {
@@ -80,6 +82,10 @@ final class DpsApiAuditService
                 try {
                     $result = $this->auditSingleRow($row, $adapter, $sdkConfig);
                 } catch (\Throwable $e) {
+                    if ($this->isTransientApiOutageError($e)) {
+                        throw $e;
+                    }
+
                     $detailedError = $this->formatThrowable($e);
                     $result = [
                         'api_found' => false,
@@ -454,7 +460,7 @@ final class DpsApiAuditService
             ];
         }
 
-        $resp = $adapter->consultarDps($sdkConfig, $idDps);
+        $resp = $this->consultarDpsWithRetry($adapter, $sdkConfig, $idDps);
         $apiChave = trim((string) ($resp->chaveAcesso ?? ''));
         if ($resp->errorMessage !== null && trim((string) $resp->errorMessage) !== '') {
             return [
@@ -518,6 +524,37 @@ final class DpsApiAuditService
             'audit_status' => 'OK',
             'audit_message' => 'DPS localizada na API com chave coerente.',
         ];
+    }
+
+    private function consultarDpsWithRetry(NfsePhpSdkAdapter $adapter, array $sdkConfig, string $idDps): ConsultarDpsResult
+    {
+        $classifier = new QueueErrorClassifierService();
+        $attemptDelays = array_merge([0], self::TRANSIENT_API_RETRY_DELAYS_MS);
+        $totalAttempts = count($attemptDelays);
+        $lastResponse = null;
+
+        foreach ($attemptDelays as $delayMs) {
+            if ($delayMs > 0) {
+                usleep($delayMs * 1000);
+            }
+
+            $response = $adapter->consultarDps($sdkConfig, $idDps);
+            $errorMessage = trim((string) ($response->errorMessage ?? ''));
+            if ($errorMessage === '' || !$classifier->isTransientApiOutage($errorMessage)) {
+                return $response;
+            }
+
+            $lastResponse = $response;
+        }
+
+        $lastError = $lastResponse !== null ? trim((string) ($lastResponse->errorMessage ?? '')) : '';
+        $detail = $this->summarizeApiErrorMessage($lastError);
+        throw new NfseModuleException(sprintf(
+            'API Nacional temporariamente indisponível ao consultar a DPS %s após %d tentativas. %s',
+            $idDps,
+            $totalAttempts,
+            $detail
+        ));
     }
 
     private function incrementRunCounter(array &$run, string $status): void
@@ -584,6 +621,33 @@ final class DpsApiAuditService
             basename($e->getFile()),
             (int) $e->getLine()
         );
+    }
+
+    private function summarizeApiErrorMessage(string $message, int $maxLength = 260): string
+    {
+        $message = trim($message);
+        if ($message === '') {
+            return 'A API não retornou detalhe adicional.';
+        }
+
+        $normalized = html_entity_decode($message, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $normalized = strip_tags($normalized);
+        $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+        $normalized = trim($normalized);
+        if ($normalized === '') {
+            $normalized = $message;
+        }
+
+        if (mb_strlen($normalized) > $maxLength) {
+            $normalized = rtrim(mb_substr($normalized, 0, $maxLength - 3)) . '...';
+        }
+
+        return 'Último retorno: ' . $normalized;
+    }
+
+    private function isTransientApiOutageError($error): bool
+    {
+        return (new QueueErrorClassifierService())->isTransientApiOutage($error);
     }
 
     private function normalizeText($value): ?string

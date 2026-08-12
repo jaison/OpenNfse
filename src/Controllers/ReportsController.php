@@ -749,7 +749,7 @@ final class ReportsController
         if (empty($gatewayKeys)) {
             echo '<div class="alert alert-warning" style="margin-bottom:12px;">Nenhum gateway ativo e habilitado no addon foi encontrado para a auditoria.</div>';
         } else {
-            $notice = 'Exibindo o período de ' . htmlspecialchars($periodLabel, ENT_QUOTES, 'UTF-8') . ' para conferir faturas pagas que não foram emitidas NFS-e. Revise se e emita manualmente cada uma delas se for o caso.';
+            $notice = 'Exibindo o período de ' . htmlspecialchars($periodLabel, ENT_QUOTES, 'UTF-8') . ' para conferir faturas pagas que não foram emitidas NFS-e. Revise e emita manualmente cada uma delas se for o caso.';
             echo '<div style="margin-bottom:14px;padding:14px 16px;border:1px solid #efd6d6;border-radius:8px;background:linear-gradient(180deg,#fffafa 0%,#fff4f4 100%);box-shadow:0 2px 8px rgba(127,29,29,0.06);">';
             echo '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
             echo '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9f3a38;">Atenção crítica</div>';

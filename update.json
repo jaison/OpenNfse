@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.16",
+  "latest_version": "0.1.17",
   "release_date": "2026-08-12",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Refinamento visual da aba Relatorios. O sidebar lateral foi redesenhado para seguir o mesmo padrao dos cards compactos da pagina, com melhor acabamento, hierarquia visual e destaque da aba ativa. Na Auditoria Emissao, o card Atencao critica tambem foi atualizado para um estilo mais consistente com o design atual, mantendo o destaque de alerta com composicao mais limpa e integrada ao restante da interface."
+  "message": "Melhoria na auditoria assincrona DPS > API para tratar indisponibilidade transitoria da API Nacional. Consultas com erro 503, Service Unavailable, timeout e falhas de comunicacao agora fazem retentativas curtas antes de interromper apenas o lote atual, evitando consolidar falso ERRO_API definitivo para a DPS. O processamento continua do mesmo ponto via retry automatico da tela, com mensagem de erro mais legivel no estado da execucao."
 }
