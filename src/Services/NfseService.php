@@ -48,8 +48,8 @@ final class NfseService
                         $correlationId
                     );
                     throw new NfseModuleException(
-                        ((string) ($config['allow_unpaid_manual_emit'] ?? '0')) === '1' && $context === EmissionEligibilityService::CONTEXT_AUTO
-                            ? 'A emissão automática só ocorre quando a fatura estiver como Paid.'
+                        $context === EmissionEligibilityService::CONTEXT_AUTO
+                            ? 'A emissão automática desta fatura não paga está bloqueada. Habilite “Permitir emissão automática de fatura não paga” na configuração.'
                             : 'A emissão só pode ser solicitada quando a fatura estiver como Paid (ou habilite “Permitir emissão manual de fatura não paga” na configuração).'
                     );
                 case EmissionEligibilityService::SKIP_CREDIT_PAYMENT:

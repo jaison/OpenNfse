@@ -35,6 +35,10 @@ add_hook('InvoicePaid', 1, static function (array $vars) {
     Module::invoicePaidHook()->handle($vars);
 });
 
+add_hook('InvoiceCreation', 1, static function (array $vars) {
+    Module::invoiceCreationHook()->handle($vars);
+});
+
 add_hook('AfterCronJob', 1, static function (array $vars) {
     try {
         Module::cron()->runFromWhmcsCron();

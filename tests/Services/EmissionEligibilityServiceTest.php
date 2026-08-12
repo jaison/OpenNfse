@@ -61,7 +61,7 @@ final class EmissionEligibilityServiceTest extends TestCase
     public function testStillSkipsUnpaidOnAutoEvenWhenManualAllowed(): void
     {
         Capsule::$rows['mod_opennfse_config'] = [
-            (object) ['id' => 1, 'allow_unpaid_manual_emit' => 1],
+            (object) ['id' => 1, 'allow_unpaid_manual_emit' => 1, 'allow_unpaid_auto_emit' => 0],
         ];
 
         $invoice = [
@@ -73,6 +73,21 @@ final class EmissionEligibilityServiceTest extends TestCase
         $result = $this->service->check($invoice, ['context' => EmissionEligibilityService::CONTEXT_AUTO]);
         $this->assertNotNull($result);
         $this->assertSame(EmissionEligibilityService::SKIP_NOT_PAID, $result['reason']);
+    }
+
+    public function testAllowsUnpaidOnAutoWhenConfigEnabled(): void
+    {
+        Capsule::$rows['mod_opennfse_config'] = [
+            (object) ['id' => 1, 'allow_unpaid_auto_emit' => 1],
+        ];
+
+        $invoice = [
+            'status' => 'Unpaid',
+            'paymentmethod' => 'paypal',
+            'credit' => '0.00',
+        ];
+
+        $this->assertNull($this->service->check($invoice, ['context' => EmissionEligibilityService::CONTEXT_AUTO]));
     }
 
     public function testSkipsWhenPaidWithCreditPaymentMethod(): void

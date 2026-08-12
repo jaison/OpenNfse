@@ -35,14 +35,16 @@ final class EmissionEligibilityService
         $invoiceStatus = strtolower(trim((string) ($invoice['status'] ?? '')));
         $creditValue = $financials->getAppliedCredit($invoice);
         $gatewayPaidAmount = $financials->getGatewayPaidAmount($invoice);
+        $config = (new ConfigRepository())->get();
 
         if ($invoiceStatus !== 'paid') {
-            $allowUnpaidManual = false;
+            $allowUnpaid = false;
             if ($context === self::CONTEXT_MANUAL) {
-                $config = (new ConfigRepository())->get();
-                $allowUnpaidManual = ((string) ($config['allow_unpaid_manual_emit'] ?? '0')) === '1';
+                $allowUnpaid = ((string) ($config['allow_unpaid_manual_emit'] ?? '0')) === '1';
+            } else {
+                $allowUnpaid = ((string) ($config['allow_unpaid_auto_emit'] ?? '0')) === '1';
             }
-            if (!$allowUnpaidManual) {
+            if (!$allowUnpaid) {
                 return [
                     'reason' => self::SKIP_NOT_PAID,
                     'paymentMethod' => $paymentMethod,
@@ -52,23 +54,26 @@ final class EmissionEligibilityService
             }
         }
 
-        if ($financials->isCreditOnlyPayment($invoice)) {
-            return [
-                'reason' => self::SKIP_CREDIT_PAYMENT,
-                'paymentMethod' => $paymentMethod,
-                'status' => $invoiceStatus,
-                'credit' => $creditValue,
-                'gatewayPaidAmount' => $gatewayPaidAmount,
-            ];
-        }
+        // Em fatura ainda não paga, crédito/gateway não devem bloquear a emissão antecipada.
+        if ($invoiceStatus === 'paid') {
+            if ($financials->isCreditOnlyPayment($invoice)) {
+                return [
+                    'reason' => self::SKIP_CREDIT_PAYMENT,
+                    'paymentMethod' => $paymentMethod,
+                    'status' => $invoiceStatus,
+                    'credit' => $creditValue,
+                    'gatewayPaidAmount' => $gatewayPaidAmount,
+                ];
+            }
 
-        if ($paymentMethod !== '' && !(new PaymentGatewaySettingsRepository())->isEnabled($paymentMethod)) {
-            return [
-                'reason' => self::SKIP_GATEWAY_DISABLED,
-                'paymentMethod' => $paymentMethod,
-                'status' => $invoiceStatus,
-                'credit' => $creditValue,
-            ];
+            if ($paymentMethod !== '' && !(new PaymentGatewaySettingsRepository())->isEnabled($paymentMethod)) {
+                return [
+                    'reason' => self::SKIP_GATEWAY_DISABLED,
+                    'paymentMethod' => $paymentMethod,
+                    'status' => $invoiceStatus,
+                    'credit' => $creditValue,
+                ];
+            }
         }
 
         return null;

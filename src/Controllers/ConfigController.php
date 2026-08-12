@@ -605,6 +605,10 @@ final class ConfigController
             '1' => 'Sim',
             '0' => 'Não',
         ], (string) ($config['allow_unpaid_manual_emit'] ?? '0'));
+        $this->renderSelectRow('allow_unpaid_auto_emit', 'Permitir emissão automática de fatura não paga?', [
+            '1' => 'Sim',
+            '0' => 'Não',
+        ], (string) ($config['allow_unpaid_auto_emit'] ?? '0'));
         $this->renderTextRow('queue_wait_status_interval_seconds', 'Intervalo de consulta (segundos)', $config['queue_wait_status_interval_seconds'] ?? '120');
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
@@ -737,6 +741,7 @@ final class ConfigController
         $autoEmitOnPayment = (string) ($_POST['auto_emit_on_payment'] ?? '0');
         $autoSendEmailOnEmit = (string) ($_POST['auto_send_email_on_emit'] ?? '0');
         $allowUnpaidManualEmit = (string) ($_POST['allow_unpaid_manual_emit'] ?? '0');
+        $allowUnpaidAutoEmit = (string) ($_POST['allow_unpaid_auto_emit'] ?? '0');
         $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '120');
         $queueDoneRetentionDays = (string) ($_POST['queue_done_retention_days'] ?? '30');
         $logsRetentionDays = (string) ($_POST['logs_retention_days'] ?? '90');
@@ -846,6 +851,12 @@ final class ConfigController
         if (!in_array($allowUnpaidManualEmit, ['0', '1'], true)) {
             $errors[] = 'Opção inválida para emissão manual de fatura não paga.';
         }
+        if (!in_array($allowUnpaidAutoEmit, ['0', '1'], true)) {
+            $errors[] = 'Opção inválida para emissão automática de fatura não paga.';
+        }
+        if ($allowUnpaidAutoEmit === '1' && $autoEmitOnPayment !== '1') {
+            $errors[] = 'Para emissão automática em fatura não paga, habilite também “Enfileirar emissão ao pagar a fatura” (automação geral) e a fila/cron.';
+        }
         if ($autoEmitOnPayment === '1' && $queueEnabled !== '1') {
             $errors[] = 'Para habilitar emissão automática, habilite também a fila/cron.';
         }
@@ -942,6 +953,7 @@ final class ConfigController
             'auto_emit_on_payment' => (int) $autoEmitOnPayment,
             'auto_send_email_on_emit' => (int) $autoSendEmailOnEmit,
             'allow_unpaid_manual_emit' => (int) $allowUnpaidManualEmit,
+            'allow_unpaid_auto_emit' => (int) $allowUnpaidAutoEmit,
             'queue_wait_status_interval_seconds' => (int) $queueWaitInterval,
             'queue_done_retention_days' => (int) $queueDoneRetentionDays,
             'logs_retention_days' => (int) $logsRetentionDays,

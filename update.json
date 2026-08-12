@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.14",
+  "latest_version": "0.1.15",
   "release_date": "2026-08-12",
   "download_url": "https://github.com/WeCoded/OpenNfse",
   "changelog_url": "https://github.com/WeCoded/OpenNfse",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Cria automaticamente o template de e-mail WHMCS e envia NFS-e ao e-mail principal e aos contatos com avisos de fatura/faturamento."
+  "message": "Permite emissão automática na criação de fatura Unpaid (clientes que pagam após a NFS-e), via allow_unpaid_auto_emit + hook InvoiceCreation."
 }

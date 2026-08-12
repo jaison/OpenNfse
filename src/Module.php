@@ -7,6 +7,7 @@ namespace OpenNfse;
 use OpenNfse\Controllers\AdminController;
 use OpenNfse\Controllers\ClientController;
 use OpenNfse\Hooks\ClientInvoiceHook;
+use OpenNfse\Hooks\InvoiceCreationHook;
 use OpenNfse\Hooks\InvoiceHook;
 use OpenNfse\Hooks\InvoicePaidHook;
 use OpenNfse\Migrations\Migrator;
@@ -48,6 +49,11 @@ final class Module
     public static function invoicePaidHook(): InvoicePaidHook
     {
         return new InvoicePaidHook();
+    }
+
+    public static function invoiceCreationHook(): InvoiceCreationHook
+    {
+        return new InvoiceCreationHook();
     }
 
     public static function cron(): CronService
