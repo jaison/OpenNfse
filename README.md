@@ -35,6 +35,7 @@ Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emiss�
 - Emissão automática de NFS-e quando a fatura é paga.
 - Controle de automação separado por gateway de pagamento.
 - Fila de processamento para emissões, reprocessamentos e consultas de status.
+- Reconciliação automática de emissões quando a API nacional retorna indisponibilidade transitória, como erro `503`, timeout ou falha de conexão.
 - Cron integrado ao WHMCS com proteção contra execução duplicada.
 
 ### Operação de Notas
@@ -48,18 +49,25 @@ Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emiss�
 - Dashboard operacional com métricas do período.
 - Indicadores de emitidas, canceladas, rejeitadas, pendentes, erros e valor emitido.
 - Listas rápidas de últimas emissões, últimos erros e últimos cancelamentos.
-- Atalhos para ações operacionais e fechamento mensal.
+- Banner administrativo para checagem e aviso de atualização disponível do módulo.
+- Atalhos para ações operacionais do dia a dia.
 
 ### Relatórios e Exportações
 - Relatórios de NFS-e emitidas.
 - Relatórios de falhas e rejeições.
 - Relatórios de cancelamentos.
+- Auditoria de emissão para identificar faturas pagas sem NFS-e e sem item correspondente na fila.
+- Auditoria de XML para localizar órfãos, referências quebradas e inconsistências de armazenamento.
+- Histórico fiscal da invoice com emissões, cancelamentos e snapshots operacionais.
+- Auditoria API DPS para conferência direta com a API nacional e detecção de lacunas na sequência.
 - Relatórios técnicos de logs com visualização detalhada de request/response.
 - Exportação CSV de emitidas.
 - Download em ZIP dos XMLs emitidos no período.
+- Atalhos para baixar XMLs por competência, com organização pensada para conciliação com a contabilidade.
 
 ### Área do Cliente
 - Listagem das NFS-e emitidas vinculadas ao cliente.
+- Resumo da NFS-e diretamente na tela da fatura do cliente, com status, número, chave e ações rápidas.
 - Download de XML e PDF pelo cliente.
 - Reenvio de XML/PDF por e-mail pelo cliente.
 - Aviso configurável na área do cliente.
@@ -73,6 +81,7 @@ Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emiss�
 - Dados padrão do tomador e sincronização de municípios IBGE.
 - Resolução de municípios com catálogo local alimentado por fonte IBGE e fallback via ViaCEP.
 - Política de retenção de logs e fila.
+- Checagem manual e automática de atualizações do módulo a partir de manifesto remoto.
 
 ## SDKs E Bibliotecas De Terceiros
 
@@ -122,11 +131,20 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 
 ## Instalação
 
-1. Copie a pasta `OpenNfse` para `modules/addons/` do WHMCS.
-2. Confirme que a pasta `vendor-scoped/` está presente no módulo publicado.
-3. No admin do WHMCS, acesse `Configuration > System Settings > Addon Modules`.
-4. Ative o addon `OpenNFS-e`.
-5. Acesse `Addons > OpenNFS-e` e preencha a configuração inicial.
+1. Baixe o release do módulo. Ao extrair o arquivo, por exemplo `OpenNfse-0.1.13.zip`, será criada uma pasta com nome versionado, como `OpenNfse-0.1.13`.
+2. Renomeie a pasta extraída para apenas `OpenNfse`.
+3. Copie a pasta `OpenNfse` para `modules/addons/` do WHMCS.
+4. No admin do WHMCS, acesse `Configuration > System Settings > Addon Modules`.
+5. Ative o addon `OpenNFS-e`.
+6. Após a primeira ativação, clique em `Configure` e, em `Access Control`, marque quais grupos de usuários do WHMCS terão acesso ao addon.
+7. Acesse `Addons > OpenNFS-e` e preencha a configuração inicial.
+
+## Atualização
+
+1. Baixe o release mais recente do módulo. Ao extrair o arquivo, por exemplo `OpenNfse-0.1.13.zip`, será criada uma pasta com nome versionado, como `OpenNfse-0.1.13`.
+2. Renomeie a pasta extraída para apenas `OpenNfse`.
+3. Envie a pasta `OpenNfse` para `modules/addons/` do WHMCS, substituindo os arquivos da versão anterior.
+4. No admin do WHMCS, acesse `Addons > OpenNFS-e` e revise a configuração, se necessário.
 
 ## Configuração Inicial
 
@@ -137,24 +155,51 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 
 ## Armazenamento de Arquivos
 
-- XMLs são gravados em:
+- XMLs de emissão e cancelamento são gravados em:
 
 ```text
 attachments/nfse/xml/{ambiente}/{serie}/{ano}/{mes}/
 ```
 
-- Exemplos:
+- Exemplos da estrutura física no servidor:
 
 ```text
 attachments/nfse/xml/homologacao/900/2026/06/
 attachments/nfse/xml/producao/1/2026/06/
 ```
 
+- Nessa estrutura física, os XMLs ficam agrupados por ambiente, série e mês de referência do documento salvo.
+- Os nomes dos arquivos seguem o padrão:
+
+```text
+nfse_{numero}_{invoiceid}_{mmyyyy}.xml
+cancelamento_nfse_{numero}_{invoiceid}_{yyyymmdd_hhmmss}.xml
+```
+
+## Baixar XMLs Por Competência
+
+- No relatório de notas emitidas, o módulo oferece atalhos rápidos para baixar os XMLs ZIPados dos últimos meses fechados.
+- Esse recurso é especialmente útil na conciliação com a contabilidade, porque separa automaticamente os documentos por tipo dentro do arquivo compactado.
+- Quando o layout por competência é usado, o ZIP é organizado com as seguintes pastas:
+
+```text
+Emitidas/
+Canceladas/
+Emitidas para Estrangeiros/
+```
+
+- A classificação dentro do ZIP segue estas regras:
+- `Emitidas/`: NFS-e emitidas para clientes no Brasil.
+- `Canceladas/`: XMLs de cancelamento das notas canceladas no período.
+- `Emitidas para Estrangeiros/`: NFS-e emitidas para tomadores com país diferente de `BR`.
+- O nome do arquivo gerado segue o padrão `nfse_xml_{mmyyyy}.zip`, facilitando o envio mensal para a contabilidade.
+
 ## Cron
 
 - O addon possui integração com o cron do próprio WHMCS.
 - Quando o cron principal do WHMCS roda a cada minuto, o processamento automático do módulo é disparado junto.
 - O processamento respeita a configuração interna do addon e possui proteção contra execução duplicada no mesmo minuto.
+- Em falhas transitórias da API nacional, o cron mantém a nota em processamento e tenta reconciliar a emissão automaticamente nos ciclos seguintes.
 - O arquivo `cron.php` do módulo permanece disponível para compatibilidade, mas a recomendação é usar o cron principal do WHMCS como origem oficial.
 
 ## Atualização de Dependências
