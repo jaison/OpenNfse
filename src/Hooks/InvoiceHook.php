@@ -72,7 +72,17 @@ final class InvoiceHook
         }
 
         $statusAtual = $nota ? (string) ($nota['status'] ?? '') : '';
-        $emitDisabled = $queueActive || in_array($statusAtual, ['PROCESSANDO', 'EMITIDA'], true);
+        $idDpsAtual = trim((string) ($nota['id_dps'] ?? ''));
+        $chaveAtual = trim((string) ($nota['chave_acesso'] ?? ''));
+        $hasTrackedNota = $nota !== null
+            && $statusAtual !== 'CANCELADA'
+            && (
+                $idDpsAtual !== ''
+                || $chaveAtual !== ''
+                || in_array($statusAtual, ['PROCESSANDO', 'EMITIDA', 'ERRO', 'REJEITADA'], true)
+            );
+        $emitDisabled = $queueActive || $hasTrackedNota;
+        $canReemit = $nota !== null && !$queueActive && in_array($statusAtual, ['ERRO', 'REJEITADA'], true);
         $emitText = 'Emitir NFS-e';
         if ($queueActive) {
             $emitText = 'Emitir NFS-e (enfileirado)';
@@ -80,6 +90,8 @@ final class InvoiceHook
             $emitText = 'Emitir NFS-e (processando)';
         } elseif ($statusAtual === 'EMITIDA') {
             $emitText = 'Emitir NFS-e (emitida)';
+        } elseif ($canReemit) {
+            $emitText = 'Emitir NFS-e (use reemitir)';
         } elseif ($statusAtual === 'CANCELADA') {
             $emitText = 'Emitir NFS-e (nova emissão)';
         }
@@ -112,6 +124,8 @@ final class InvoiceHook
                 $msg .= ' Gateway: ' . $paymentMethod . '.';
             }
             $html .= '<div class="errorbox">' . htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') . '</div>';
+        } elseif ($emitMsg === 'already_linked') {
+            $html .= '<div class="errorbox">Esta invoice já possui nota vinculada ou DPS registrada. Use Consultar Status, a fila ou a ação de reemitir para evitar duplicidade.</div>';
         } elseif ($emitMsg === 'error') {
             $detail = trim((string) ($_REQUEST['nfse_emit_detail'] ?? ''));
             $html .= '<div class="errorbox">Erro ao solicitar emissão.' . ($detail !== '' ? ' ' . htmlspecialchars($detail, ENT_QUOTES, 'UTF-8') : ' Verifique os logs do módulo.') . '</div>';
@@ -144,6 +158,14 @@ final class InvoiceHook
                 $actionFormStyle,
                 [$tokenInput, ActionFormRenderer::invoiceIdInput($invoiceId)],
                 '<button type="submit" class="btn btn-primary" style="' . $primaryButtonStyle . '"' . $disabled . '>' . htmlspecialchars($emitText, ENT_QUOTES, 'UTF-8') . '</button>'
+            ));
+        }
+        if ($canReemit) {
+            $primaryActions .= $wrapAction(ActionFormRenderer::render(
+                $base . '&action=reemitir',
+                $actionFormStyle,
+                [$tokenInput, ActionFormRenderer::invoiceIdInput($invoiceId), '<input type="hidden" name="confirm" value="1" />'],
+                '<button type="submit" class="btn btn-warning" style="' . $primaryButtonStyle . '" onclick="return confirm(\'Reemitir a NFS-e desta invoice?\');">Reemitir NFS-e</button>'
             ));
         }
         if ($nota || $queueActive) {

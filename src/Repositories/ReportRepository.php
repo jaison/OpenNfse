@@ -660,6 +660,11 @@ final class ReportRepository
 
     private function applyFiltersToNotasQuery($q, array $filters): void
     {
+        $invoiceId = trim((string) ($filters['invoiceid'] ?? ''));
+        if ($invoiceId !== '' && ctype_digit($invoiceId)) {
+            $q->where('n.invoiceid', (int) $invoiceId);
+        }
+
         $status = trim((string) ($filters['status'] ?? ''));
         if ($status !== '') {
             if (strpos($status, ',') !== false) {

@@ -179,7 +179,9 @@ final class AdminController
             'notas' => [
                 'method' => 'GET',
                 'requiresToken' => false,
-                'handler' => [$this->notasController, 'showNotas'],
+                'handler' => function (): void {
+                    $this->redirectRelatorioEmitidas([], true);
+                },
             ],
             'fila' => [
                 'method' => 'GET',
@@ -644,7 +646,7 @@ final class AdminController
         echo '<div class="opennfse-dashboard__kpi-grid">';
         $renderMetricCard('Emitidas', (string) $emitidas, '', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'EMITIDA'], '', '&', PHP_QUERY_RFC3986), '#2e7d32');
         $renderMetricCard('Canceladas', (string) $canceladas, '', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=cancelamentos&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986), '#c75b12');
-        $renderMetricCard('Rejeitadas', (string) $rejeitadas, '', 'addonmodules.php?module=OpenNfse&action=notas&status=REJEITADA&updated_from=' . rawurlencode((string) ($metrics['range_start'] ?? '')) . '&updated_to=' . rawurlencode((string) ($metrics['range_end'] ?? '')), '#8e44ad');
+        $renderMetricCard('Rejeitadas', (string) $rejeitadas, '', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'REJEITADA'], '', '&', PHP_QUERY_RFC3986), '#8e44ad');
         $renderMetricCard('Pendentes', (string) $pendentes, '', 'addonmodules.php?module=OpenNfse&action=fila&' . http_build_query($filaParams, '', '&', PHP_QUERY_RFC3986), '#c77d02');
         $renderMetricCard('Com erro', (string) $comErroPeriodo, '', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas&' . http_build_query($relatorioParams, '', '&', PHP_QUERY_RFC3986), '#c62828');
         $renderMetricCard('Valor emitido', $this->formatMoney($valorTotal, 'R$ ', ''), '', 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'EMITIDA'], '', '&', PHP_QUERY_RFC3986), '#23527c', 'opennfse-dashboard__metric-value--money');
@@ -805,7 +807,7 @@ final class AdminController
             [
                 'label' => 'Rejeitadas no período',
                 'count' => $rejeitadas,
-                'href' => 'addonmodules.php?module=OpenNfse&action=notas&status=REJEITADA&updated_from=' . rawurlencode((string) ($metrics['range_start'] ?? '')) . '&updated_to=' . rawurlencode((string) ($metrics['range_end'] ?? '')),
+                'href' => 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas&' . http_build_query($relatorioParams + ['status' => 'REJEITADA'], '', '&', PHP_QUERY_RFC3986),
                 'color' => '#8e44ad',
                 'desc' => 'Exigem correção manual',
             ],

@@ -65,11 +65,27 @@ trait AdminHelpersTrait
         if ($keepFilters) {
             $fStatus = trim((string) ($_REQUEST['return_status'] ?? $_REQUEST['status'] ?? ''));
             $fInvoice = trim((string) ($_REQUEST['return_invoiceid'] ?? $_REQUEST['invoiceid'] ?? ''));
+            $fUpdatedFrom = trim((string) ($_REQUEST['return_updated_from'] ?? $_REQUEST['updated_from'] ?? ''));
+            $fUpdatedTo = trim((string) ($_REQUEST['return_updated_to'] ?? $_REQUEST['updated_to'] ?? ''));
+            $fPage = trim((string) ($_REQUEST['return_page'] ?? $_REQUEST['page'] ?? ''));
+            $fPerPage = trim((string) ($_REQUEST['return_per_page'] ?? $_REQUEST['per_page'] ?? ''));
             if ($fStatus !== '') {
                 $merged['status'] = $fStatus;
             }
             if ($fInvoice !== '') {
                 $merged['invoiceid'] = $fInvoice;
+            }
+            if ($fUpdatedFrom !== '') {
+                $merged['updated_from'] = $fUpdatedFrom;
+            }
+            if ($fUpdatedTo !== '') {
+                $merged['updated_to'] = $fUpdatedTo;
+            }
+            if ($fPage !== '') {
+                $merged['page'] = $fPage;
+            }
+            if ($fPerPage !== '') {
+                $merged['per_page'] = $fPerPage;
             }
         }
         if (!empty($merged)) {
@@ -80,15 +96,15 @@ trait AdminHelpersTrait
     }
 
 
-    public function redirectNotas(array $params, bool $keepFilters): void
+    public function redirectRelatorioEmitidas(array $params, bool $keepFilters): void
     {
-        $url = 'addonmodules.php?module=OpenNfse&action=notas';
+        $url = 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas';
         $merged = $params;
         if ($keepFilters) {
             $fInvoice = trim((string) ($_REQUEST['return_invoiceid'] ?? $_REQUEST['invoiceid'] ?? ''));
             $fStatus = trim((string) ($_REQUEST['return_status'] ?? $_REQUEST['status'] ?? ''));
-            $fFrom = trim((string) ($_REQUEST['return_updated_from'] ?? $_REQUEST['updated_from'] ?? ''));
-            $fTo = trim((string) ($_REQUEST['return_updated_to'] ?? $_REQUEST['updated_to'] ?? ''));
+            $fFrom = trim((string) ($_REQUEST['return_data_inicial'] ?? $_REQUEST['data_inicial'] ?? $_REQUEST['return_updated_from'] ?? $_REQUEST['updated_from'] ?? ''));
+            $fTo = trim((string) ($_REQUEST['return_data_final'] ?? $_REQUEST['data_final'] ?? $_REQUEST['return_updated_to'] ?? $_REQUEST['updated_to'] ?? ''));
             if ($fInvoice !== '') {
                 $merged['invoiceid'] = $fInvoice;
             }
@@ -96,10 +112,10 @@ trait AdminHelpersTrait
                 $merged['status'] = $fStatus;
             }
             if ($fFrom !== '') {
-                $merged['updated_from'] = $fFrom;
+                $merged['data_inicial'] = $fFrom;
             }
             if ($fTo !== '') {
-                $merged['updated_to'] = $fTo;
+                $merged['data_final'] = $fTo;
             }
         }
         if (!empty($merged)) {
@@ -115,9 +131,8 @@ trait AdminHelpersTrait
         $base = 'addonmodules.php?module=OpenNfse';
         $tabs = [
             'dashboard' => $base . '&action=dashboard',
-            'notas' => $base . '&action=notas',
             'fila' => $base . '&action=fila',
-            'relatorios' => $base . '&action=relatorios&tab=auditoria',
+            'relatorios' => $base . '&action=relatorios&tab=emitidas',
             'config' => $base . '&action=config',
         ];
 
@@ -125,7 +140,6 @@ trait AdminHelpersTrait
         foreach ($tabs as $key => $url) {
             $label = match ($key) {
                 'dashboard' => 'Dashboard',
-                'notas' => 'Notas',
                 'fila' => 'Fila',
                 'relatorios' => 'Relatórios',
                 default => 'Configurações',

@@ -91,19 +91,19 @@ final class ReportsController
                 'badge_color' => '#5f6b7a',
                 'summary' => 'Compara a pasta mensal de XMLs com o xml_path atual das notas para encontrar órfãos e referências inconsistentes.',
             ],
+            'auditoria_api_dps' => [
+                'label' => 'Auditoria DPS > API',
+                'badge' => 'API',
+                'badge_bg' => '#eaf7f1',
+                'badge_color' => '#176b46',
+                'summary' => 'Confere as DPS do período diretamente na API e verifica lacunas na sequência numérica do emissor.',
+            ],
             'historico_fiscal' => [
                 'label' => 'Historico Fiscal',
                 'badge' => 'Fiscal',
                 'badge_bg' => '#f3e8ff',
                 'badge_color' => '#6b21a8',
                 'summary' => 'Preserva os documentos e eventos fiscais da invoice ao longo do tempo, inclusive emissões, cancelamentos e snapshots de migracao.',
-            ],
-            'auditoria_api_dps' => [
-                'label' => 'Auditoria API DPS',
-                'badge' => 'API',
-                'badge_bg' => '#eaf7f1',
-                'badge_color' => '#176b46',
-                'summary' => 'Confere as DPS do período diretamente na API e verifica lacunas na sequência numérica do emissor.',
             ],
             'cancelamentos' => [
                 'label' => 'Cancelamentos',
@@ -225,16 +225,29 @@ final class ReportsController
             $this->redirectRelatorios('emitidas');
         }
 
+        $msg = trim((string) ($_REQUEST['msg'] ?? ''));
+        $invoiceFilter = trim((string) ($_REQUEST['invoiceid'] ?? ''));
         $dataInicial = trim((string) ($_REQUEST['data_inicial'] ?? ''));
         $dataFinal = trim((string) ($_REQUEST['data_final'] ?? ''));
+        if ($dataInicial === '') {
+            $dataInicial = date('Y-m-01');
+        }
+        if ($dataFinal === '') {
+            $dataFinal = date('Y-m-d');
+        }
         $status = trim((string) ($_REQUEST['status'] ?? 'EMITIDA,CANCELADA'));
         $cliente = trim((string) ($_REQUEST['cliente'] ?? ''));
+        $perPage = (int) ($_REQUEST['per_page'] ?? 50);
+        if (!in_array($perPage, [50, 100, 500], true)) {
+            $perPage = 50;
+        }
         $page = (int) ($_REQUEST['page'] ?? 1);
         if ($page < 1) {
             $page = 1;
         }
 
         $filters = [
+            'invoiceid' => $invoiceFilter,
             'data_inicial' => $dataInicial,
             'data_final' => $dataFinal,
             'status' => $status,
@@ -243,7 +256,6 @@ final class ReportsController
 
         $repo = new ReportRepository();
         $summary = $repo->summaryNotas($filters);
-        $perPage = 1000;
         $totalNotas = (int) ($summary['total_notas'] ?? 0);
         $totalPages = max(1, (int) ceil($totalNotas / $perPage));
         if ($page > $totalPages) {
@@ -252,27 +264,54 @@ final class ReportsController
         $offset = ($page - 1) * $perPage;
         $rows = $repo->listNotas($filters, $perPage, $offset);
 
+        if ($msg === 'status_done') {
+            echo '<div class="successbox">Consulta de status executada.</div>';
+        } elseif ($msg === 'status_error') {
+            echo '<div class="errorbox">Erro ao consultar status. Verifique os logs do módulo.</div>';
+        } elseif ($msg === 'reemitir_gateway_disabled') {
+            echo '<div class="errorbox">Reemissão desativada para o gateway de pagamento desta fatura.</div>';
+        } elseif ($msg === 'reemitir_enqueued') {
+            echo '<div class="successbox">Reemissão enfileirada. O cron processará em breve.</div>';
+        } elseif ($msg === 'reemitir_requested') {
+            echo '<div class="successbox">Reemissão solicitada. Verifique o status e o XML na fatura.</div>';
+        } elseif ($msg === 'reemitir_error') {
+            echo '<div class="errorbox">Erro ao solicitar reemissão. Verifique os logs do módulo.</div>';
+        } elseif ($msg === 'cancel_done') {
+            echo '<div class="successbox">Cancelamento solicitado com sucesso.</div>';
+        } elseif ($msg === 'cancel_error') {
+            echo '<div class="errorbox">Erro ao cancelar NFS-e. Verifique os logs do módulo.</div>';
+        }
+
         $recentCompetencias = $this->buildRecentCompetenciaZipPresets();
         if (!empty($recentCompetencias)) {
-            echo '<div style="margin-bottom:14px;border:1px solid #d6e9d2;background:#f7fcf5;padding:12px;">';
-            echo '<div style="font-size:13px;font-weight:700;color:#2e5f2d;margin-bottom:4px;">Baixar XMLs por competência</div>';
-            echo '<div style="font-size:12px;color:#4f6b4f;line-height:1.45;margin-bottom:10px;">Atalhos rápidos para baixar os XMLs ZIPados dos 3 últimos meses fechados separadamente, considerando todas as notas Emitidas e Canceladas.</div>';
-            echo '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+            echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #d7eadc;border-radius:8px;background:linear-gradient(180deg,#fbfefb 0%,#f2f9f4 100%);">';
+            echo '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
+            echo '<div style="flex:1 1 420px;">';
+            echo '<div style="font-size:11px;color:#5f7a67;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Exportação por competência</div>';
+            echo '<div style="font-size:15px;font-weight:700;color:#1f4d30;margin-bottom:4px;">Baixar XMLs por competência</div>';
+            echo '<div style="font-size:12px;color:#4f6b57;line-height:1.5;">Atalhos rápidos para baixar os XMLs ZIPados dos 3 últimos meses fechados separadamente, considerando todas as notas Emitidas e Canceladas.</div>';
+            echo '</div>';
+            echo '<div style="min-width:420px;flex:1 1 520px;padding:12px 14px;border:1px solid #bfe0c7;border-radius:8px;background:#ffffff;box-shadow:0 2px 8px rgba(22,101,52,0.08);">';
+            echo '<div style="font-size:11px;color:#176b46;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Últimos 3 períodos fechados</div>';
+            echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
             foreach ($recentCompetencias as $preset) {
                 echo $this->renderPostActionButton(
                     'relatoriosExportZip',
                     (string) ($preset['label'] ?? ''),
                     [
                         'tab' => 'emitidas',
+                        'invoiceid' => $invoiceFilter,
                         'data_inicial' => (string) ($preset['data_inicial'] ?? ''),
                         'data_final' => (string) ($preset['data_final'] ?? ''),
                         'status' => 'EMITIDA,CANCELADA',
                         'cliente' => '',
                         'zip_layout' => 'competencia',
                     ],
-                    'btn btn-xs btn-success'
+                    'btn btn-success'
                 );
             }
+            echo '</div>';
+            echo '</div>';
             echo '</div>';
             echo '</div>';
         }
@@ -281,19 +320,25 @@ final class ReportsController
         echo '<input type="hidden" name="module" value="OpenNfse" />';
         echo '<input type="hidden" name="action" value="relatorios" />';
         echo '<input type="hidden" name="tab" value="emitidas" />';
-        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
-        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px;">';
-        echo '<div style="min-width:150px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Data inicial</div>';
-        echo '<input type="date" name="data_inicial" value="' . htmlspecialchars($dataInicial, ENT_QUOTES, 'UTF-8') . '" style="width:150px;" />';
+        echo '<input type="hidden" name="per_page" value="' . htmlspecialchars((string) $perPage, ENT_QUOTES, 'UTF-8') . '" />';
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
+        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
+        echo '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;flex:1 1 860px;">';
+        echo '<div style="min-width:130px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Invoice ID</div>';
+        echo '<input type="text" name="invoiceid" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" style="width:130px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="min-width:150px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Data final</div>';
-        echo '<input type="date" name="data_final" value="' . htmlspecialchars($dataFinal, ENT_QUOTES, 'UTF-8') . '" style="width:150px;" />';
+        echo '<div style="min-width:160px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data inicial</div>';
+        echo '<input type="date" name="data_inicial" value="' . htmlspecialchars($dataInicial, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="min-width:200px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Status</div>';
-        echo '<select name="status" style="width:200px;">';
+        echo '<div style="min-width:160px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data final</div>';
+        echo '<input type="date" name="data_final" value="' . htmlspecialchars($dataFinal, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
+        echo '</div>';
+        echo '<div style="min-width:220px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Status</div>';
+        echo '<select name="status" style="width:220px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
         $statusOptions = [
             '' => 'Todos os status',
             'EMITIDA,CANCELADA' => 'Emitidas e Canceladas',
@@ -309,15 +354,14 @@ final class ReportsController
         }
         echo '</select>';
         echo '</div>';
+        echo '<div style="flex:1 1 320px;min-width:320px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Cliente</div>';
+        echo '<input type="text" name="cliente" placeholder="Cliente (ID ou nome)" value="' . htmlspecialchars($cliente, ENT_QUOTES, 'UTF-8') . '" style="width:100%;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<div style="flex:1;min-width:320px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Cliente</div>';
-        echo '<input type="text" name="cliente" placeholder="Cliente (ID ou nome)" value="' . htmlspecialchars($cliente, ENT_QUOTES, 'UTF-8') . '" style="width:100%;" />';
         echo '</div>';
-        echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
-        echo '<button type="submit" class="btn btn-xs btn-default">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas">Limpar</a>';
+        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
+        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
+        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas">Limpar</a>';
         echo '</div>';
         echo '</div>';
         echo '</div>';
@@ -361,8 +405,12 @@ final class ReportsController
 
         echo '</table>';
 
-        echo '<div style="margin-top:10px;">';
-        echo 'Total de notas: <strong>' . (int) ($summary['total_notas'] ?? 0) . '</strong> &nbsp; ';
+        echo '<div style="margin-top:12px;padding:14px 16px;border:1px solid #e5e7eb;border-radius:8px;background:linear-gradient(180deg,#fbfcfe 0%,#f5f7fa 100%);">';
+        echo '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;">';
+        echo '<div style="min-width:180px;flex:1 1 180px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;">';
+        echo '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Total de notas</div>';
+        echo '<div style="font-size:17px;font-weight:700;color:#1f2937;">' . (int) ($summary['total_notas'] ?? 0) . '</div>';
+        echo '</div>';
         $statusParts = array_values(array_filter(array_map('trim', explode(',', $status)), static fn (string $v): bool => $v !== ''));
         $showSplitTotals = count($statusParts) === 2 && in_array('EMITIDA', $statusParts, true) && in_array('CANCELADA', $statusParts, true);
         if ($showSplitTotals) {
@@ -372,44 +420,87 @@ final class ReportsController
             $filtersCanceladas['status'] = 'CANCELADA';
             $sumEmitidas = $repo->summaryNotas($filtersEmitidas);
             $sumCanceladas = $repo->summaryNotas($filtersCanceladas);
-            echo 'Valor total Emitidas: <strong>' . htmlspecialchars($this->formatMoney((float) ($sumEmitidas['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</strong> &nbsp; ';
-            echo 'Valor total Canceladas: <strong>' . htmlspecialchars($this->formatMoney((float) ($sumCanceladas['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</strong>';
+            echo '<div style="min-width:240px;flex:1 1 240px;padding:10px 12px;border:1px solid #d7eadc;border-radius:6px;background:#fff;">';
+            echo '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Valor Emitidas</div>';
+            echo '<div style="font-size:17px;font-weight:700;color:#166534;">' . htmlspecialchars($this->formatMoney((float) ($sumEmitidas['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</div>';
+            echo '</div>';
+            echo '<div style="min-width:240px;flex:1 1 240px;padding:10px 12px;border:1px solid #eadfd7;border-radius:6px;background:#fff;">';
+            echo '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Valor Canceladas</div>';
+            echo '<div style="font-size:17px;font-weight:700;color:#9a3412;">' . htmlspecialchars($this->formatMoney((float) ($sumCanceladas['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</div>';
+            echo '</div>';
         } else {
-            echo 'Valor total: <strong>' . htmlspecialchars($this->formatMoney((float) ($summary['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</strong>';
+            echo '<div style="min-width:240px;flex:1 1 240px;padding:10px 12px;border:1px solid #dbe5f0;border-radius:6px;background:#fff;">';
+            echo '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Valor total</div>';
+            echo '<div style="font-size:17px;font-weight:700;color:#1d4ed8;">' . htmlspecialchars($this->formatMoney((float) ($summary['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</div>';
+            echo '</div>';
         }
         echo '</div>';
-        echo '<div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">';
+        echo '</div>';
+        echo '<div style="margin-top:10px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
         $firstItem = $totalNotas > 0 ? ($offset + 1) : 0;
         $lastItem = min($offset + count($rows), $totalNotas);
-        echo '<div>Exibindo <strong>' . $firstItem . '-' . $lastItem . '</strong> de <strong>' . $totalNotas . '</strong> registros</div>';
+        echo '<div style="font-size:14px;color:#374151;">Exibindo <strong style="color:#111827;">' . $firstItem . '-' . $lastItem . '</strong> de <strong style="color:#111827;">' . $totalNotas . '</strong> registros</div>';
 
         $baseParams = [
             'module' => 'OpenNfse',
             'action' => 'relatorios',
             'tab' => 'emitidas',
+            'invoiceid' => $invoiceFilter,
             'data_inicial' => $dataInicial,
             'data_final' => $dataFinal,
             'status' => $status,
             'cliente' => $cliente,
+            'per_page' => $perPage,
         ];
 
-        echo '<div>';
+        echo '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
         if ($page > 1) {
             $prevParams = $baseParams;
             $prevParams['page'] = $page - 1;
-            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a> ';
+            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a>';
         }
-        echo '<span style="margin:0 6px;">Página ' . $page . ' / ' . $totalPages . '</span>';
+        echo '<span style="display:inline-flex;align-items:center;padding:6px 10px;border:1px solid #d1d5db;border-radius:999px;background:#f9fafb;font-size:13px;font-weight:600;color:#374151;">Página ' . $page . ' / ' . $totalPages . '</span>';
         if ($page < $totalPages) {
             $nextParams = $baseParams;
             $nextParams['page'] = $page + 1;
-            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
+            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
         }
         echo '</div>';
         echo '</div>';
-        echo '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">';
+        echo '<div style="margin-top:10px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;">';
+        echo '<form method="get" action="addonmodules.php" style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin:0;">';
+        echo '<input type="hidden" name="module" value="OpenNfse" />';
+        echo '<input type="hidden" name="action" value="relatorios" />';
+        echo '<input type="hidden" name="tab" value="emitidas" />';
+        echo '<input type="hidden" name="invoiceid" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" />';
+        echo '<input type="hidden" name="data_inicial" value="' . htmlspecialchars($dataInicial, ENT_QUOTES, 'UTF-8') . '" />';
+        echo '<input type="hidden" name="data_final" value="' . htmlspecialchars($dataFinal, ENT_QUOTES, 'UTF-8') . '" />';
+        echo '<input type="hidden" name="status" value="' . htmlspecialchars($status, ENT_QUOTES, 'UTF-8') . '" />';
+        echo '<input type="hidden" name="cliente" value="' . htmlspecialchars($cliente, ENT_QUOTES, 'UTF-8') . '" />';
+        echo '<div style="min-width:190px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Página</div>';
+        echo '<select name="page" style="min-width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
+        for ($pageOption = 1; $pageOption <= $totalPages; $pageOption++) {
+            $selectedPage = $pageOption === $page ? ' selected' : '';
+            echo '<option value="' . $pageOption . '"' . $selectedPage . '>Página ' . $pageOption . ' de ' . $totalPages . '</option>';
+        }
+        echo '</select>';
+        echo '</div>';
+        echo '<div style="min-width:160px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Registros</div>';
+        echo '<select name="per_page" style="min-width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
+        foreach ([50, 100, 500] as $perPageOption) {
+            $selectedPerPage = $perPageOption === $perPage ? ' selected' : '';
+            echo '<option value="' . $perPageOption . '"' . $selectedPerPage . '>' . $perPageOption . ' por página</option>';
+        }
+        echo '</select>';
+        echo '</div>';
+        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Aplicar</button>';
+        echo '</form>';
+        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
         echo $this->renderPostActionButton('relatoriosExportZip', 'Baixar XMLs do período escolhido', [
             'tab' => 'emitidas',
+            'invoiceid' => $invoiceFilter,
             'data_inicial' => $dataInicial,
             'data_final' => $dataFinal,
             'status' => $status,
@@ -417,11 +508,13 @@ final class ReportsController
         ], 'btn btn-xs btn-default');
         echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
             'tab' => 'emitidas',
+            'invoiceid' => $invoiceFilter,
             'data_inicial' => $dataInicial,
             'data_final' => $dataFinal,
             'status' => $status,
             'cliente' => $cliente,
         ], 'btn btn-xs btn-default');
+        echo '</div>';
         echo '</div>';
     }
 
@@ -448,30 +541,30 @@ final class ReportsController
         echo '<input type="hidden" name="module" value="OpenNfse" />';
         echo '<input type="hidden" name="action" value="relatorios" />';
         echo '<input type="hidden" name="tab" value="falhas" />';
-        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
-        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px;">';
-        echo '<div style="min-width:150px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Data inicial</div>';
-        echo '<input type="date" name="data_inicial" value="' . htmlspecialchars($dataInicial, ENT_QUOTES, 'UTF-8') . '" style="width:150px;" />';
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
+        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
+        echo '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;flex:1 1 620px;">';
+        echo '<div style="min-width:160px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data inicial</div>';
+        echo '<input type="date" name="data_inicial" value="' . htmlspecialchars($dataInicial, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="min-width:150px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Data final</div>';
-        echo '<input type="date" name="data_final" value="' . htmlspecialchars($dataFinal, ENT_QUOTES, 'UTF-8') . '" style="width:150px;" />';
+        echo '<div style="min-width:160px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data final</div>';
+        echo '<input type="date" name="data_final" value="' . htmlspecialchars($dataFinal, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
+        echo '</div>';
+        echo '<div style="flex:1 1 320px;min-width:320px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Cliente</div>';
+        echo '<input type="text" name="cliente" placeholder="Cliente (ID ou nome)" value="' . htmlspecialchars($cliente, ENT_QUOTES, 'UTF-8') . '" style="width:100%;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
         echo '</div>';
-        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<div style="flex:1;min-width:320px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Cliente</div>';
-        echo '<input type="text" name="cliente" placeholder="Cliente (ID ou nome)" value="' . htmlspecialchars($cliente, ENT_QUOTES, 'UTF-8') . '" style="width:100%;" />';
-        echo '</div>';
-        echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
-        echo '<button type="submit" class="btn btn-xs btn-default">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas">Limpar</a>';
+        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
+        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
+        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas">Limpar</a>';
         echo '</div>';
         echo '</div>';
         echo '</div>';
         echo '</form>';
-        echo '<div style="margin:-4px 0 10px 0;">';
+        echo '<div style="margin-bottom:12px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;">';
         echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
             'tab' => 'falhas',
             'data_inicial' => $dataInicial,
@@ -538,30 +631,30 @@ final class ReportsController
         echo '<input type="hidden" name="module" value="OpenNfse" />';
         echo '<input type="hidden" name="action" value="relatorios" />';
         echo '<input type="hidden" name="tab" value="cancelamentos" />';
-        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
-        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px;">';
-        echo '<div style="min-width:150px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Data inicial</div>';
-        echo '<input type="date" name="data_inicial" value="' . htmlspecialchars($dataInicial, ENT_QUOTES, 'UTF-8') . '" style="width:150px;" />';
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
+        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
+        echo '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;flex:1 1 620px;">';
+        echo '<div style="min-width:160px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data inicial</div>';
+        echo '<input type="date" name="data_inicial" value="' . htmlspecialchars($dataInicial, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="min-width:150px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Data final</div>';
-        echo '<input type="date" name="data_final" value="' . htmlspecialchars($dataFinal, ENT_QUOTES, 'UTF-8') . '" style="width:150px;" />';
+        echo '<div style="min-width:160px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data final</div>';
+        echo '<input type="date" name="data_final" value="' . htmlspecialchars($dataFinal, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
+        echo '</div>';
+        echo '<div style="flex:1 1 320px;min-width:320px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Cliente</div>';
+        echo '<input type="text" name="cliente" placeholder="Cliente (ID ou nome)" value="' . htmlspecialchars($cliente, ENT_QUOTES, 'UTF-8') . '" style="width:100%;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
         echo '</div>';
-        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<div style="flex:1;min-width:320px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Cliente</div>';
-        echo '<input type="text" name="cliente" placeholder="Cliente (ID ou nome)" value="' . htmlspecialchars($cliente, ENT_QUOTES, 'UTF-8') . '" style="width:100%;" />';
-        echo '</div>';
-        echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
-        echo '<button type="submit" class="btn btn-xs btn-default">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=cancelamentos">Limpar</a>';
+        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
+        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
+        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=cancelamentos">Limpar</a>';
         echo '</div>';
         echo '</div>';
         echo '</div>';
         echo '</form>';
-        echo '<div style="margin:-4px 0 10px 0;display:flex;gap:6px;flex-wrap:wrap;">';
+        echo '<div style="margin-bottom:12px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;">';
         echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
             'tab' => 'cancelamentos',
             'data_inicial' => $dataInicial,
@@ -638,15 +731,15 @@ final class ReportsController
         echo '<input type="hidden" name="module" value="OpenNfse" />';
         echo '<input type="hidden" name="action" value="relatorios" />';
         echo '<input type="hidden" name="tab" value="auditoria" />';
-        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
-        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<div style="min-width:180px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Mês de referência</div>';
-        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:180px;" />';
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
+        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
+        echo '<div style="min-width:190px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Mês de referência</div>';
+        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
-        echo '<button type="submit" class="btn btn-xs btn-default">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria">Limpar</a>';
+        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
+        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
+        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria">Limpar</a>';
         echo '</div>';
         echo '</div>';
         echo '</div>';
@@ -695,9 +788,17 @@ final class ReportsController
         }
 
         echo '</table>';
-        echo '<div style="margin-top:10px;">';
-        echo 'Total de faturas: <strong>' . (int) ($summary['total_invoices'] ?? 0) . '</strong> &nbsp; ';
-        echo 'Valor total: <strong>' . htmlspecialchars($this->formatMoney((float) ($summary['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</strong>';
+        echo '<div style="margin-top:12px;padding:14px 16px;border:1px solid #e5e7eb;border-radius:8px;background:linear-gradient(180deg,#fbfcfe 0%,#f5f7fa 100%);">';
+        echo '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;">';
+        echo '<div style="min-width:220px;flex:1 1 220px;padding:10px 12px;border:1px solid #dbe5f0;border-radius:6px;background:#fff;">';
+        echo '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Total de faturas</div>';
+        echo '<div style="font-size:17px;font-weight:700;color:#1f2937;">' . (int) ($summary['total_invoices'] ?? 0) . '</div>';
+        echo '</div>';
+        echo '<div style="min-width:240px;flex:1 1 240px;padding:10px 12px;border:1px solid #d7eadc;border-radius:6px;background:#fff;">';
+        echo '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Valor total</div>';
+        echo '<div style="font-size:17px;font-weight:700;color:#176b46;">' . htmlspecialchars($this->formatMoney((float) ($summary['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</div>';
+        echo '</div>';
+        echo '</div>';
         echo '</div>';
     }
 
@@ -724,21 +825,21 @@ final class ReportsController
         echo '<input type="hidden" name="module" value="OpenNfse" />';
         echo '<input type="hidden" name="action" value="relatorios" />';
         echo '<input type="hidden" name="tab" value="xml_auditoria" />';
-        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
-        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<div style="min-width:180px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Mês de referência</div>';
-        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:180px;" />';
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
+        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
+        echo '<div style="min-width:190px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Mês de referência</div>';
+        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
-        echo '<button type="submit" class="btn btn-xs btn-default">Auditar</button>';
-        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=xml_auditoria">Limpar</a>';
+        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
+        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Auditar</button>';
+        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=xml_auditoria">Limpar</a>';
         echo '</div>';
         echo '</div>';
         echo '</div>';
         echo '</form>';
 
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #d9e1ea;background:#fbfcfe;">';
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fbfcfe 0%,#f5f8fb 100%);">';
         echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:6px;">Escopo da auditoria</div>';
         echo '<div style="font-size:12px;color:#5b6776;line-height:1.55;">';
         echo 'Comparando a pasta <strong>' . htmlspecialchars((string) ($audit['relative_dir'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</strong> referente a <strong>' . htmlspecialchars($periodLabel, ENT_QUOTES, 'UTF-8') . '</strong> ';
@@ -759,7 +860,7 @@ final class ReportsController
         ];
         echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">';
         foreach ($metricCards as $card) {
-            echo '<div style="border:1px solid #d9e1ea;background:#fff;padding:12px 14px;">';
+            echo '<div style="border:1px solid #dbe3ea;border-radius:8px;background:#fff;padding:12px 14px;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
             echo '<div style="font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;">' . htmlspecialchars((string) $card['label'], ENT_QUOTES, 'UTF-8') . '</div>';
             echo '<div style="font-size:26px;line-height:1.1;font-weight:700;color:' . htmlspecialchars((string) $card['color'], ENT_QUOTES, 'UTF-8') . ';">' . (int) $card['value'] . '</div>';
             echo '</div>';
@@ -1060,15 +1161,16 @@ final class ReportsController
         echo '<input type="hidden" name="module" value="OpenNfse" />';
         echo '<input type="hidden" name="action" value="relatorios" />';
         echo '<input type="hidden" name="tab" value="historico_fiscal" />';
-        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
-        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<div style="min-width:180px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Mês de referência</div>';
-        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:180px;" />';
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
+        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
+        echo '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;flex:1 1 640px;">';
+        echo '<div style="min-width:190px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Mês de referência</div>';
+        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="min-width:180px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Tipo</div>';
-        echo '<select name="tipo_registro" style="width:180px;">';
+        echo '<div style="min-width:190px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Tipo</div>';
+        echo '<select name="tipo_registro" style="width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
         $typeOptions = [
             '' => 'Todos os registros',
             'EMISSAO' => 'Emissão',
@@ -1081,13 +1183,14 @@ final class ReportsController
         }
         echo '</select>';
         echo '</div>';
-        echo '<div style="min-width:140px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Invoice ID</div>';
-        echo '<input type="text" name="invoiceid" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" style="width:140px;" />';
+        echo '<div style="min-width:150px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Invoice ID</div>';
+        echo '<input type="text" name="invoiceid" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" style="width:150px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
-        echo '<button type="submit" class="btn btn-xs btn-default">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=historico_fiscal">Limpar</a>';
+        echo '</div>';
+        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
+        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
+        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=historico_fiscal">Limpar</a>';
         echo '</div>';
         echo '</div>';
         echo '</div>';
@@ -1101,7 +1204,7 @@ final class ReportsController
             ['label' => 'Snapshots legado', 'value' => (int) ($summary['total_snapshots'] ?? 0), 'color' => '#6b7280'],
         ];
         foreach ($historyCards as $card) {
-            echo '<div style="border:1px solid #d9e1ea;background:#fff;padding:12px 14px;">';
+            echo '<div style="border:1px solid #dbe3ea;border-radius:8px;background:#fff;padding:12px 14px;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
             echo '<div style="font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;">' . htmlspecialchars((string) $card['label'], ENT_QUOTES, 'UTF-8') . '</div>';
             echo '<div style="font-size:26px;line-height:1.1;font-weight:700;color:' . htmlspecialchars((string) $card['color'], ENT_QUOTES, 'UTF-8') . ';">' . (int) $card['value'] . '</div>';
             echo '</div>';
@@ -1152,10 +1255,10 @@ final class ReportsController
 
         echo '</table>';
 
-        echo '<div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">';
+        echo '<div style="margin-top:10px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
         $firstItem = $totalDocs > 0 ? ($offset + 1) : 0;
         $lastItem = min($offset + count($rows), $totalDocs);
-        echo '<div>Exibindo <strong>' . $firstItem . '-' . $lastItem . '</strong> de <strong>' . $totalDocs . '</strong> registros</div>';
+        echo '<div style="font-size:14px;color:#374151;">Exibindo <strong style="color:#111827;">' . $firstItem . '-' . $lastItem . '</strong> de <strong style="color:#111827;">' . $totalDocs . '</strong> registros</div>';
 
         $baseParams = [
             'module' => 'OpenNfse',
@@ -1165,17 +1268,17 @@ final class ReportsController
             'tipo_registro' => $tipoRegistro,
             'invoiceid' => $invoiceFilter,
         ];
-        echo '<div>';
+        echo '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
         if ($page > 1) {
             $prevParams = $baseParams;
             $prevParams['page'] = $page - 1;
-            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a> ';
+            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a>';
         }
-        echo '<span style="margin:0 6px;">Página ' . $page . ' / ' . $totalPages . '</span>';
+        echo '<span style="display:inline-flex;align-items:center;padding:6px 10px;border:1px solid #d1d5db;border-radius:999px;background:#f9fafb;font-size:13px;font-weight:600;color:#374151;">Página ' . $page . ' / ' . $totalPages . '</span>';
         if ($page < $totalPages) {
             $nextParams = $baseParams;
             $nextParams['page'] = $page + 1;
-            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
+            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
         }
         echo '</div>';
         echo '</div>';
@@ -1246,22 +1349,22 @@ final class ReportsController
         if ($runId > 0 && is_array($run) && (string) ($run['audit_month'] ?? '') === $selectedMonth) {
             echo '<input type="hidden" name="run_id" value="' . $runId . '" />';
         }
-        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
-        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<div style="min-width:180px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Mês de referência</div>';
-        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:180px;" />';
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
+        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
+        echo '<div style="min-width:190px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Mês de referência</div>';
+        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
-        echo '<button type="submit" class="btn btn-xs btn-default">Atualizar</button>';
-        echo '<button type="submit" name="start_auditoria" value="1" class="btn btn-xs btn-success">Iniciar auditoria assíncrona</button>';
-        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria_api_dps">Limpar</a>';
+        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
+        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Atualizar</button>';
+        echo '<button type="submit" name="start_auditoria" value="1" class="btn btn-xs btn-success" style="height:34px;padding:0 12px;line-height:32px;">Iniciar auditoria assíncrona</button>';
+        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria_api_dps">Limpar</a>';
         echo '</div>';
         echo '</div>';
         echo '</div>';
         echo '</form>';
 
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #d9e1ea;background:#fbfcfe;">';
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fbfcfe 0%,#f5f8fb 100%);">';
         echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:6px;">Por que esta função existe</div>';
         echo '<div style="font-size:12px;color:#5b6776;line-height:1.6;">';
         echo 'Esta auditoria existe para conferir se as DPS geradas localmente foram reconhecidas pela API, identificar divergências entre a chave local e a chave retornada pela consulta oficial, e apontar possíveis lacunas na sequência da DPS que indiquem tentativas perdidas, falhas de persistência ou saltos sem evidência técnica.';
@@ -1300,7 +1403,7 @@ final class ReportsController
         ];
         echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">';
         foreach ($statusCards as $card) {
-            echo '<div style="border:1px solid #d9e1ea;background:#fff;padding:12px 14px;">';
+            echo '<div style="border:1px solid #dbe3ea;border-radius:8px;background:#fff;padding:12px 14px;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
             echo '<div style="font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;">' . htmlspecialchars((string) $card['label'], ENT_QUOTES, 'UTF-8') . '</div>';
             echo '<div style="font-size:26px;line-height:1.1;font-weight:700;color:' . htmlspecialchars((string) $card['color'], ENT_QUOTES, 'UTF-8') . ';">' . (int) $card['value'] . '</div>';
             echo '</div>';
@@ -1311,7 +1414,7 @@ final class ReportsController
         $progressPercent = (int) ($run['total_items'] ?? 0) > 0
             ? round((((int) ($run['processed_items'] ?? 0)) / max(1, (int) ($run['total_items'] ?? 0))) * 100)
             : 100;
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #d9e1ea;background:#fff;">';
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
         echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px;">';
         echo '<div style="font-size:13px;font-weight:700;color:#334155;">Execução assíncrona</div>';
         echo '<div style="font-size:12px;color:#5b6776;">Run ID <strong>' . $runId . '</strong> &nbsp; Status <strong id="dps-audit-status-label">' . htmlspecialchars($status, ENT_QUOTES, 'UTF-8') . '</strong></div>';
@@ -1329,7 +1432,7 @@ final class ReportsController
         echo '<div id="dps-audit-last-error" style="display:' . ($lastRunError !== '' ? 'block' : 'none') . ';margin-top:8px;padding:10px 12px;border:1px solid #f2d6d6;background:#fff8f8;color:#8f2d2d;font-size:12px;line-height:1.5;white-space:pre-wrap;">' . htmlspecialchars($lastRunError, ENT_QUOTES, 'UTF-8') . '</div>';
         echo '</div>';
 
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #d9e1ea;background:#fff;">';
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
         echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:6px;">Conferência da sequência DPS</div>';
         echo '<div style="font-size:12px;color:#5b6776;line-height:1.6;">';
         echo 'Primeiro número no período: <strong>' . htmlspecialchars((string) (($run['first_number'] ?? null) !== null ? $run['first_number'] : '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
@@ -1404,21 +1507,21 @@ final class ReportsController
             'run_id' => $runId,
             'gap_page' => $gapPage,
         ];
-        echo '<div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">';
+        echo '<div style="margin-top:10px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
         $dpsFirst = $dpsTotal > 0 ? (($dpsPage - 1) * $dpsPerPage + 1) : 0;
         $dpsLast = min(($dpsPage - 1) * $dpsPerPage + count($dpsRows), $dpsTotal);
-        echo '<div>Exibindo <strong>' . $dpsFirst . '-' . $dpsLast . '</strong> de <strong>' . $dpsTotal . '</strong> DPS</div>';
-        echo '<div>';
+        echo '<div style="font-size:14px;color:#374151;">Exibindo <strong style="color:#111827;">' . $dpsFirst . '-' . $dpsLast . '</strong> de <strong style="color:#111827;">' . $dpsTotal . '</strong> DPS</div>';
+        echo '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
         if ($dpsPage > 1) {
             $prevParams = $baseDpsParams;
             $prevParams['dps_page'] = $dpsPage - 1;
-            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a> ';
+            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a>';
         }
-        echo '<span style="margin:0 6px;">Página ' . $dpsPage . ' / ' . $dpsPages . '</span>';
+        echo '<span style="display:inline-flex;align-items:center;padding:6px 10px;border:1px solid #d1d5db;border-radius:999px;background:#f9fafb;font-size:13px;font-weight:600;color:#374151;">Página ' . $dpsPage . ' / ' . $dpsPages . '</span>';
         if ($dpsPage < $dpsPages) {
             $nextParams = $baseDpsParams;
             $nextParams['dps_page'] = $dpsPage + 1;
-            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
+            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
         }
         echo '</div>';
         echo '</div>';
@@ -1462,21 +1565,21 @@ final class ReportsController
             'run_id' => $runId,
             'dps_page' => $dpsPage,
         ];
-        echo '<div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">';
+        echo '<div style="margin-top:10px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
         $gapFirst = $gapTotal > 0 ? (($gapPage - 1) * $gapPerPage + 1) : 0;
         $gapLast = min(($gapPage - 1) * $gapPerPage + count($gapRows), $gapTotal);
-        echo '<div>Exibindo <strong>' . $gapFirst . '-' . $gapLast . '</strong> de <strong>' . $gapTotal . '</strong> lacunas</div>';
-        echo '<div>';
+        echo '<div style="font-size:14px;color:#374151;">Exibindo <strong style="color:#111827;">' . $gapFirst . '-' . $gapLast . '</strong> de <strong style="color:#111827;">' . $gapTotal . '</strong> lacunas</div>';
+        echo '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
         if ($gapPage > 1) {
             $prevParams = $baseGapParams;
             $prevParams['gap_page'] = $gapPage - 1;
-            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a> ';
+            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a>';
         }
-        echo '<span style="margin:0 6px;">Página ' . $gapPage . ' / ' . $gapPages . '</span>';
+        echo '<span style="display:inline-flex;align-items:center;padding:6px 10px;border:1px solid #d1d5db;border-radius:999px;background:#f9fafb;font-size:13px;font-weight:600;color:#374151;">Página ' . $gapPage . ' / ' . $gapPages . '</span>';
         if ($gapPage < $gapPages) {
             $nextParams = $baseGapParams;
             $nextParams['gap_page'] = $gapPage + 1;
-            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
+            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
         }
         echo '</div>';
         echo '</div>';
@@ -1669,16 +1772,16 @@ final class ReportsController
         echo '<input type="hidden" name="module" value="OpenNfse" />';
         echo '<input type="hidden" name="action" value="relatorios" />';
         echo '<input type="hidden" name="tab" value="auditoria_api" />';
-        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
-        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<div style="min-width:180px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Mês de referência</div>';
-        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:180px;" />';
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
+        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
+        echo '<div style="min-width:190px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Mês de referência</div>';
+        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
-        echo '<button type="submit" class="btn btn-xs btn-default">Filtrar</button>';
-        echo '<button type="submit" name="sync_nsu" value="1" class="btn btn-xs btn-success">Sincronizar NSU agora</button>';
-        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria_api">Limpar</a>';
+        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
+        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
+        echo '<button type="submit" name="sync_nsu" value="1" class="btn btn-xs btn-success" style="height:34px;padding:0 12px;line-height:32px;">Sincronizar NSU agora</button>';
+        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria_api">Limpar</a>';
         echo '</div>';
         echo '</div>';
         echo '</div>';
@@ -1693,7 +1796,7 @@ final class ReportsController
             echo '<div class="alert alert-' . $alertClass . '" style="margin-bottom:14px;">' . $messagePrefix . ' Foram processados <strong>' . $processedCount . '</strong> documentos em <strong>' . (int) ($syncResult['batch_count'] ?? 0) . '</strong> lote(s), usando o modo <strong>' . htmlspecialchars((string) ($syncResult['mode'] ?? 'com_cnpj'), ENT_QUOTES, 'UTF-8') . '</strong>.</div>';
         }
 
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #d9e1ea;background:#fbfcfe;">';
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fbfcfe 0%,#f5f8fb 100%);">';
         echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:6px;">Estado da sincronização</div>';
         echo '<div style="font-size:12px;color:#5b6776;line-height:1.55;">';
         echo 'Ambiente: <strong>' . htmlspecialchars($environment !== '' ? $environment : 'producao', ENT_QUOTES, 'UTF-8') . '</strong> ';
@@ -1706,7 +1809,7 @@ final class ReportsController
         echo '</div>';
 
         if (!empty($diagnostics)) {
-            echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #d9e1ea;background:#fff;">';
+            echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
             echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Diagnostico da distribuicao</div>';
             if (!empty($diagnostics['tested_at'])) {
                 echo '<div style="font-size:12px;color:#5b6776;margin-bottom:10px;">Ultimo teste em <strong>' . htmlspecialchars($this->formatDate((string) $diagnostics['tested_at'], 'd/m/Y H:i:s'), ENT_QUOTES, 'UTF-8') . '</strong>, partindo do NSU <strong>' . (int) ($diagnostics['initial_nsu'] ?? 0) . '</strong>.</div>';
@@ -1723,7 +1826,7 @@ final class ReportsController
                     continue;
                 }
 
-                echo '<div style="border:1px solid #eef2f7;background:#fbfcfe;padding:10px 12px;margin-bottom:10px;">';
+                echo '<div style="border:1px solid #e5edf5;border-radius:8px;background:#fbfcfe;padding:10px 12px;margin-bottom:10px;">';
                 echo '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px;">' . htmlspecialchars($diagLabel, ENT_QUOTES, 'UTF-8') . '</div>';
                 echo '<div style="font-size:12px;color:#5b6776;line-height:1.6;">';
                 echo 'Modo: <strong>' . htmlspecialchars((string) ($diag['mode'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
@@ -1790,7 +1893,7 @@ final class ReportsController
         ];
         echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">';
         foreach ($cards as $card) {
-            echo '<div style="border:1px solid #d9e1ea;background:#fff;padding:12px 14px;">';
+            echo '<div style="border:1px solid #dbe3ea;border-radius:8px;background:#fff;padding:12px 14px;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
             echo '<div style="font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;">' . htmlspecialchars((string) $card['label'], ENT_QUOTES, 'UTF-8') . '</div>';
             echo '<div style="font-size:26px;line-height:1.1;font-weight:700;color:' . htmlspecialchars((string) $card['color'], ENT_QUOTES, 'UTF-8') . ';">' . (int) $card['value'] . '</div>';
             echo '</div>';
@@ -1948,23 +2051,24 @@ final class ReportsController
         echo '<input type="hidden" name="module" value="OpenNfse" />';
         echo '<input type="hidden" name="action" value="relatorios" />';
         echo '<input type="hidden" name="tab" value="logs" />';
-        echo '<div style="margin-bottom:14px;border:1px solid #ddd;padding:12px;background:#fafafa;">';
-        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px;">';
-        echo '<div style="min-width:150px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Data inicial</div>';
-        echo '<input type="date" name="data_inicial" value="' . htmlspecialchars($dataInicial, ENT_QUOTES, 'UTF-8') . '" style="width:150px;" />';
+        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
+        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
+        echo '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;flex:1 1 860px;">';
+        echo '<div style="min-width:160px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data inicial</div>';
+        echo '<input type="date" name="data_inicial" value="' . htmlspecialchars($dataInicial, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="min-width:150px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Data final</div>';
-        echo '<input type="date" name="data_final" value="' . htmlspecialchars($dataFinal, ENT_QUOTES, 'UTF-8') . '" style="width:150px;" />';
+        echo '<div style="min-width:160px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data final</div>';
+        echo '<input type="date" name="data_final" value="' . htmlspecialchars($dataFinal, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="min-width:120px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Invoice ID</div>';
-        echo '<input type="text" name="invoiceid" placeholder="Invoice ID" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" style="width:120px;" />';
+        echo '<div style="min-width:130px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Invoice ID</div>';
+        echo '<input type="text" name="invoiceid" placeholder="Invoice ID" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" style="width:130px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="min-width:240px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Tipo</div>';
-        echo '<select name="tipo" style="width:240px;">';
+        echo '<div style="min-width:250px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Tipo</div>';
+        echo '<select name="tipo" style="width:250px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
         echo '<option value="">Todos os tipos</option>';
         foreach ($tipoOptions as $t) {
             $sel = $t === $tipoFilter ? ' selected' : '';
@@ -1972,20 +2076,19 @@ final class ReportsController
         }
         echo '</select>';
         echo '</div>';
+        echo '<div style="flex:1 1 320px;min-width:320px;">';
+        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Buscar em request/response</div>';
+        echo '<input type="text" name="q" placeholder="Buscar (request/response)" value="' . htmlspecialchars($qFilter, ENT_QUOTES, 'UTF-8') . '" style="width:100%;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
         echo '</div>';
-        echo '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<div style="flex:1;min-width:320px;">';
-        echo '<div style="font-size:11px;color:#666;margin-bottom:4px;">Buscar em request/response</div>';
-        echo '<input type="text" name="q" placeholder="Buscar (request/response)" value="' . htmlspecialchars($qFilter, ENT_QUOTES, 'UTF-8') . '" style="width:100%;" />';
         echo '</div>';
-        echo '<div style="display:flex;gap:6px;align-items:flex-end;">';
-        echo '<button type="submit" class="btn btn-xs btn-default">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=logs">Limpar</a>';
+        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
+        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
+        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=logs">Limpar</a>';
         echo '</div>';
         echo '</div>';
         echo '</div>';
         echo '</form>';
-        echo '<div style="margin:-4px 0 10px 0;">';
+        echo '<div style="margin-bottom:12px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;">';
         echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
             'tab' => 'logs',
             'data_inicial' => $dataInicial,
@@ -2067,8 +2170,8 @@ final class ReportsController
             $page = $totalPages;
         }
 
-        echo '<div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">';
-        echo '<div>Total: <strong>' . $total . '</strong></div>';
+        echo '<div style="margin-top:10px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
+        echo '<div style="font-size:14px;color:#374151;">Total: <strong style="color:#111827;">' . $total . '</strong></div>';
 
         $baseParams = [
             'module' => 'OpenNfse',
@@ -2081,17 +2184,17 @@ final class ReportsController
             'q' => $qFilter,
         ];
 
-        echo '<div>';
+        echo '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
         if ($page > 1) {
             $p = $baseParams;
             $p['page'] = $page - 1;
-            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($p, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a> ';
+            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($p, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a>';
         }
-        echo '<span style="margin:0 6px;">Página ' . $page . ' / ' . $totalPages . '</span>';
+        echo '<span style="display:inline-flex;align-items:center;padding:6px 10px;border:1px solid #d1d5db;border-radius:999px;background:#f9fafb;font-size:13px;font-weight:600;color:#374151;">Página ' . $page . ' / ' . $totalPages . '</span>';
         if ($page < $totalPages) {
             $p = $baseParams;
             $p['page'] = $page + 1;
-            echo '<a class="btn btn-default" href="addonmodules.php?' . htmlspecialchars(http_build_query($p, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
+            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($p, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
         }
         echo '</div>';
         echo '</div>';
@@ -2251,8 +2354,10 @@ final class ReportsController
         $dataInicial = trim((string) ($_REQUEST['data_inicial'] ?? ''));
         $dataFinal = trim((string) ($_REQUEST['data_final'] ?? ''));
         $status = trim((string) ($_REQUEST['status'] ?? 'EMITIDA'));
+        $invoiceFilter = trim((string) ($_REQUEST['invoiceid'] ?? ''));
         $cliente = trim((string) ($_REQUEST['cliente'] ?? ''));
         $rows = (new ReportRepository())->listNotas([
+            'invoiceid' => $invoiceFilter,
             'data_inicial' => $dataInicial,
             'data_final' => $dataFinal,
             'status' => $status,
@@ -2292,9 +2397,11 @@ final class ReportsController
         $dataFinal = trim((string) ($_REQUEST['data_final'] ?? ''));
         $cliente = trim((string) ($_REQUEST['cliente'] ?? ''));
         $status = $tab === 'emitidas' ? trim((string) ($_REQUEST['status'] ?? 'EMITIDA')) : '';
+        $invoiceFilter = trim((string) ($_REQUEST['invoiceid'] ?? ''));
         $zipLayout = trim((string) ($_REQUEST['zip_layout'] ?? ''));
 
         $filters = [
+            'invoiceid' => $invoiceFilter,
             'data_inicial' => $dataInicial,
             'data_final' => $dataFinal,
             'status' => $status,
@@ -3056,9 +3163,9 @@ final class ReportsController
             ->get();
 
         Module::ui()->renderHeader('OpenNFS-e');
-        $this->renderTabs('notas');
+        $this->renderTabs('relatorios');
 
-        $back = 'addonmodules.php?module=OpenNfse&action=notas&invoiceid=' . $invoiceId;
+        $back = 'invoices.php?action=edit&id=' . $invoiceId;
         echo '<div style="margin-bottom:10px;"><a href="' . htmlspecialchars($back, ENT_QUOTES, 'UTF-8') . '">Voltar</a></div>';
 
         foreach ($rows as $r) {
