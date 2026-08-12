@@ -34,6 +34,16 @@ final class QueueRepository
         return $row !== null;
     }
 
+    public function hasInFlightSequentialJob(): bool
+    {
+        $row = Capsule::table('mod_opennfse_queue')
+            ->whereIn('status', ['RUNNING', 'WAIT_STATUS'])
+            ->orderBy('created_at', 'asc')
+            ->first();
+
+        return $row !== null;
+    }
+
     public function enqueue(int $invoiceId, ?string $correlationId = null): void
     {
         if ($invoiceId <= 0) {

@@ -55,15 +55,14 @@ final class QueueService
             $waitInterval = 3600;
         }
 
-        $this->processEmissaoBatch($limit, $waitInterval);
         $this->processStatusBatch($limit, $waitInterval);
+        $this->processEmissaoBatch($limit, $waitInterval);
     }
 
     private function processEmissaoBatch(int $limit, int $waitIntervalSeconds): void
     {
         $queueRepo = new QueueRepository();
-        $jobs = $queueRepo->claimNext($limit);
-        if (empty($jobs)) {
+        if ($limit <= 0 || $queueRepo->hasInFlightSequentialJob()) {
             return;
         }
 
@@ -74,7 +73,17 @@ final class QueueService
         $eligibilityChecker = new EmissionEligibilityService();
         $errorClassifier = new QueueErrorClassifierService();
 
-        foreach ($jobs as $job) {
+        for ($processed = 0; $processed < $limit; $processed++) {
+            if ($queueRepo->hasInFlightSequentialJob()) {
+                break;
+            }
+
+            $jobs = $queueRepo->claimNext(1);
+            if (empty($jobs)) {
+                break;
+            }
+
+            $job = $jobs[0];
             $id = (int) ($job['id'] ?? 0);
             $invoiceId = (int) ($job['invoiceid'] ?? 0);
             $tentativas = (int) ($job['tentativas'] ?? 0);
@@ -88,6 +97,7 @@ final class QueueService
             }
 
             try {
+                $mustWaitBeforeNextEmission = false;
                 $notaBefore = $notaRepo->findByInvoiceId($invoiceId);
                 if ($this->shouldMarkQueueDone($notaBefore)) {
                     $queueRepo->markDone($id);
@@ -97,7 +107,7 @@ final class QueueService
                 if ($this->shouldKeepWaitingForStatus($notaBefore)) {
                     $queueRepo->markWaitStatus($id, $waitIntervalSeconds, $notaBefore ? (string) ($notaBefore['erro_api'] ?? '') : null);
                     $logRepo->insert(null, 'QUEUE_WAIT_STATUS', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
-                    continue;
+                    break;
                 }
 
                 $invoice = $invoiceRepo->getInvoice($invoiceId);
@@ -144,11 +154,16 @@ final class QueueService
                 } elseif ($this->shouldKeepWaitingForStatus($nota)) {
                     $queueRepo->markWaitStatus($id, $waitIntervalSeconds, $nota ? (string) ($nota['erro_api'] ?? '') : null);
                     $logRepo->insert(null, 'QUEUE_WAIT_STATUS', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
+                    $mustWaitBeforeNextEmission = true;
                 } else {
                     $status = $nota ? (string) ($nota['status'] ?? '') : '';
                     $err = $nota ? (string) ($nota['erro_api'] ?? '') : '';
                     $queueRepo->markError($id, $err !== '' ? $err : ('Status final: ' . $status));
                     $logRepo->insert(null, 'QUEUE_ERROR', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), $err !== '' ? $err : ('Status final: ' . $status), $correlationId);
+                }
+
+                if ($mustWaitBeforeNextEmission || $queueRepo->hasInFlightSequentialJob()) {
+                    break;
                 }
             } catch (\Throwable $e) {
                 $msg = $e->getMessage();
@@ -159,6 +174,8 @@ final class QueueService
                     $queueRepo->markRetry($id, $msg);
                     $logRepo->insert(null, 'QUEUE_RETRY', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), $msg, $correlationId);
                 }
+
+                break;
             }
         }
     }

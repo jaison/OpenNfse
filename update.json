@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.17",
+  "latest_version": "0.1.18",
   "release_date": "2026-08-12",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Melhoria na auditoria assincrona DPS > API para tratar indisponibilidade transitoria da API Nacional. Consultas com erro 503, Service Unavailable, timeout e falhas de comunicacao agora fazem retentativas curtas antes de interromper apenas o lote atual, evitando consolidar falso ERRO_API definitivo para a DPS. O processamento continua do mesmo ponto via retry automatico da tela, com mensagem de erro mais legivel no estado da execucao."
+  "message": "A fila de emissao passou a respeitar processamento estritamente sequencial de DPS. O lote agora consulta primeiro os itens em espera, bloqueia novas emissoes enquanto houver DPS anterior em RUNNING ou WAIT_STATUS e libera a proxima apenas apos conclusao do item anterior. Isso reduz pulos de sequencia e evita cenarios em que uma DPS posterior e aceita antes da anterior, levando a erros terminais como E2404."
 }
