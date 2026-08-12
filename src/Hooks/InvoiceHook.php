@@ -150,6 +150,18 @@ final class InvoiceHook
         } elseif ($emailMsg === 'error') {
             $html .= '<div class="errorbox">Erro ao enviar e-mail da NFS-e. Verifique os logs do módulo.</div>';
         }
+        $reemitMsg = (string) ($_REQUEST['nfse_reemit'] ?? '');
+        if ($reemitMsg === 'enqueued') {
+            $html .= '<div class="successbox">Reemissão manual enfileirada. O cron processará em breve e a ação foi registrada no histórico da invoice.</div>';
+        } elseif ($reemitMsg === 'requested') {
+            $html .= '<div class="successbox">Reemissão manual solicitada. A ação foi registrada no histórico da invoice.</div>';
+        } elseif ($reemitMsg === 'gateway_disabled') {
+            $html .= '<div class="errorbox">Reemissão manual desativada para o gateway de pagamento desta fatura.</div>';
+        } elseif ($reemitMsg === 'queue_active') {
+            $html .= '<div class="errorbox">Já existe um item ativo na fila para esta invoice. Use a fila para acompanhar ou reprocessar o item atual.</div>';
+        } elseif ($reemitMsg === 'error') {
+            $html .= '<div class="errorbox">Erro ao solicitar reemissão. Verifique os logs do módulo e o histórico da invoice.</div>';
+        }
         $primaryActions = '';
         if ($gatewayEnabled && $isPaid && !$isCreditPayment) {
             $disabled = $emitDisabled ? ' disabled="disabled"' : '';

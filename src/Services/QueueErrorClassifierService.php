@@ -52,6 +52,10 @@ final class QueueErrorClassifierService
         }
 
         $nonRetryablePatterns = [
+            '404 not found',
+            'e2404',
+            'não foi gerada uma nfs-e com o identificador de dps informado',
+            'nao foi gerada uma nfs-e com o identificador de dps informado',
             'validação preventiva falhou',
             'não configurad',
             'nao configurad',

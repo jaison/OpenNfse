@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.13",
+  "latest_version": "0.1.15",
   "release_date": "2026-08-12",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Implementado tratamento de indisponibilidade transitória da API nacional durante a emissão. Quando a SEFIN retornar erro 503, timeout ou falha de conexão, a nota permanece em PROCESSANDO, o item da fila segue para WAIT_STATUS no próximo cron e a reconciliação continua por consulta de DPS/NFS-e, preservando tentativas e o diagnóstico do erro sem encerrar a emissão como falha definitiva."
+  "message": "Sessao focada em robustez operacional da fila e rastreabilidade da emissao. Foi corrigida a ambiguidade entre ID da fila e DPS, promovendo o correlation_id como identificador principal na tela da fila e adicionando contexto da nota atual (DPS, NFS-e e status), alem de um seletor compacto para mostrar ou esconder colunas conforme a necessidade. No fluxo de emissao manual, foram bloqueados enqueues duplicados para invoices ja vinculadas a nota/DPS, criado um caminho explicito de reemissao, e adicionados logs tecnicos e historico na invoice para registrar a origem de reemissoes manuais. Tambem foram corrigidos casos em que a fila ficava presa em WAIT_STATUS: erros terminais de consulta DPS como E2404/404 agora sao tratados como falha definitiva, e a retentativa de emissao nao reutiliza mais uma DPS ja falhada quando a nota local esta em ERRO."
 }

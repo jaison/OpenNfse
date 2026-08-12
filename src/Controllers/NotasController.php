@@ -7,11 +7,13 @@ namespace OpenNfse\Controllers;
 use OpenNfse\Exceptions\NfseModuleException;
 use OpenNfse\Module;
 use OpenNfse\Repositories\ConfigRepository;
+use OpenNfse\Repositories\LogRepository;
 use OpenNfse\Repositories\NotaRepository;
 use OpenNfse\Repositories\PaymentGatewaySettingsRepository;
 use OpenNfse\Repositories\QueueRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
 use OpenNfse\Services\InvoiceEmailService;
+use OpenNfse\Services\InvoiceHistoryService;
 use OpenNfse\Services\NfseService;
 use OpenNfse\Services\QueueService;
 use OpenNfse\Services\StorageService;
@@ -214,45 +216,85 @@ final class NotasController
         }
         $config = (new ConfigRepository())->get();
         $return = (string) ($_REQUEST['return'] ?? '');
+        $origin = $this->resolveAdminActionOrigin($return);
 
         try {
             if ((new QueueRepository())->hasActive($invoiceId)) {
+                $this->logAdminAction(
+                    $nota,
+                    $invoiceId,
+                    'ADMIN_REEMITIR_BLOCKED',
+                    ['origin' => $origin, 'reason' => 'active_queue']
+                );
                 if ($return === 'emitidas') {
                     $this->redirectRelatorioEmitidas(['msg' => 'reemitir_error'], true);
                 }
-                Module::ui()->renderError('Já existe um item ativo na fila para esta invoice. Aguarde o processamento atual ou use a fila para reprocessar o item existente.');
+                $this->redirectInvoice($invoiceId, ['nfse_reemit' => 'queue_active']);
                 return;
             }
 
             $invoice = (new WhmcsInvoiceRepository())->getInvoice($invoiceId);
             $paymentMethod = strtolower(trim((string) ($invoice['paymentmethod'] ?? '')));
             if ($paymentMethod !== '' && !(new PaymentGatewaySettingsRepository())->isEnabled($paymentMethod)) {
+                $this->logAdminAction(
+                    $nota,
+                    $invoiceId,
+                    'ADMIN_REEMITIR_BLOCKED',
+                    ['origin' => $origin, 'reason' => 'gateway_disabled', 'gateway' => $paymentMethod]
+                );
                 if ($return === 'emitidas') {
                     $this->redirectRelatorioEmitidas(['msg' => 'reemitir_gateway_disabled'], true);
                 }
-                Module::ui()->renderError('Reemissão desativada para o gateway de pagamento desta fatura.');
+                $this->redirectInvoice($invoiceId, ['nfse_reemit' => 'gateway_disabled']);
                 return;
             }
             if ((string) ($config['queue_enabled'] ?? '0') === '1') {
+                $this->logAdminAction(
+                    $nota,
+                    $invoiceId,
+                    'ADMIN_REEMITIR_ENQUEUE',
+                    ['origin' => $origin]
+                );
                 (new QueueService())->enqueueEmit($invoiceId, 'QUEUE_REEMITIR_ADMIN');
+                (new InvoiceHistoryService())->append(
+                    $invoiceId,
+                    'Reemissão manual enfileirada pelo administrador via ' . $this->describeAdminActionOrigin($origin) . '.'
+                );
                 if ($return === 'emitidas') {
                     $this->redirectRelatorioEmitidas(['msg' => 'reemitir_enqueued'], true);
                 }
-                Module::ui()->renderSuccess('Reemissão enfileirada. O cron processará em breve.');
+                $this->redirectInvoice($invoiceId, ['nfse_reemit' => 'enqueued']);
                 return;
             }
 
+            $this->logAdminAction(
+                $nota,
+                $invoiceId,
+                'ADMIN_REEMITIR_DIRECT',
+                ['origin' => $origin]
+            );
             (new NfseService())->emitir($invoiceId);
+            (new InvoiceHistoryService())->append(
+                $invoiceId,
+                'Reemissão manual solicitada pelo administrador via ' . $this->describeAdminActionOrigin($origin) . '.'
+            );
             if ($return === 'emitidas') {
                 $this->redirectRelatorioEmitidas(['msg' => 'reemitir_requested'], true);
             }
-            Module::ui()->renderSuccess('Reemissão solicitada. Verifique o status e o XML na fatura.');
+            $this->redirectInvoice($invoiceId, ['nfse_reemit' => 'requested']);
             return;
         } catch (\Throwable $e) {
+            $this->logAdminAction(
+                $nota,
+                $invoiceId,
+                'ADMIN_REEMITIR_ERROR',
+                ['origin' => $origin],
+                $e->getMessage()
+            );
             if ($return === 'emitidas') {
                 $this->redirectRelatorioEmitidas(['msg' => 'reemitir_error'], true);
             }
-            Module::ui()->renderError('Erro ao solicitar reemissão: ' . $e->getMessage());
+            $this->redirectInvoice($invoiceId, ['nfse_reemit' => 'error']);
             return;
         }
     }
@@ -317,6 +359,28 @@ final class NotasController
             || $chave !== ''
             || in_array($status, ['PROCESSANDO', 'EMITIDA', 'ERRO', 'REJEITADA'], true);
     }
+
+    private function resolveAdminActionOrigin(string $return): string
+    {
+        return $return === 'emitidas' ? 'relatorio_emitidas' : 'invoice';
+    }
+
+    private function describeAdminActionOrigin(string $origin): string
+    {
+        return $origin === 'relatorio_emitidas' ? 'Relatorios > NFS-e Emitidas' : 'a propria invoice';
+    }
+
+    private function logAdminAction(?array $nota, int $invoiceId, string $type, array $request = [], ?string $response = null): void
+    {
+        $notaId = $nota ? (int) ($nota['id'] ?? 0) : null;
+        (new LogRepository())->insert(
+            $notaId > 0 ? $notaId : null,
+            $type,
+            json_encode(['invoiceid' => $invoiceId] + $request, JSON_UNESCAPED_UNICODE),
+            $response
+        );
+    }
+
 
 
     public function status(): void

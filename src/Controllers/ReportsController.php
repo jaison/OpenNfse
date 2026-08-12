@@ -269,13 +269,13 @@ final class ReportsController
         } elseif ($msg === 'status_error') {
             echo '<div class="errorbox">Erro ao consultar status. Verifique os logs do módulo.</div>';
         } elseif ($msg === 'reemitir_gateway_disabled') {
-            echo '<div class="errorbox">Reemissão desativada para o gateway de pagamento desta fatura.</div>';
+            echo '<div class="errorbox">Reemissão manual desativada para o gateway de pagamento desta fatura.</div>';
         } elseif ($msg === 'reemitir_enqueued') {
-            echo '<div class="successbox">Reemissão enfileirada. O cron processará em breve.</div>';
+            echo '<div class="successbox">Reemissão manual enfileirada. O cron processará em breve.</div>';
         } elseif ($msg === 'reemitir_requested') {
-            echo '<div class="successbox">Reemissão solicitada. Verifique o status e o XML na fatura.</div>';
+            echo '<div class="successbox">Reemissão manual solicitada. Verifique o status e o XML na fatura.</div>';
         } elseif ($msg === 'reemitir_error') {
-            echo '<div class="errorbox">Erro ao solicitar reemissão. Verifique os logs do módulo.</div>';
+            echo '<div class="errorbox">Erro ao solicitar reemissão manual. Verifique os logs do módulo.</div>';
         } elseif ($msg === 'cancel_done') {
             echo '<div class="successbox">Cancelamento solicitado com sucesso.</div>';
         } elseif ($msg === 'cancel_error') {

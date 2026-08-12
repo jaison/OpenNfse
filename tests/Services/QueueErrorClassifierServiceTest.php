@@ -70,6 +70,7 @@ final class QueueErrorClassifierServiceTest extends TestCase
             'cpf/cnpj não informado' => ['CPF/CNPJ do tomador não informado.'],
             'cnpj inválido' => ['CNPJ do emissor inválido para cancelamento.'],
             'gateway desativado' => ['Emissão desativada para o gateway de pagamento desta fatura.'],
+            'dps 404 not found' => ['Client error: `GET https://sefin.nfse.gov.br/SefinNacional/dps/DPS420820324006645700011300900000000000000672` resulted in a `404 Not Found` response: {"erro":{"codigo":"E2404","descricao":"Não foi gerada uma NFS-e com o identificador de DPS informado"}}'],
             'nota não encontrada' => ['Nota não encontrada para esta fatura.'],
             'motivo mínimo' => ['Motivo do cancelamento inválido (mínimo 15 caracteres).'],
             'motivo máximo' => ['Motivo do cancelamento inválido (máximo 255 caracteres).'],

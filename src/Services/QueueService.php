@@ -244,7 +244,7 @@ final class QueueService
             return true;
         }
 
-        if ($chave === '' && $idDps !== '' && !in_array($status, ['CANCELADA', 'REJEITADA'], true)) {
+        if ($chave === '' && $idDps !== '' && !in_array($status, ['CANCELADA', 'REJEITADA', 'ERRO'], true)) {
             return true;
         }
 
