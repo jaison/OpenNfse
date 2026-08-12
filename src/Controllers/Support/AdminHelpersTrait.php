@@ -324,6 +324,49 @@ trait AdminHelpersTrait
         echo '</tr>';
     }
 
+    public function renderEmailTemplateSelectRow(string $name, string $label, string $selected): void
+    {
+        $templates = \WHMCS\Database\Capsule::table('tblemailtemplates')
+            ->where('type', 'invoice')
+            ->where(function ($query) {
+                $query->whereNull('language')->orWhere('language', '');
+            })
+            ->orderBy('name')
+            ->get(['id', 'name', 'disabled']);
+
+        $defaultName = \OpenNfse\Services\EmailTemplateService::DEFAULT_TEMPLATE_NAME;
+        $names = [];
+        foreach ($templates as $template) {
+            $tplName = trim((string) ($template->name ?? ''));
+            if ($tplName !== '') {
+                $names[$tplName] = $tplName;
+            }
+        }
+        if (!isset($names[$defaultName])) {
+            $names[$defaultName] = $defaultName . ' (será criado no 1º envio)';
+        }
+        if ($selected !== '' && !isset($names[$selected])) {
+            $names[$selected] = $selected . ' (não encontrado)';
+        }
+        ksort($names, SORT_NATURAL | SORT_FLAG_CASE);
+
+        echo '<tr>';
+        echo '<td class="fieldlabel"><div class="nfse-config-label-title">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</div></td>';
+        echo '<td class="fieldarea"><select name="' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '" class="form-control nfse-config-select">';
+        foreach ($names as $value => $text) {
+            $isSelected = (string) $value === $selected ? ' selected' : '';
+            echo '<option value="' . htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8') . '"' . $isSelected . '>'
+                . htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8') . '</option>';
+        }
+        echo '</select>';
+        $help = $this->getConfigFieldHelp($name);
+        if ($help !== '') {
+            echo '<div class="nfse-config-help">' . htmlspecialchars($help, ENT_QUOTES, 'UTF-8') . '</div>';
+        }
+        echo '</td>';
+        echo '</tr>';
+    }
+
 
     public function renderTextareaRow(string $name, string $label, mixed $value): void
     {
@@ -408,6 +451,8 @@ trait AdminHelpersTrait
             'prestador_reg_ap_trib_sn' => 'Usado quando o prestador é ME/EPP no Simples Nacional.',
             'prestador_reg_esp_trib' => 'Regime especial tributário, mantendo 0 quando não houver enquadramento específico.',
             'tomador_cpfcnpj_customfield_id' => 'ID do custom field do cliente que armazena CPF/CNPJ do tomador no WHMCS.',
+            'auto_emit_client_customfield_id' => 'Custom field do cliente (Sim/Não). Se preenchido, a emissão automática no pagamento só ocorre quando o valor for Sim. Sem campo selecionado, não filtra por cliente. Emissão manual continua disponível.',
+            'email_template_name' => 'Modelo de e-mail do WHMCS (tipo invoice) usado no envio da NFS-e. Edite assunto e corpo em Setup → Email Templates. O módulo anexa XML e PDF automaticamente.',
             'client_area_notice_enabled' => 'Controla a exibição de um aviso fixo no topo da lista de NFS-e do cliente.',
             'client_area_notice_type' => 'Define o estilo visual do aviso mostrado na área do cliente.',
             'client_area_notice_message' => 'Mensagem exibida na lista de NFS-e do cliente. HTML não é permitido; URLs informadas no texto podem ser exibidas como links clicáveis.',
@@ -415,7 +460,9 @@ trait AdminHelpersTrait
             'tomador_numero_padrao' => 'Número padrão usado quando o endereço do tomador vier sem numeração.',
             'tomador_bairro_padrao' => 'Bairro padrão para completar cadastros incompletos do tomador.',
             'queue_enabled' => 'Habilita o processamento automático via fila e cron do módulo.',
-            'auto_emit_on_payment' => 'Quando ativo, o módulo enfileira a emissão assim que a fatura é marcada como paga.',
+            'auto_emit_on_payment' => 'Quando ativo, o módulo enfileira a emissão assim que a fatura é marcada como paga (respeitando gateway e custom field do cliente).',
+            'auto_send_email_on_emit' => 'Quando ativo, envia automaticamente o e-mail com XML/PDF assim que a NFS-e ficar com status EMITIDA.',
+            'allow_unpaid_manual_emit' => 'Quando ativo, permite emissão manual no admin mesmo com fatura Unpaid. A fila automática continua exigindo fatura paga.',
             'queue_wait_status_interval_seconds' => 'Intervalo entre consultas de status quando a nota fica aguardando retorno do ambiente nacional.',
             'queue_done_retention_days' => 'Quantidade de dias para manter registros da fila concluídos ou resolvidos antes da limpeza.',
             'logs_retention_days' => 'Quantidade de dias para manter logs de request/response antes da limpeza.',

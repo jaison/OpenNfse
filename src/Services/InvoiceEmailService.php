@@ -12,8 +12,6 @@ use WHMCS\Database\Capsule;
 
 final class InvoiceEmailService
 {
-    private const EMAIL_TEMPLATE_NAME = 'OpenNfse - Envio de NFS-e';
-
     public function sendToClient(int $invoiceId): void
     {
         if ($invoiceId <= 0) {
@@ -24,6 +22,11 @@ final class InvoiceEmailService
         $invoiceRepo = new WhmcsInvoiceRepository();
         $logRepo = new LogRepository();
         $storage = new StorageService();
+        $config = (new \OpenNfse\Repositories\ConfigRepository())->get();
+        $templateName = trim((string) ($config['email_template_name'] ?? ''));
+        if ($templateName === '') {
+            $templateName = EmailTemplateService::DEFAULT_TEMPLATE_NAME;
+        }
 
         $nota = $notaRepo->findByInvoiceId($invoiceId);
         if (!$nota) {
@@ -53,11 +56,15 @@ final class InvoiceEmailService
         }
 
         $invoice = $invoiceRepo->getInvoice($invoiceId);
-        $templateData = (new EmailTemplateService())->buildNfseEmail($invoice, $nota, $invoiceId);
+        $emailTemplateService = new EmailTemplateService();
+        $templateData = $emailTemplateService->buildNfseEmail($invoice, $nota, $invoiceId);
         $invoiceNumber = (string) ($templateData['invoice_number'] ?? $invoiceId);
         $subject = (string) ($templateData['subject'] ?? ('NFS-e Fatura #' . $invoiceNumber));
         $message = (string) ($templateData['message'] ?? '');
         $plainTextMessage = trim((string) ($templateData['plain_text_message'] ?? ''));
+        $mergeFields = is_array($templateData['merge_fields'] ?? null) ? $templateData['merge_fields'] : [];
+        $mergeFields['nfse_subject'] = $subject;
+        $mergeFields['nfse_message'] = $message;
         $client = $this->getClientForInvoice($invoice);
 
         $notaId = (int) ($nota['id'] ?? 0);
@@ -120,7 +127,7 @@ final class InvoiceEmailService
                 throw new NfseModuleException('Função sendmessage() não está disponível no WHMCS.');
             }
 
-            $this->ensureNativeEmailTemplate();
+            $this->ensureNativeEmailTemplate($templateName);
 
             $attachments = [
                 [
@@ -141,7 +148,7 @@ final class InvoiceEmailService
                 json_encode([
                     'transport' => 'sendmessage',
                     'stage' => 'before_send',
-                    'template' => self::EMAIL_TEMPLATE_NAME,
+                    'template' => $templateName,
                     'invoice_id' => $invoiceId,
                     'attachments' => $attachments,
                 ], JSON_UNESCAPED_UNICODE),
@@ -150,12 +157,9 @@ final class InvoiceEmailService
 
             ob_start();
             $result = sendmessage(
-                self::EMAIL_TEMPLATE_NAME,
+                $templateName,
                 $invoiceId,
-                [
-                    'nfse_subject' => $subject,
-                    'nfse_message' => $message,
-                ],
+                $mergeFields,
                 true,
                 $attachments
             );
@@ -167,7 +171,7 @@ final class InvoiceEmailService
                 json_encode([
                     'transport' => 'sendmessage',
                     'stage' => 'after_send',
-                    'template' => self::EMAIL_TEMPLATE_NAME,
+                    'template' => $templateName,
                     'result_type' => gettype($result),
                     'result' => $this->normalizeDebugValue($result),
                     'displayresult_output' => $sendmessageOutput,
@@ -203,27 +207,44 @@ final class InvoiceEmailService
         (new InvoiceHistoryService())->append($invoiceId, 'E-mail da NFS-e enviado ao cliente com XML e PDF anexados.');
     }
 
-    private function ensureNativeEmailTemplate(): void
+    private function ensureNativeEmailTemplate(string $templateName): void
     {
+        $templateName = trim($templateName);
+        if ($templateName === '') {
+            $templateName = EmailTemplateService::DEFAULT_TEMPLATE_NAME;
+        }
+
         if (!class_exists(\WHMCS\Mail\Template::class)) {
             throw new NfseModuleException('Classe de template de e-mail do WHMCS não está disponível.');
         }
 
         $template = \WHMCS\Mail\Template::where('type', 'invoice')
-            ->where('name', self::EMAIL_TEMPLATE_NAME)
+            ->where('name', $templateName)
             ->where(function ($query) {
                 $query->whereNull('language')->orWhere('language', '');
             })
             ->first();
 
-        if (!$template) {
-            $template = new \WHMCS\Mail\Template();
+        if ($template) {
+            // Não sobrescrever assunto/corpo: o admin edita em Setup → Email Templates.
+            if (!empty($template->disabled)) {
+                $template->disabled = false;
+                $template->save();
+            }
+            return;
         }
 
+        $template = new \WHMCS\Mail\Template();
         $template->type = 'invoice';
-        $template->name = self::EMAIL_TEMPLATE_NAME;
-        $template->subject = '{$nfse_subject}';
-        $template->message = '{$nfse_message}';
+        $template->name = $templateName;
+        $template->subject = 'NFS-e da fatura #{$invoice_num}';
+        $template->message = '<p>Olá,</p>'
+            . '<p>Segue em anexo o XML e o PDF da sua NFS-e.</p>'
+            . '<p><strong>Fatura:</strong> #{$invoice_num}<br />'
+            . '<strong>NFS-e:</strong> {$nfse_numero}<br />'
+            . '<strong>Chave de acesso:</strong> {$nfse_chave}<br />'
+            . '<strong>Emitida em:</strong> {$nfse_emitida_em}</p>'
+            . '<p>Os arquivos seguem anexados para sua consulta e armazenamento.</p>';
         $template->attachments = [];
         $template->fromName = '';
         $template->fromEmail = '';

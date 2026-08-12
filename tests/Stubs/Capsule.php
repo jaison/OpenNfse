@@ -35,6 +35,11 @@ final class CapsuleQueryStub
         return $this;
     }
 
+    public function orderBy(...$args): self
+    {
+        return $this;
+    }
+
     public function first(): ?object
     {
         $rows = Capsule::$rows[$this->table] ?? [];

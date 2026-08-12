@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.12",
-  "release_date": "2026-08-05",
-  "download_url": "https://github.com/jaison/OpenNfse/releases",
-  "changelog_url": "https://github.com/jaison/OpenNfse/releases",
+  "latest_version": "0.1.13",
+  "release_date": "2026-08-12",
+  "download_url": "https://github.com/WeCoded/OpenNfse",
+  "changelog_url": "https://github.com/WeCoded/OpenNfse",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Corrigido o filtro de periodo fiscal das notas para usar a data de referencia da NFS-e sem contaminar o mes atual em consultas manuais de status. Consultas repetidas agora registram `last_status_checked_at`, preservam `updated_at` quando nao ha mudanca real e evitam reclassificar notas antigas por repeticao do mesmo erro da API, como o E2404."
+  "message": "E-mail via template WHMCS editável, envio automático pós-emissão, auto-emissão por custom field do cliente e opção de emissão manual de fatura não paga — tudo configurável nas abas Integração e Processamento."
 }

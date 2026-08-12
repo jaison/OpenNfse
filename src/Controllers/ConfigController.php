@@ -84,7 +84,7 @@ final class ConfigController
             'integracao' => [
                 'label' => 'Integração com WHMCS',
                 'title' => 'Integração com WHMCS',
-                'description' => 'Defina o relacionamento com custom fields e quais gateways ativam a emissão automática.',
+                'description' => 'Custom fields, modelo de e-mail WHMCS e gateways que ativam a emissão automática.',
             ],
             'codigos' => [
                 'label' => 'Códigos Produtos/Serviços',
@@ -104,7 +104,7 @@ final class ConfigController
             'processamento' => [
                 'label' => 'Processamento Automático',
                 'title' => 'Fila e Processamento',
-                'description' => 'Controle a automação de emissão, fila, cron e intervalo de consulta de status.',
+                'description' => 'Controle a automação de emissão, e-mail automático, emissão manual de Unpaid, fila e intervalo de consulta.',
             ],
             'retencao' => [
                 'label' => 'Retenção e Logs',
@@ -408,6 +408,25 @@ final class ConfigController
         $this->renderConfigSectionStart('Integração base', 'Configure o relacionamento entre os dados do WHMCS e os campos obrigatórios usados pelo módulo.');
         $this->renderConfigFormTableStart();
         $this->renderCustomFieldSelectRow('tomador_cpfcnpj_customfield_id', 'Custom Field (CPF/CNPJ do Tomador)', (string) ($config['tomador_cpfcnpj_customfield_id'] ?? ''));
+        $this->renderCustomFieldSelectRow(
+            'auto_emit_client_customfield_id',
+            'Custom Field (emite NFS-e automaticamente)',
+            (string) ($config['auto_emit_client_customfield_id'] ?? '')
+        );
+        $this->renderConfigFormTableEnd();
+        $this->renderConfigSectionEnd();
+        $this->renderConfigSectionStart(
+            'E-mail da NFS-e',
+            'Escolha o modelo de e-mail do WHMCS (Setup → Email Templates). Assunto e corpo são editáveis lá; o módulo anexa XML e PDF. Merge fields úteis: {$invoice_num}, {$nfse_numero}, {$nfse_chave}, {$nfse_emitida_em}.'
+        );
+        $this->renderConfigFormTableStart();
+        $this->renderEmailTemplateSelectRow(
+            'email_template_name',
+            'Modelo de e-mail (WHMCS)',
+            (string) (($config['email_template_name'] ?? '') !== ''
+                ? $config['email_template_name']
+                : \OpenNfse\Services\EmailTemplateService::DEFAULT_TEMPLATE_NAME)
+        );
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
         $this->renderConfigSectionStart('Área do Cliente', 'Configure o aviso exibido na lista de NFS-e do cliente, com controle de exibição, tipo visual e mensagem.');
@@ -578,6 +597,14 @@ final class ConfigController
             '1' => 'Sim',
             '0' => 'Não',
         ], (string) ($config['auto_emit_on_payment'] ?? '0'));
+        $this->renderSelectRow('auto_send_email_on_emit', 'Enviar e-mail automaticamente ao emitir?', [
+            '1' => 'Sim',
+            '0' => 'Não',
+        ], (string) ($config['auto_send_email_on_emit'] ?? '0'));
+        $this->renderSelectRow('allow_unpaid_manual_emit', 'Permitir emissão manual de fatura não paga?', [
+            '1' => 'Sim',
+            '0' => 'Não',
+        ], (string) ($config['allow_unpaid_manual_emit'] ?? '0'));
         $this->renderTextRow('queue_wait_status_interval_seconds', 'Intervalo de consulta (segundos)', $config['queue_wait_status_interval_seconds'] ?? '120');
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
@@ -692,6 +719,8 @@ final class ConfigController
         $nbsPadrao = (string) ($_POST['nbs_padrao'] ?? '');
         $aliquotaIss = (string) ($_POST['aliquota_iss'] ?? '');
         $tomadorFieldId = (string) ($_POST['tomador_cpfcnpj_customfield_id'] ?? '');
+        $autoEmitClientFieldId = (string) ($_POST['auto_emit_client_customfield_id'] ?? '');
+        $emailTemplateName = trim((string) ($_POST['email_template_name'] ?? ''));
         $serieDps = (string) ($_POST['serie_dps'] ?? '900');
         $prestadorNome = (string) ($_POST['prestador_nome'] ?? '');
         $prestadorEmail = (string) ($_POST['prestador_email'] ?? '');
@@ -706,6 +735,8 @@ final class ConfigController
         $prestadorRegEspTrib = (string) ($_POST['prestador_reg_esp_trib'] ?? '');
         $queueEnabled = (string) ($_POST['queue_enabled'] ?? '0');
         $autoEmitOnPayment = (string) ($_POST['auto_emit_on_payment'] ?? '0');
+        $autoSendEmailOnEmit = (string) ($_POST['auto_send_email_on_emit'] ?? '0');
+        $allowUnpaidManualEmit = (string) ($_POST['allow_unpaid_manual_emit'] ?? '0');
         $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '120');
         $queueDoneRetentionDays = (string) ($_POST['queue_done_retention_days'] ?? '30');
         $logsRetentionDays = (string) ($_POST['logs_retention_days'] ?? '90');
@@ -763,6 +794,15 @@ final class ConfigController
         if ($tomadorFieldId !== '' && !ctype_digit($tomadorFieldId)) {
             $errors[] = 'Informe o ID do custom field (apenas números).';
         }
+        if ($autoEmitClientFieldId !== '' && !ctype_digit($autoEmitClientFieldId)) {
+            $errors[] = 'Informe o ID do custom field de emissão automática (apenas números).';
+        }
+        if ($emailTemplateName === '') {
+            $emailTemplateName = \OpenNfse\Services\EmailTemplateService::DEFAULT_TEMPLATE_NAME;
+        }
+        if (strlen($emailTemplateName) > 150) {
+            $errors[] = 'Nome do modelo de e-mail muito longo (máx. 150 caracteres).';
+        }
         if (!in_array($clientAreaNoticeEnabled, ['0', '1'], true)) {
             $errors[] = 'Opção inválida para aviso na área do cliente.';
         }
@@ -799,6 +839,12 @@ final class ConfigController
         }
         if (!in_array($autoEmitOnPayment, ['0', '1'], true)) {
             $errors[] = 'Opção inválida para emissão automática.';
+        }
+        if (!in_array($autoSendEmailOnEmit, ['0', '1'], true)) {
+            $errors[] = 'Opção inválida para envio automático de e-mail.';
+        }
+        if (!in_array($allowUnpaidManualEmit, ['0', '1'], true)) {
+            $errors[] = 'Opção inválida para emissão manual de fatura não paga.';
         }
         if ($autoEmitOnPayment === '1' && $queueEnabled !== '1') {
             $errors[] = 'Para habilitar emissão automática, habilite também a fila/cron.';
@@ -875,6 +921,8 @@ final class ConfigController
             'nbs_padrao' => $nbsDigits !== '' ? $nbsDigits : null,
             'aliquota_iss' => $aliquotaIss !== '' ? str_replace(',', '.', $aliquotaIss) : '0',
             'tomador_cpfcnpj_customfield_id' => (int) $tomadorFieldId,
+            'auto_emit_client_customfield_id' => $autoEmitClientFieldId !== '' ? (int) $autoEmitClientFieldId : null,
+            'email_template_name' => $emailTemplateName,
             'client_area_notice_enabled' => (int) $clientAreaNoticeEnabled,
             'client_area_notice_type' => $clientAreaNoticeType,
             'client_area_notice_message' => $clientAreaNoticeMessage,
@@ -892,6 +940,8 @@ final class ConfigController
             'prestador_reg_esp_trib' => $prestadorRegEspTrib,
             'queue_enabled' => (int) $queueEnabled,
             'auto_emit_on_payment' => (int) $autoEmitOnPayment,
+            'auto_send_email_on_emit' => (int) $autoSendEmailOnEmit,
+            'allow_unpaid_manual_emit' => (int) $allowUnpaidManualEmit,
             'queue_wait_status_interval_seconds' => (int) $queueWaitInterval,
             'queue_done_retention_days' => (int) $queueDoneRetentionDays,
             'logs_retention_days' => (int) $logsRetentionDays,

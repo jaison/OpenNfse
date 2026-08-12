@@ -101,7 +101,7 @@ final class QueueService
                 }
 
                 $invoice = $invoiceRepo->getInvoice($invoiceId);
-                $eligibility = $eligibilityChecker->check($invoice);
+                $eligibility = $eligibilityChecker->check($invoice, ['context' => EmissionEligibilityService::CONTEXT_AUTO]);
                 if ($eligibility !== null) {
                     $queueRepo->markDone($id);
                     switch ($eligibility['reason']) {
@@ -136,7 +136,7 @@ final class QueueService
                     continue;
                 }
 
-                $nfseService->emitir($invoiceId, $correlationId);
+                $nfseService->emitir($invoiceId, $correlationId, EmissionEligibilityService::CONTEXT_AUTO);
                 $nota = $notaRepo->findByInvoiceId($invoiceId);
                 if ($this->shouldMarkQueueDone($nota)) {
                     $queueRepo->markDone($id);

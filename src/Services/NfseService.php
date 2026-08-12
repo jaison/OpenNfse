@@ -20,7 +20,7 @@ use OpenNfse\Repositories\WhmcsInvoiceRepository;
 
 final class NfseService
 {
-    public function emitir(int $invoiceId, ?string $correlationId = null): void
+    public function emitir(int $invoiceId, ?string $correlationId = null, string $context = EmissionEligibilityService::CONTEXT_MANUAL): void
     {
         $this->ensureMigrated();
         $correlationId = $correlationId ?: CorrelationIdGenerator::generate($invoiceId);
@@ -36,18 +36,22 @@ final class NfseService
         $logRepo = new LogRepository();
 
         $invoice = $invoiceRepo->getInvoice($invoiceId);
-        $eligibility = (new EmissionEligibilityService())->check($invoice);
+        $eligibility = (new EmissionEligibilityService())->check($invoice, ['context' => $context]);
         if ($eligibility !== null) {
             switch ($eligibility['reason']) {
                 case EmissionEligibilityService::SKIP_NOT_PAID:
                     $logRepo->insert(
                         null,
                         'EMISSAO_SKIP_NOT_PAID',
-                        json_encode(['invoiceid' => $invoiceId, 'status' => $eligibility['status']], JSON_UNESCAPED_UNICODE),
+                        json_encode(['invoiceid' => $invoiceId, 'status' => $eligibility['status'], 'context' => $context], JSON_UNESCAPED_UNICODE),
                         null,
                         $correlationId
                     );
-                    throw new NfseModuleException('A emissão só pode ser solicitada quando a fatura estiver como Paid.');
+                    throw new NfseModuleException(
+                        ((string) ($config['allow_unpaid_manual_emit'] ?? '0')) === '1' && $context === EmissionEligibilityService::CONTEXT_AUTO
+                            ? 'A emissão automática só ocorre quando a fatura estiver como Paid.'
+                            : 'A emissão só pode ser solicitada quando a fatura estiver como Paid (ou habilite “Permitir emissão manual de fatura não paga” na configuração).'
+                    );
                 case EmissionEligibilityService::SKIP_CREDIT_PAYMENT:
                     $logRepo->insert(
                         null,
@@ -187,6 +191,7 @@ final class NfseService
             $historyMessage .= ' Chave: ' . trim((string) $result->chaveAcesso) . '.';
         }
         (new InvoiceHistoryService())->append($invoiceId, $historyMessage);
+        $this->maybeAutoSendEmail($invoiceId, $correlationId);
     }
 
     public function consultarStatus(int $invoiceId, ?string $correlationId = null): void
@@ -253,6 +258,9 @@ final class NfseService
                 }
                 if ($statusAfter !== $statusBefore) {
                     (new InvoiceHistoryService())->append($invoiceId, 'Consulta de status atualizou a NFS-e para ' . $statusAfter . '.');
+                }
+                if ($statusAfter === 'EMITIDA' && $statusBefore !== 'EMITIDA') {
+                    $this->maybeAutoSendEmail($invoiceId, $correlationId);
                 }
             } elseif ($resp->errorMessage) {
                 if ($this->shouldRetryConsultaAfterServiceUnavailable($resp->errorMessage)) {
@@ -829,6 +837,30 @@ final class NfseService
         }
 
         $notaRepo->upsert($update, ['touch_last_status_checked_at' => true]);
+    }
+
+    private function maybeAutoSendEmail(int $invoiceId, ?string $correlationId = null): void
+    {
+        $config = (new ConfigRepository())->get();
+        if (((string) ($config['auto_send_email_on_emit'] ?? '0')) !== '1') {
+            return;
+        }
+
+        try {
+            (new InvoiceEmailService())->sendToClient($invoiceId);
+        } catch (\Throwable $e) {
+            (new LogRepository())->insert(
+                null,
+                'EMAIL_NFSE_AUTO_ERROR',
+                json_encode(['invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE),
+                $e->getMessage(),
+                $correlationId
+            );
+            (new InvoiceHistoryService())->append(
+                $invoiceId,
+                'NFS-e emitida, mas o e-mail automático falhou: ' . $e->getMessage()
+            );
+        }
     }
 
     private function resolvePreviousQueueErrors(int $invoiceId, ?int $notaId, LogRepository $logRepo, ?string $correlationId): void

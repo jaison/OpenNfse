@@ -7,6 +7,7 @@ namespace OpenNfse\Hooks;
 use OpenNfse\Migrations\Migrator;
 use OpenNfse\Repositories\ConfigRepository;
 use OpenNfse\Repositories\LogRepository;
+use OpenNfse\Repositories\WhmcsCustomerRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
 use OpenNfse\Services\EmissionEligibilityService;
 use OpenNfse\Services\QueueService;
@@ -36,7 +37,29 @@ final class InvoicePaidHook
 
         try {
             $invoice = (new WhmcsInvoiceRepository())->getInvoice($invoiceId);
-            $eligibility = (new EmissionEligibilityService())->check($invoice);
+
+            $clientFieldId = (int) ($config['auto_emit_client_customfield_id'] ?? 0);
+            if ($clientFieldId > 0) {
+                $userId = (int) ($invoice['userid'] ?? 0);
+                $clientRepo = new WhmcsCustomerRepository();
+                if ($userId <= 0 || !$clientRepo->isCustomFieldTruthy($userId, $clientFieldId)) {
+                    (new LogRepository())->insert(
+                        null,
+                        'QUEUE_SKIP_CLIENT_AUTO_DISABLED',
+                        json_encode([
+                            'invoiceid' => $invoiceId,
+                            'userid' => $userId,
+                            'customfield_id' => $clientFieldId,
+                        ], JSON_UNESCAPED_UNICODE),
+                        null
+                    );
+                    return;
+                }
+            }
+
+            $eligibility = (new EmissionEligibilityService())->check($invoice, [
+                'context' => EmissionEligibilityService::CONTEXT_AUTO,
+            ]);
             if ($eligibility !== null) {
                 switch ($eligibility['reason']) {
                     case EmissionEligibilityService::SKIP_NOT_PAID:
