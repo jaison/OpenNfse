@@ -149,13 +149,14 @@ final class QueueRepository
         return (bool) $updated;
     }
 
-    public function markWaitStatus(int $id, int $nextIntervalSeconds): void
+    public function markWaitStatus(int $id, int $nextIntervalSeconds, ?string $error = null): void
     {
         $now = date('Y-m-d H:i:s');
         $next = date('Y-m-d H:i:s', time() + max(0, $nextIntervalSeconds));
         Capsule::table('mod_opennfse_queue')->where('id', $id)->update([
             'status' => 'WAIT_STATUS',
             'updated_at' => $now,
+            'last_error' => $error,
             'status_checks' => 0,
             'next_check_at' => $next,
         ]);

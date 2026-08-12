@@ -95,7 +95,7 @@ final class QueueService
                     continue;
                 }
                 if ($this->shouldKeepWaitingForStatus($notaBefore)) {
-                    $queueRepo->markWaitStatus($id, $waitIntervalSeconds);
+                    $queueRepo->markWaitStatus($id, $waitIntervalSeconds, $notaBefore ? (string) ($notaBefore['erro_api'] ?? '') : null);
                     $logRepo->insert(null, 'QUEUE_WAIT_STATUS', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
                     continue;
                 }
@@ -142,7 +142,7 @@ final class QueueService
                     $queueRepo->markDone($id);
                     $logRepo->insert(null, 'QUEUE_DONE', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
                 } elseif ($this->shouldKeepWaitingForStatus($nota)) {
-                    $queueRepo->markWaitStatus($id, $waitIntervalSeconds);
+                    $queueRepo->markWaitStatus($id, $waitIntervalSeconds, $nota ? (string) ($nota['erro_api'] ?? '') : null);
                     $logRepo->insert(null, 'QUEUE_WAIT_STATUS', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
                 } else {
                     $status = $nota ? (string) ($nota['status'] ?? '') : '';

@@ -131,7 +131,11 @@ final class NfseService
         $result = $adapter->emitir($sdkConfig, $dps);
 
         if (!$result->success) {
-            $status = $result->errorType === 'tech' ? 'ERRO' : 'REJEITADA';
+            $errorClassifier = new QueueErrorClassifierService();
+            $isTransientOutage = $errorClassifier->isTransientApiOutage($result->errorMessage ?? $result->rawResponse ?? '');
+            $status = $isTransientOutage
+                ? 'PROCESSANDO'
+                : ($result->errorType === 'tech' ? 'ERRO' : 'REJEITADA');
             $notaRepo->upsert([
                 'invoiceid' => $invoiceId,
                 'userid' => $userId,
@@ -773,14 +777,7 @@ final class NfseService
 
     private function shouldRetryConsultaAfterServiceUnavailable(?string $message): bool
     {
-        $message = mb_strtolower(trim((string) $message), 'UTF-8');
-        if ($message === '') {
-            return false;
-        }
-
-        return strpos($message, '503') !== false
-            || strpos($message, 'service unavailable') !== false
-            || strpos($message, 'the service is unavailable') !== false;
+        return (new QueueErrorClassifierService())->isTransientApiOutage($message);
     }
 
     private function shouldKeepExistingErrorTimestamp(string $statusBefore, ?string $errorBefore, ?string $errorAfter): bool

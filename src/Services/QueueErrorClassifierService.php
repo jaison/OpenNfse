@@ -8,6 +8,37 @@ use OpenNfse\Exceptions\NfseValidationException;
 
 final class QueueErrorClassifierService
 {
+    public function isTransientApiOutage($error): bool
+    {
+        $message = $error instanceof \Throwable ? $error->getMessage() : (string) $error;
+        $message = mb_strtolower(trim($message), 'UTF-8');
+        if ($message === '') {
+            return false;
+        }
+
+        $transientPatterns = [
+            '503',
+            'service unavailable',
+            'the service is unavailable',
+            'timeout',
+            'timed out',
+            'curl error 28',
+            'failed to connect',
+            'connection refused',
+            'connection reset',
+            'could not resolve host',
+            'temporarily unavailable',
+        ];
+
+        foreach ($transientPatterns as $pattern) {
+            if (strpos($message, $pattern) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function isRetryable($error): bool
     {
         if ($error instanceof NfseValidationException) {

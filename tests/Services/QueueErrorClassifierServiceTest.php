@@ -37,6 +37,24 @@ final class QueueErrorClassifierServiceTest extends TestCase
     }
 
     /**
+     * @dataProvider transientOutageMessagesProvider
+     */
+    public function testTransientApiOutagesAreDetected(string $message): void
+    {
+        $this->assertTrue($this->classifier->isTransientApiOutage($message));
+    }
+
+    public static function transientOutageMessagesProvider(): array
+    {
+        return [
+            'http 503' => ['Erro na requisição: 503 Service Unavailable'],
+            'html service unavailable' => ['HTTP Error 503. The service is unavailable.'],
+            'timeout' => ['cURL error 28: Operation timed out after 30000 milliseconds'],
+            'connect refused' => ['Failed to connect to host after retry'],
+        ];
+    }
+
+    /**
      * @dataProvider nonRetryableMessagesProvider
      */
     public function testNonRetryablePatternsAreNotRetryable(string $message): void
@@ -66,6 +84,11 @@ final class QueueErrorClassifierServiceTest extends TestCase
     {
         $this->assertFalse($this->classifier->isRetryable('Campo obrigatório ausente.'));
         $this->assertTrue($this->classifier->isRetryable('Erro inesperado de rede.'));
+    }
+
+    public function testNonTransientMessageIsNotDetectedAsApiOutage(): void
+    {
+        $this->assertFalse($this->classifier->isTransientApiOutage('NFS-e rejeitada por código municipal inválido.'));
     }
 
     public function testCaseInsensitiveMatching(): void

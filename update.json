@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.12",
-  "release_date": "2026-08-05",
+  "latest_version": "0.1.13",
+  "release_date": "2026-08-12",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Corrigido o filtro de periodo fiscal das notas para usar a data de referencia da NFS-e sem contaminar o mes atual em consultas manuais de status. Consultas repetidas agora registram `last_status_checked_at`, preservam `updated_at` quando nao ha mudanca real e evitam reclassificar notas antigas por repeticao do mesmo erro da API, como o E2404."
+  "message": "Implementado tratamento de indisponibilidade transitória da API nacional durante a emissão. Quando a SEFIN retornar erro 503, timeout ou falha de conexão, a nota permanece em PROCESSANDO, o item da fila segue para WAIT_STATUS no próximo cron e a reconciliação continua por consulta de DPS/NFS-e, preservando tentativas e o diagnóstico do erro sem encerrar a emissão como falha definitiva."
 }
