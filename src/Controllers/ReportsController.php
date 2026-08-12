@@ -155,14 +155,16 @@ final class ReportsController
 
         echo '<style>';
         echo '.nfse-report-layout{display:flex;gap:18px;align-items:flex-start;}';
-        echo '.nfse-report-sidebar{width:280px;border:1px solid #d9e1ea;background:#fafbfd;padding:12px;box-sizing:border-box;}';
-        echo '.nfse-report-sidebar-summary{margin-top:4px;margin-bottom:12px;padding:10px;border:1px solid #e6ebf1;background:#fff;}';
-        echo '.nfse-report-sidebar-summary strong{display:block;font-size:12px;color:#334155;margin-bottom:4px;}';
-        echo '.nfse-report-sidebar-summary span{display:block;font-size:11px;color:#6b7785;line-height:1.45;}';
-        echo '.nfse-report-sidebar-links a{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:6px;margin-bottom:6px;text-decoration:none;color:#2c4778;border-left:3px solid transparent;transition:all .15s ease;}';
-        echo '.nfse-report-sidebar-links a:hover{background:#f0f4f8;}';
-        echo '.nfse-report-sidebar-links a.is-active{background:#eef4fb;border-left-color:#2d6ca2;font-weight:700;color:#234b74;box-shadow:inset 0 0 0 1px #dbe7f3;}';
-        echo '.nfse-report-sidebar-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;white-space:nowrap;}';
+        echo '.nfse-report-sidebar{width:280px;padding:14px;border:1px solid #dbe3ea;border-radius:10px;background:linear-gradient(180deg,#fbfcfe 0%,#f4f6f8 100%);box-shadow:0 2px 8px rgba(15,23,42,0.05);box-sizing:border-box;}';
+        echo '.nfse-report-sidebar-summary{margin-top:2px;margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,0.04);}';
+        echo '.nfse-report-sidebar-summary strong{display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#5b6776;margin-bottom:6px;}';
+        echo '.nfse-report-sidebar-summary span{display:block;font-size:13px;color:#334155;line-height:1.5;font-weight:600;}';
+        echo '.nfse-report-sidebar-links{display:flex;flex-direction:column;gap:8px;}';
+        echo '.nfse-report-sidebar-links a{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;text-decoration:none;color:#2c4778;box-shadow:0 1px 2px rgba(15,23,42,0.03);transition:all .15s ease;}';
+        echo '.nfse-report-sidebar-links a:hover{background:#f8fafc;border-color:#cfd9e5;box-shadow:0 2px 6px rgba(15,23,42,0.06);transform:translateY(-1px);}';
+        echo '.nfse-report-sidebar-links a.is-active{background:linear-gradient(180deg,#f7fbff 0%,#edf4fb 100%);border-color:#c8d8ea;color:#234b74;box-shadow:inset 0 0 0 1px #dbe7f3,0 2px 8px rgba(35,82,124,0.08);}';
+        echo '.nfse-report-sidebar-link-label{display:block;font-size:13px;font-weight:600;line-height:1.35;}';
+        echo '.nfse-report-sidebar-badge{display:inline-block;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:.03em;text-transform:uppercase;}';
         echo '.nfse-report-content{flex:1;min-width:0;}';
         echo '@media (max-width: 1200px){.nfse-report-layout{flex-direction:column;}.nfse-report-sidebar{width:100%;}}';
         echo '</style>';
@@ -184,7 +186,7 @@ final class ReportsController
             $isActive = $key === $active;
             $meta = $tabMeta[$key] ?? ['badge' => 'Relatório', 'badge_bg' => '#eef2f7', 'badge_color' => '#5f6b7a'];
             echo '<a href="' . $h($url) . '" class="' . ($isActive ? 'is-active' : '') . '">';
-            echo '<span>' . $h($label) . '</span>';
+            echo '<span class="nfse-report-sidebar-link-label">' . $h($label) . '</span>';
             echo '<span class="nfse-report-sidebar-badge" style="background:' . $h((string) ($meta['badge_bg'] ?? '#eef2f7')) . ';color:' . $h((string) ($meta['badge_color'] ?? '#5f6b7a')) . ';">' . $h((string) ($meta['badge'] ?? 'Relatório')) . '</span>';
             echo '</a>';
         }
@@ -748,9 +750,12 @@ final class ReportsController
             echo '<div class="alert alert-warning" style="margin-bottom:12px;">Nenhum gateway ativo e habilitado no addon foi encontrado para a auditoria.</div>';
         } else {
             $notice = 'Exibindo o período de ' . htmlspecialchars($periodLabel, ENT_QUOTES, 'UTF-8') . ' para conferir faturas pagas que não foram emitidas NFS-e. Revise se e emita manualmente cada uma delas se for o caso.';
-            echo '<div style="margin-bottom:14px;padding:14px 16px;border:1px solid #e4b9b9;border-left:5px solid #b94a48;background:#fff5f5;color:#7f1d1d;box-shadow:0 1px 2px rgba(127,29,29,0.08);">';
-            echo '<div style="font-size:12px;font-weight:700;letter-spacing:0.02em;text-transform:uppercase;margin-bottom:6px;">Atenção crítica</div>';
-            echo '<div style="font-size:13px;line-height:1.5;font-weight:600;">' . $notice . '</div>';
+            echo '<div style="margin-bottom:14px;padding:14px 16px;border:1px solid #efd6d6;border-radius:8px;background:linear-gradient(180deg,#fffafa 0%,#fff4f4 100%);box-shadow:0 2px 8px rgba(127,29,29,0.06);">';
+            echo '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
+            echo '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9f3a38;">Atenção crítica</div>';
+            echo '<span style="display:inline-block;padding:3px 8px;border-radius:999px;background:#fdeaea;color:#9f3a38;font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;">Revisão manual</span>';
+            echo '</div>';
+            echo '<div style="margin-top:8px;font-size:13px;line-height:1.55;font-weight:600;color:#7f1d1d;">' . $notice . '</div>';
             echo '</div>';
         }
 

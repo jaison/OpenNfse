@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.15",
+  "latest_version": "0.1.16",
   "release_date": "2026-08-12",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Sessao focada em robustez operacional da fila e rastreabilidade da emissao. Foi corrigida a ambiguidade entre ID da fila e DPS, promovendo o correlation_id como identificador principal na tela da fila e adicionando contexto da nota atual (DPS, NFS-e e status), alem de um seletor compacto para mostrar ou esconder colunas conforme a necessidade. No fluxo de emissao manual, foram bloqueados enqueues duplicados para invoices ja vinculadas a nota/DPS, criado um caminho explicito de reemissao, e adicionados logs tecnicos e historico na invoice para registrar a origem de reemissoes manuais. Tambem foram corrigidos casos em que a fila ficava presa em WAIT_STATUS: erros terminais de consulta DPS como E2404/404 agora sao tratados como falha definitiva, e a retentativa de emissao nao reutiliza mais uma DPS ja falhada quando a nota local esta em ERRO."
+  "message": "Refinamento visual da aba Relatorios. O sidebar lateral foi redesenhado para seguir o mesmo padrao dos cards compactos da pagina, com melhor acabamento, hierarquia visual e destaque da aba ativa. Na Auditoria Emissao, o card Atencao critica tambem foi atualizado para um estilo mais consistente com o design atual, mantendo o destaque de alerta com composicao mais limpa e integrada ao restante da interface."
 }
