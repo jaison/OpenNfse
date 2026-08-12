@@ -52,6 +52,11 @@ final class AdminController
     public function handle(string $action): void
     {
         Module::migrator()->up();
+        try {
+            (new InvoiceEmailService())->ensureConfiguredEmailTemplate();
+        } catch (\Throwable $e) {
+            // Não bloqueia o admin se o WHMCS ainda não tiver Mail\Template disponível.
+        }
 
         $routes = [
             'dashboard' => [

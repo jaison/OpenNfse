@@ -452,7 +452,7 @@ trait AdminHelpersTrait
             'prestador_reg_esp_trib' => 'Regime especial tributário, mantendo 0 quando não houver enquadramento específico.',
             'tomador_cpfcnpj_customfield_id' => 'ID do custom field do cliente que armazena CPF/CNPJ do tomador no WHMCS.',
             'auto_emit_client_customfield_id' => 'Custom field do cliente (Sim/Não). Se preenchido, a emissão automática no pagamento só ocorre quando o valor for Sim. Sem campo selecionado, não filtra por cliente. Emissão manual continua disponível.',
-            'email_template_name' => 'Modelo de e-mail do WHMCS (tipo invoice) usado no envio da NFS-e. Edite assunto e corpo em Setup → Email Templates. O módulo anexa XML e PDF automaticamente.',
+            'email_template_name' => 'Modelo de e-mail do WHMCS (tipo invoice). O módulo cria automaticamente se não existir; edite assunto e corpo em Setup → Email Templates. O envio inclui o e-mail principal do cliente e contatos com avisos de fatura/faturamento. Anexa XML e PDF.',
             'client_area_notice_enabled' => 'Controla a exibição de um aviso fixo no topo da lista de NFS-e do cliente.',
             'client_area_notice_type' => 'Define o estilo visual do aviso mostrado na área do cliente.',
             'client_area_notice_message' => 'Mensagem exibida na lista de NFS-e do cliente. HTML não é permitido; URLs informadas no texto podem ser exibidas como links clicáveis.',

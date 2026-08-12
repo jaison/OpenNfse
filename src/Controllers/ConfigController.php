@@ -959,6 +959,12 @@ final class ConfigController
             (new PaymentGatewaySettingsRepository())->saveStatusForGateways($gatewayKeys, $nfseGatewayEnabled);
         }
 
+        try {
+            (new \OpenNfse\Services\InvoiceEmailService())->ensureConfiguredEmailTemplate($emailTemplateName);
+        } catch (\Throwable $e) {
+            // Config já foi salva; falha na criação do template não desfaz o save.
+        }
+
         $allowedTabs = ['ambiente', 'prestador', 'endereco', 'tributacao', 'servicosnbs', 'sequenciais', 'integracao', 'codigos', 'tomador', 'processamento', 'retencao'];
         if (!in_array($activeConfigTab, $allowedTabs, true)) {
             $activeConfigTab = 'ambiente';

@@ -2,8 +2,8 @@
   "module": "OpenNfse",
   "latest_version": "0.1.14",
   "release_date": "2026-08-12",
-  "download_url": "https://github.com/WeCoded/OpenNfse",
-  "changelog_url": "https://github.com/WeCoded/OpenNfse",
+  "download_url": "https://github.com/jaison/OpenNfse/releases",
+  "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
   "message": "Cria automaticamente o template de e-mail WHMCS e envia NFS-e ao e-mail principal e aos contatos com avisos de fatura/faturamento."

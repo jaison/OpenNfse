@@ -65,7 +65,11 @@ final class InvoiceEmailService
         $mergeFields = is_array($templateData['merge_fields'] ?? null) ? $templateData['merge_fields'] : [];
         $mergeFields['nfse_subject'] = $subject;
         $mergeFields['nfse_message'] = $message;
-        $client = $this->getClientForInvoice($invoice);
+        $recipients = $this->getInvoiceNotificationRecipients($invoice);
+        if ($recipients === []) {
+            throw new NfseModuleException('Nenhum destinatário de e-mail encontrado para o cliente da fatura.');
+        }
+        $client = $recipients[0];
 
         $notaId = (int) ($nota['id'] ?? 0);
         $logRepo->insert(
@@ -77,7 +81,7 @@ final class InvoiceEmailService
                 'pdf_filename' => $pdfFilename,
                 'subject' => $subject,
                 'transport' => 'sendmessage',
-                'to' => $client['email'],
+                'to' => array_values(array_map(static fn (array $r): string => (string) ($r['email'] ?? ''), $recipients)),
             ], JSON_UNESCAPED_UNICODE),
             null
         );
@@ -94,7 +98,7 @@ final class InvoiceEmailService
 
             $transport = 'whmcs_provider';
             $providerSent = $this->sendViaWhmcsProvider(
-                $client,
+                $recipients,
                 $subject,
                 $message,
                 $plainTextMessage,
@@ -117,17 +121,70 @@ final class InvoiceEmailService
                     $notaId > 0 ? $notaId : null,
                     'EMAIL_NFSE_RESPONSE',
                     null,
-                    json_encode(['result' => 'success', 'invoiceid' => $invoiceId, 'transport' => $transport], JSON_UNESCAPED_UNICODE)
+                    json_encode([
+                        'result' => 'success',
+                        'invoiceid' => $invoiceId,
+                        'transport' => $transport,
+                        'recipients' => array_column($recipients, 'email'),
+                    ], JSON_UNESCAPED_UNICODE)
                 );
-                (new InvoiceHistoryService())->append($invoiceId, 'E-mail da NFS-e enviado ao cliente com XML e PDF anexados.');
+                (new InvoiceHistoryService())->append(
+                    $invoiceId,
+                    'E-mail da NFS-e enviado com XML e PDF anexados para: ' . implode(', ', array_column($recipients, 'email')) . '.'
+                );
                 return;
+            }
+
+            try {
+                $this->sendDirectEmail(
+                    $recipients,
+                    $subject,
+                    $message,
+                    [
+                        [
+                            'filename' => basename($xmlAbsPath),
+                            'path' => $xmlAbsPath,
+                        ],
+                        [
+                            'filename' => $pdfFilename,
+                            'path' => $pdfTempPath,
+                        ],
+                    ]
+                );
+                $logRepo->insert(
+                    $notaId > 0 ? $notaId : null,
+                    'EMAIL_NFSE_RESPONSE',
+                    null,
+                    json_encode([
+                        'result' => 'success',
+                        'invoiceid' => $invoiceId,
+                        'transport' => 'phpmailer',
+                        'recipients' => array_column($recipients, 'email'),
+                    ], JSON_UNESCAPED_UNICODE)
+                );
+                (new InvoiceHistoryService())->append(
+                    $invoiceId,
+                    'E-mail da NFS-e enviado com XML e PDF anexados para: ' . implode(', ', array_column($recipients, 'email')) . '.'
+                );
+                return;
+            } catch (\Throwable $directError) {
+                $logRepo->insert(
+                    $notaId > 0 ? $notaId : null,
+                    'EMAIL_NFSE_MAILER_DEBUG',
+                    json_encode([
+                        'transport' => 'phpmailer',
+                        'stage' => 'fallback_failed',
+                        'error' => $directError->getMessage(),
+                    ], JSON_UNESCAPED_UNICODE),
+                    null
+                );
             }
 
             if (!function_exists('sendmessage')) {
                 throw new NfseModuleException('Função sendmessage() não está disponível no WHMCS.');
             }
 
-            $this->ensureNativeEmailTemplate($templateName);
+            $this->ensureConfiguredEmailTemplate($templateName);
 
             $attachments = [
                 [
@@ -202,9 +259,36 @@ final class InvoiceEmailService
             $notaId > 0 ? $notaId : null,
             'EMAIL_NFSE_RESPONSE',
             null,
-            json_encode(['result' => 'success', 'invoiceid' => $invoiceId, 'transport' => 'sendmessage'], JSON_UNESCAPED_UNICODE)
+            json_encode([
+                'result' => 'success',
+                'invoiceid' => $invoiceId,
+                'transport' => 'sendmessage',
+                'recipients' => array_column($recipients, 'email'),
+            ], JSON_UNESCAPED_UNICODE)
         );
-        (new InvoiceHistoryService())->append($invoiceId, 'E-mail da NFS-e enviado ao cliente com XML e PDF anexados.');
+        (new InvoiceHistoryService())->append(
+            $invoiceId,
+            'E-mail da NFS-e enviado com XML e PDF anexados para: ' . implode(', ', array_column($recipients, 'email')) . '.'
+        );
+    }
+
+    /**
+     * Garante que o modelo de e-mail exista em Setup → Email Templates (editável).
+     * Não sobrescreve assunto/corpo se o template já existir.
+     */
+    public function ensureConfiguredEmailTemplate(?string $templateName = null): string
+    {
+        $name = trim((string) $templateName);
+        if ($name === '') {
+            $config = (new \OpenNfse\Repositories\ConfigRepository())->get();
+            $name = trim((string) ($config['email_template_name'] ?? ''));
+        }
+        if ($name === '') {
+            $name = EmailTemplateService::DEFAULT_TEMPLATE_NAME;
+        }
+
+        $this->ensureNativeEmailTemplate($name);
+        return $name;
     }
 
     private function ensureNativeEmailTemplate(string $templateName): void
@@ -259,7 +343,13 @@ final class InvoiceEmailService
         $template->save();
     }
 
-    private function getClientForInvoice(array $invoice): array
+    /**
+     * Destinatários: e-mail principal do cliente + contatos com preferência de
+     * Invoice / faturamento (invoiceemails / email_preferences.invoice).
+     *
+     * @return list<array{id:int,email:string,name:string,source:string}>
+     */
+    private function getInvoiceNotificationRecipients(array $invoice): array
     {
         $userId = (int) ($invoice['userid'] ?? 0);
         if ($userId <= 0) {
@@ -271,19 +361,86 @@ final class InvoiceEmailService
             throw new NfseModuleException('Cliente da fatura não encontrado.');
         }
 
-        $email = trim((string) ($client->email ?? ''));
-        if ($email === '') {
+        $recipients = [];
+        $seen = [];
+
+        $add = static function (string $email, string $name, string $source, int $id = 0) use (&$recipients, &$seen): void {
+            $email = strtolower(trim($email));
+            if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                return;
+            }
+            if (isset($seen[$email])) {
+                return;
+            }
+            $seen[$email] = true;
+            $recipients[] = [
+                'id' => $id,
+                'email' => $email,
+                'name' => trim($name),
+                'source' => $source,
+            ];
+        };
+
+        $primaryEmail = trim((string) ($client->email ?? ''));
+        $primaryName = trim(((string) ($client->firstname ?? '')) . ' ' . ((string) ($client->lastname ?? '')));
+        $add($primaryEmail, $primaryName, 'client', $userId);
+
+        $contacts = Capsule::table('tblcontacts')->where('userid', $userId)->get();
+        foreach ($contacts as $contact) {
+            if (!$this->contactReceivesInvoiceEmails($contact)) {
+                continue;
+            }
+            $contactName = trim(((string) ($contact->firstname ?? '')) . ' ' . ((string) ($contact->lastname ?? '')));
+            $add((string) ($contact->email ?? ''), $contactName, 'contact', (int) ($contact->id ?? 0));
+        }
+
+        if ($recipients === []) {
             throw new NfseModuleException('E-mail do cliente não encontrado.');
         }
 
-        return [
-            'id' => $userId,
-            'email' => $email,
-            'name' => trim(((string) ($client->firstname ?? '')) . ' ' . ((string) ($client->lastname ?? ''))),
-        ];
+        return $recipients;
     }
 
-    private function sendViaWhmcsProvider(array $client, string $subject, string $htmlBody, string $plainTextBody, array $attachments, ?int $notaId, LogRepository $logRepo): bool
+    private function contactReceivesInvoiceEmails(object $contact): bool
+    {
+        // WHMCS clássico: coluna invoiceemails
+        if (isset($contact->invoiceemails) && (int) $contact->invoiceemails === 1) {
+            return true;
+        }
+
+        // WHMCS com email_preferences (JSON / array serializado)
+        $prefsRaw = $contact->email_preferences ?? null;
+        if ($prefsRaw === null || $prefsRaw === '') {
+            return false;
+        }
+
+        if (is_string($prefsRaw)) {
+            $decoded = json_decode($prefsRaw, true);
+            if (!is_array($decoded)) {
+                $unserialized = @unserialize($prefsRaw);
+                $decoded = is_array($unserialized) ? $unserialized : null;
+            }
+            $prefsRaw = $decoded;
+        }
+
+        if (!is_array($prefsRaw)) {
+            return false;
+        }
+
+        foreach (['invoice', 'Invoice', 'invoiceemails'] as $key) {
+            if (!array_key_exists($key, $prefsRaw)) {
+                continue;
+            }
+            $value = $prefsRaw[$key];
+            if ($value === true || $value === 1 || $value === '1' || $value === 'on') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function sendViaWhmcsProvider(array $recipients, string $subject, string $htmlBody, string $plainTextBody, array $attachments, ?int $notaId, LogRepository $logRepo): bool
     {
         if (!class_exists(\WHMCS\Mail\Message::class) || !interface_exists(\WHMCS\Module\Contracts\SenderModuleInterface::class)) {
             return false;
@@ -321,7 +478,20 @@ final class InvoiceEmailService
         $message->setPlainText($plainTextBody !== '' ? $plainTextBody : $this->buildPlainTextBody($htmlBody));
         $message->setFromEmail((string) ($config['from_email'] ?? ''));
         $message->setFromName((string) ($config['from_name'] ?? ''));
-        $message->addRecipient('to', (string) ($client['email'] ?? ''), (string) ($client['name'] ?? ''));
+
+        $added = 0;
+        foreach ($recipients as $index => $recipient) {
+            $email = trim((string) ($recipient['email'] ?? ''));
+            if ($email === '') {
+                continue;
+            }
+            $type = $index === 0 ? 'to' : 'cc';
+            $message->addRecipient($type, $email, (string) ($recipient['name'] ?? ''));
+            $added++;
+        }
+        if ($added === 0) {
+            return false;
+        }
 
         foreach ($attachments as $attachment) {
             $filename = trim((string) ($attachment['filename'] ?? ''));
@@ -340,6 +510,7 @@ final class InvoiceEmailService
                 'stage' => 'before_send',
                 'provider_class' => $providerClass,
                 'message_type' => 'general',
+                'recipients' => array_column($recipients, 'email'),
                 'provider_config_keys' => array_keys($providerConfig),
                 'attachments' => array_map(static function (array $attachment): array {
                     return ['filename' => (string) ($attachment['filename'] ?? '')];
@@ -373,6 +544,7 @@ final class InvoiceEmailService
                 'transport' => 'whmcs_provider',
                 'stage' => 'after_send',
                 'provider_class' => $providerClass,
+                'recipients' => array_column($recipients, 'email'),
             ], JSON_UNESCAPED_UNICODE),
             null
         );
@@ -464,7 +636,11 @@ final class InvoiceEmailService
         return var_export($value, true);
     }
 
-    private function sendDirectEmail(array $client, string $subject, string $htmlBody, array $attachments): void
+    /**
+     * @param list<array{email:string,name?:string}> $recipients
+     * @param list<array{filename:string,data?:string,path?:string}> $attachments
+     */
+    private function sendDirectEmail(array $recipients, string $subject, string $htmlBody, array $attachments): void
     {
         $mailer = $this->instantiateMailer();
         $config = $this->getMailConfiguration();
@@ -488,6 +664,7 @@ final class InvoiceEmailService
                 'mailconfig_detected' => !empty($config['_mailconfig_flat'] ?? []),
                 'mailconfig_keys' => array_keys((array) ($config['_mailconfig_flat'] ?? [])),
                 'from_email' => $fromEmail,
+                'recipients' => array_column($recipients, 'email'),
                 'smtp_host' => trim((string) ($config['SMTPHost'] ?? '')),
                 'smtp_port' => (string) ($config['SMTPPort'] ?? ''),
                 'smtp_ssl' => (string) ($config['SMTPSSLType'] ?? $config['SMTPSSL'] ?? ''),
@@ -501,18 +678,42 @@ final class InvoiceEmailService
         $mailer->CharSet = 'UTF-8';
         $mailer->isHTML(true);
         $mailer->setFrom($fromEmail, $fromName);
-        $mailer->addAddress((string) $client['email'], (string) ($client['name'] ?? ''));
+
+        $added = 0;
+        foreach ($recipients as $index => $recipient) {
+            $email = trim((string) ($recipient['email'] ?? ''));
+            if ($email === '') {
+                continue;
+            }
+            if ($index === 0) {
+                $mailer->addAddress($email, (string) ($recipient['name'] ?? ''));
+            } else {
+                $mailer->addCC($email, (string) ($recipient['name'] ?? ''));
+            }
+            $added++;
+        }
+        if ($added === 0) {
+            throw new NfseModuleException('Nenhum destinatário válido para envio direto.');
+        }
+
         $mailer->Subject = $subject;
         $mailer->Body = $htmlBody;
         $mailer->AltBody = $this->buildPlainTextBody($htmlBody);
 
         foreach ($attachments as $attachment) {
-            $data = (string) ($attachment['data'] ?? '');
             $filename = trim((string) ($attachment['filename'] ?? ''));
-            if ($data === '' || $filename === '') {
+            if ($filename === '') {
                 continue;
             }
-            $mailer->addStringAttachment($data, $filename);
+            $data = (string) ($attachment['data'] ?? '');
+            if ($data !== '') {
+                $mailer->addStringAttachment($data, $filename);
+                continue;
+            }
+            $path = (string) ($attachment['path'] ?? '');
+            if ($path !== '' && is_file($path)) {
+                $mailer->addAttachment($path, $filename);
+            }
         }
 
         if (!$mailer->send()) {
