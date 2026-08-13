@@ -218,6 +218,8 @@ final class QueueController
                 Capsule::raw('n.id_dps as nota_id_dps'),
                 Capsule::raw('n.numero_nf as nota_numero_nf'),
                 Capsule::raw('n.chave_acesso as nota_chave_acesso'),
+                Capsule::raw('n.erro_api as nota_erro_api'),
+                Capsule::raw('n.e2404_reemit_attempts as nota_e2404_reemit_attempts'),
             ])
             ->orderBy('q.id', 'desc');
         $applyJoinedFilters($q);
@@ -334,6 +336,17 @@ final class QueueController
 
             return $html;
         };
+        $containsE2404ReemitMessage = static function (string $value): bool {
+            $value = trim($value);
+            if ($value === '') {
+                return false;
+            }
+
+            $normalized = mb_strtolower($value, 'UTF-8');
+
+            return strpos($normalized, 'reemitindo a mesma dps') !== false
+                || strpos($normalized, 'e2404 recebido na consulta da dps') !== false;
+        };
 
         foreach ($rows as $r) {
             $id = (int) ($r->id ?? 0);
@@ -348,7 +361,13 @@ final class QueueController
             $ultima = (string) ($r->ultima_tentativa ?? '');
             $checks = (string) ($r->status_checks ?? '');
             $nextCheckAt = (string) ($r->next_check_at ?? '');
-            $erro = (string) ($r->last_error ?? '');
+            $erroFila = trim((string) ($r->last_error ?? ''));
+            $erroNota = trim((string) ($r->nota_erro_api ?? ''));
+            $e2404ReemitAttempts = (int) ($r->nota_e2404_reemit_attempts ?? 0);
+            $isE2404Reemit = $e2404ReemitAttempts > 0
+                && ($notaStatus === 'PROCESSANDO' || $status === 'WAIT_STATUS' || $status === 'RUNNING')
+                && ($containsE2404ReemitMessage($erroNota) || $containsE2404ReemitMessage($erroFila));
+            $erro = $erroFila !== '' ? $erroFila : $erroNota;
 
             $nextMeta = '';
             if ($nextCheckAt !== '') {
@@ -373,6 +392,9 @@ final class QueueController
                 $rowStyle = ' style="background:#f4f9ff;"';
             } elseif ($status === 'WAIT_STATUS') {
                 $rowStyle = ' style="background:#fffdf5;"';
+            }
+            if ($isE2404Reemit) {
+                $rowStyle = ' style="background:#fff7ed;box-shadow:inset 4px 0 0 #ea580c;"';
             }
 
             echo '<tr' . $rowStyle . '>';
@@ -400,8 +422,22 @@ final class QueueController
             }
             echo '</td>';
             echo '<td data-col="nfse" style="text-align:center;vertical-align:top;">' . htmlspecialchars($notaNumeroNf !== '' ? $notaNumeroNf : '-', ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td data-col="queue_status" style="text-align:center;vertical-align:top;">' . $renderStatusBadge($status) . '</td>';
-            echo '<td data-col="nota_status" style="text-align:center;vertical-align:top;">' . ($notaStatus !== '' ? $renderStatusBadge($notaStatus) : '<span style="color:#999;">-</span>') . '</td>';
+            echo '<td data-col="queue_status" style="text-align:center;vertical-align:top;">';
+            echo '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;">';
+            echo $renderStatusBadge($status);
+            if ($isE2404Reemit) {
+                echo '<span style="display:inline-block;padding:4px 9px;border-radius:999px;font-size:10px;font-weight:700;line-height:1.2;background:#ffedd5;color:#9a3412;border:1px solid #fdba74;">Reemitindo mesma DPS</span>';
+            }
+            echo '</div>';
+            echo '</td>';
+            echo '<td data-col="nota_status" style="text-align:center;vertical-align:top;">';
+            echo '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;">';
+            echo ($notaStatus !== '' ? $renderStatusBadge($notaStatus) : '<span style="color:#999;">-</span>');
+            if ($isE2404Reemit) {
+                echo '<span style="font-size:10px;font-weight:700;color:#9a3412;background:#fff1e6;border:1px solid #fed7aa;border-radius:999px;padding:3px 8px;">Tentativa ' . $e2404ReemitAttempts . '/2</span>';
+            }
+            echo '</div>';
+            echo '</td>';
             echo '<td data-col="tentativas" style="text-align:center;vertical-align:top;">' . htmlspecialchars($tentativas, ENT_QUOTES, 'UTF-8') . '</td>';
             echo '<td data-col="ultima" style="vertical-align:top;">' . $renderDateCell($ultima) . '</td>';
             echo '<td data-col="checks" style="text-align:center;vertical-align:top;">' . htmlspecialchars($checks, ENT_QUOTES, 'UTF-8') . '</td>';
@@ -412,6 +448,9 @@ final class QueueController
                 $short = $truncateError($erro);
                 echo '<td data-col="erro" style="vertical-align:top;word-break:break-word;overflow-wrap:anywhere;">';
                 echo '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;">';
+                if ($isE2404Reemit) {
+                    echo '<div style="padding:7px 9px;border-radius:8px;background:#fff1e6;border:1px solid #fed7aa;color:#9a3412;font-size:11px;font-weight:700;line-height:1.35;">Reemitindo a mesma DPS apos E2404 (' . $e2404ReemitAttempts . '/2)</div>';
+                }
                 echo '<span title="' . htmlspecialchars($erro, ENT_QUOTES, 'UTF-8') . '" style="display:inline-block;max-width:100%;line-height:1.35;color:#444;">' . htmlspecialchars($short, ENT_QUOTES, 'UTF-8') . '</span>';
                 echo '<button type="button" class="btn btn-xs btn-default nfse-copy" data-copy="' . htmlspecialchars($erro, ENT_QUOTES, 'UTF-8') . '">Copiar erro</button>';
                 echo '</div>';

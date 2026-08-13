@@ -10,7 +10,7 @@ use WHMCS\Database\Capsule;
 
 final class DpsBuilderService
 {
-    public function build(array $config, array $invoice, array $items, array $client, string $tomadorCpfCnpj, int $numeroDps): object
+    public function build(array $config, array $invoice, array $items, array $client, string $tomadorCpfCnpj, int $numeroDps, ?string $forcedIdDps = null): object
     {
         $this->assertSdkAvailable();
 
@@ -70,7 +70,10 @@ final class DpsBuilderService
             throw new NfseValidationException('Valor total da fatura inválido.');
         }
 
-        $idDps = \Nfse\Support\IdGenerator::generateDpsId($cnpjEmissorDigits, $codigoIbge, $serieDps, $numeroDps);
+        $idDps = trim((string) $forcedIdDps);
+        if ($idDps === '') {
+            $idDps = \Nfse\Support\IdGenerator::generateDpsId($cnpjEmissorDigits, $codigoIbge, $serieDps, $numeroDps);
+        }
 
         $prestadorNome = (string) ($config['prestador_nome'] ?? '');
         if ($tpEmit !== 1 && $prestadorNome === '') {
@@ -286,7 +289,7 @@ final class DpsBuilderService
                 '@attributes' => ['Id' => $idDps],
                 'tpAmb' => $tpAmb,
                 'dhEmi' => (new \DateTimeImmutable('now'))->format('Y-m-d\TH:i:sP'),
-                'verAplic' => 'whmcs-nfse/0.1.18',
+                'verAplic' => 'whmcs-nfse/0.1.19',
                 'serie' => $serieDps,
                 'nDPS' => (string) $numeroDps,
                 'dCompet' => date('Y-m-d'),

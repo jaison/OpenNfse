@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.18",
+  "latest_version": "0.1.19",
   "release_date": "2026-08-12",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "A fila de emissao passou a respeitar processamento estritamente sequencial de DPS. O lote agora consulta primeiro os itens em espera, bloqueia novas emissoes enquanto houver DPS anterior em RUNNING ou WAIT_STATUS e libera a proxima apenas apos conclusao do item anterior. Isso reduz pulos de sequencia e evita cenarios em que uma DPS posterior e aceita antes da anterior, levando a erros terminais como E2404."
+  "message": "Foi implementada uma estrategia especifica para o erro E2404 na consulta de DPS: em vez de encerrar imediatamente como erro terminal, o modulo agora tenta reemitir a mesma DPS de forma controlada, com limite de tentativas e reaproveitamento do mesmo id_dps. Tambem foi adicionada rastreabilidade visual na tela da fila, destacando itens que estao reemitindo a mesma DPS apos E2404 com selo, contador de tentativa e bloco de contexto no campo de erro."
 }

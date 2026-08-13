@@ -20,7 +20,9 @@ use OpenNfse\Repositories\WhmcsInvoiceRepository;
 
 final class NfseService
 {
-    public function emitir(int $invoiceId, ?string $correlationId = null): void
+    private const MAX_E2404_REEMIT_ATTEMPTS = 2;
+
+    public function emitir(int $invoiceId, ?string $correlationId = null, array $options = []): void
     {
         $this->ensureMigrated();
         $correlationId = $correlationId ?: CorrelationIdGenerator::generate($invoiceId);
@@ -34,6 +36,8 @@ final class NfseService
         $customerRepo = new WhmcsCustomerRepository();
         $notaRepo = new NotaRepository();
         $logRepo = new LogRepository();
+        $reuseIdDps = trim((string) ($options['reuse_id_dps'] ?? ''));
+        $preserveE2404RetryCounter = (bool) ($options['preserve_e2404_retry_counter'] ?? false);
 
         $invoice = $invoiceRepo->getInvoice($invoiceId);
         $eligibility = (new EmissionEligibilityService())->check($invoice);
@@ -88,19 +92,26 @@ final class NfseService
             $tomadorCpfCnpj = $customerRepo->getCpfCnpjFromCustomField($userId, $tomadorFieldId);
         }
 
-        $numeroDps = (new SequenceRepository())->next(
-            (string) $config['environment'],
-            (string) $config['cnpj_emissor'],
-            (string) $config['serie_dps']
-        );
+        if ($reuseIdDps !== '') {
+            $numeroDps = $this->extractDpsSequenceNumber($reuseIdDps);
+            if ($numeroDps === null) {
+                throw new NfseModuleException('ID DPS inválido para reemissão controlada após E2404.');
+            }
+        } else {
+            $numeroDps = (new SequenceRepository())->next(
+                (string) $config['environment'],
+                (string) $config['cnpj_emissor'],
+                (string) $config['serie_dps']
+            );
+        }
 
-        $dps = (new DpsBuilderService())->build($config, $invoice, $items, $client, $tomadorCpfCnpj, $numeroDps);
+        $dps = (new DpsBuilderService())->build($config, $invoice, $items, $client, $tomadorCpfCnpj, $numeroDps, $reuseIdDps !== '' ? $reuseIdDps : null);
 
         $idDps = property_exists($dps, 'infDps') && $dps->infDps && property_exists($dps->infDps, 'id')
             ? (string) $dps->infDps->id
             : null;
 
-        $notaRepo->upsert([
+        $upsertData = [
             'invoiceid' => $invoiceId,
             'userid' => $userId,
             'id_dps' => $idDps,
@@ -111,7 +122,11 @@ final class NfseService
             'xml_path' => null,
             'status' => 'PROCESSANDO',
             'erro_api' => null,
-        ]);
+        ];
+        if (!$preserveE2404RetryCounter) {
+            $upsertData['e2404_reemit_attempts'] = 0;
+        }
+        $notaRepo->upsert($upsertData);
 
         $nota = $notaRepo->findByInvoiceId($invoiceId);
         $notaId = $nota ? (int) $nota['id'] : null;
@@ -141,6 +156,8 @@ final class NfseService
                 'userid' => $userId,
                 'status' => $status,
                 'erro_api' => $result->errorMessage,
+                'id_dps' => $idDps,
+                'protocolo' => $idDps,
             ]);
             $logRepo->insert($notaId, 'EMISSAO_RESPONSE', null, $result->rawResponse ?? $result->errorMessage, $correlationId);
             return;
@@ -175,6 +192,7 @@ final class NfseService
             'competencia' => $competencia,
             'emitida_em' => $emitidaEm,
             'erro_api' => null,
+            'e2404_reemit_attempts' => 0,
         ]);
         $notaAtual = $notaRepo->findByInvoiceId($invoiceId);
         if ($notaAtual !== null) {
@@ -240,6 +258,7 @@ final class NfseService
                     'numero_nf' => $numeroNf,
                     'competencia' => $competencia,
                     'erro_api' => null,
+                    'e2404_reemit_attempts' => 0,
                 ];
                 if ((string) ($nota['emitida_em'] ?? '') === '') {
                     if ($emitidaEm !== null) {
@@ -296,6 +315,7 @@ final class NfseService
                 'userid' => (int) $nota['userid'],
                 'chave_acesso' => $resp->chaveAcesso,
                 'erro_api' => null,
+                'e2404_reemit_attempts' => 0,
             ];
             if ((string) ($nota['status'] ?? '') !== 'EMITIDA') {
                 $update['status'] = 'PROCESSANDO';
@@ -317,6 +337,8 @@ final class NfseService
         } elseif ($resp->errorMessage) {
             if ($this->shouldRetryConsultaAfterServiceUnavailable($resp->errorMessage)) {
                 $this->preserveStatusForPendingConsulta($notaRepo, $nota, $invoiceId);
+            } elseif ($this->attemptE2404SameDpsReemit($notaRepo, $logRepo, $nota, $invoiceId, $notaId, $resp->errorMessage, $correlationId)) {
+                return;
             } else {
                 $errorMessage = $this->shouldKeepExistingErrorTimestamp($statusBefore, $errorBefore, $resp->errorMessage)
                     ? $errorBefore
@@ -780,6 +802,88 @@ final class NfseService
         return (new QueueErrorClassifierService())->isTransientApiOutage($message);
     }
 
+    private function attemptE2404SameDpsReemit(
+        NotaRepository $notaRepo,
+        LogRepository $logRepo,
+        array $nota,
+        int $invoiceId,
+        int $notaId,
+        ?string $errorMessage,
+        ?string $correlationId
+    ): bool {
+        if (!$this->canAttemptE2404SameDpsReemit($nota, $errorMessage)) {
+            return false;
+        }
+
+        $idDps = trim((string) ($nota['id_dps'] ?? ''));
+        $attempt = (int) ($nota['e2404_reemit_attempts'] ?? 0);
+        $nextAttempt = $attempt + 1;
+        $notaRepo->upsert([
+            'invoiceid' => $invoiceId,
+            'userid' => (int) ($nota['userid'] ?? 0),
+            'status' => 'PROCESSANDO',
+            'erro_api' => sprintf(
+                'E2404 recebido na consulta da DPS. Reemitindo a mesma DPS (%d/%d).',
+                $nextAttempt,
+                self::MAX_E2404_REEMIT_ATTEMPTS
+            ),
+            'e2404_reemit_attempts' => $nextAttempt,
+        ], ['touch_last_status_checked_at' => true]);
+        $logRepo->insert(
+            $notaId,
+            'E2404_REEMIT_REQUEST',
+            json_encode(
+                [
+                    'invoiceid' => $invoiceId,
+                    'id_dps' => $idDps,
+                    'attempt' => $nextAttempt,
+                    'max_attempts' => self::MAX_E2404_REEMIT_ATTEMPTS,
+                ],
+                JSON_UNESCAPED_UNICODE
+            ),
+            $errorMessage,
+            $correlationId
+        );
+
+        $this->emitir($invoiceId, $correlationId, [
+            'reuse_id_dps' => $idDps,
+            'preserve_e2404_retry_counter' => true,
+        ]);
+
+        $notaAfter = $notaRepo->findByInvoiceId($invoiceId);
+        $logRepo->insert(
+            $notaId,
+            'E2404_REEMIT_RESULT',
+            json_encode(
+                [
+                    'invoiceid' => $invoiceId,
+                    'id_dps' => $idDps,
+                    'attempt' => $nextAttempt,
+                    'status_after' => $notaAfter['status'] ?? null,
+                ],
+                JSON_UNESCAPED_UNICODE
+            ),
+            $notaAfter ? (string) ($notaAfter['erro_api'] ?? '') : null,
+            $correlationId
+        );
+
+        return true;
+    }
+
+    private function canAttemptE2404SameDpsReemit(array $nota, ?string $errorMessage): bool
+    {
+        if (!$this->isE2404Error($errorMessage)) {
+            return false;
+        }
+
+        $idDps = trim((string) ($nota['id_dps'] ?? ''));
+        if ($idDps === '') {
+            return false;
+        }
+
+        return (int) ($nota['e2404_reemit_attempts'] ?? 0) < self::MAX_E2404_REEMIT_ATTEMPTS;
+    }
+
     private function shouldKeepExistingErrorTimestamp(string $statusBefore, ?string $errorBefore, ?string $errorAfter): bool
     {
         if (trim($statusBefore) !== 'ERRO') {
@@ -810,6 +914,37 @@ final class NfseService
         }
 
         return null;
+    }
+
+    private function isE2404Error(?string $message): bool
+    {
+        $message = trim((string) $message);
+        if ($message === '') {
+            return false;
+        }
+
+        if ($this->extractApiErrorCode($message) === 'E2404') {
+            return true;
+        }
+
+        $normalized = mb_strtolower($message, 'UTF-8');
+        return strpos($normalized, 'não foi gerada uma nfs-e com o identificador de dps informado') !== false
+            || strpos($normalized, 'nao foi gerada uma nfs-e com o identificador de dps informado') !== false;
+    }
+
+    private function extractDpsSequenceNumber(string $idDps): ?int
+    {
+        $idDps = trim($idDps);
+        if ($idDps === '') {
+            return null;
+        }
+
+        $digits = substr($idDps, -15);
+        if (preg_match('/^\d{15}$/', $digits) !== 1) {
+            return null;
+        }
+
+        return (int) ltrim($digits, '0') ?: 0;
     }
 
     private function preserveStatusForPendingConsulta(NotaRepository $notaRepo, array $nota, int $invoiceId): void
