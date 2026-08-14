@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.19",
+  "latest_version": "0.1.20",
   "release_date": "2026-08-12",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Foi implementada uma estrategia especifica para o erro E2404 na consulta de DPS: em vez de encerrar imediatamente como erro terminal, o modulo agora tenta reemitir a mesma DPS de forma controlada, com limite de tentativas e reaproveitamento do mesmo id_dps. Tambem foi adicionada rastreabilidade visual na tela da fila, destacando itens que estao reemitindo a mesma DPS apos E2404 com selo, contador de tentativa e bloco de contexto no campo de erro."
+  "message": "Foi ajustado o fluxo de indisponibilidade da API Nacional: quando o POST de emissao falha com erro transitório como 503, o modulo passa a reenviar a mesma emissao com o mesmo id_dps, em vez de consultar prematuramente a DPS e cair em E2404 como efeito colateral. Tambem foi removida a concorrencia entre cron e fila para notas em processamento, evitando consultas paralelas sobre a mesma invoice enquanto houver item ativo na fila."
 }

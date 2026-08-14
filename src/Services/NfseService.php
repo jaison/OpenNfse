@@ -228,6 +228,10 @@ final class NfseService
             throw new NfseModuleException('Nota não encontrada para esta fatura.');
         }
         $notaId = (int) $nota['id'];
+        if ($this->shouldRetryEmissionAfterTransientOutage($nota)) {
+            $this->retryEmissionAfterTransientOutage($notaRepo, $logRepo, $nota, $invoiceId, $notaId, $correlationId);
+            return;
+        }
         $statusBefore = (string) ($nota['status'] ?? '');
         $errorBefore = (string) ($nota['erro_api'] ?? '');
 
@@ -868,6 +872,57 @@ final class NfseService
         );
 
         return true;
+    }
+
+    private function shouldRetryEmissionAfterTransientOutage(array $nota): bool
+    {
+        $status = trim((string) ($nota['status'] ?? ''));
+        $idDps = trim((string) ($nota['id_dps'] ?? ''));
+        $chave = trim((string) ($nota['chave_acesso'] ?? ''));
+        $error = trim((string) ($nota['erro_api'] ?? ''));
+
+        if ($status !== 'PROCESSANDO' || $idDps === '' || $chave !== '' || $error === '') {
+            return false;
+        }
+
+        return (new QueueErrorClassifierService())->isTransientApiOutage($error);
+    }
+
+    private function retryEmissionAfterTransientOutage(
+        NotaRepository $notaRepo,
+        LogRepository $logRepo,
+        array $nota,
+        int $invoiceId,
+        int $notaId,
+        ?string $correlationId
+    ): void {
+        $idDps = trim((string) ($nota['id_dps'] ?? ''));
+        $lastError = trim((string) ($nota['erro_api'] ?? ''));
+
+        $notaRepo->upsert([
+            'invoiceid' => $invoiceId,
+            'userid' => (int) ($nota['userid'] ?? 0),
+            'status' => 'PROCESSANDO',
+            'erro_api' => sprintf('API indisponivel na emissao. Reenviando a mesma DPS (%s).', $idDps),
+        ], ['touch_last_status_checked_at' => true]);
+        $logRepo->insert(
+            $notaId,
+            'RETRY_EMISSAO_TRANSIENT_OUTAGE',
+            json_encode(
+                [
+                    'invoiceid' => $invoiceId,
+                    'id_dps' => $idDps,
+                ],
+                JSON_UNESCAPED_UNICODE
+            ),
+            $lastError,
+            $correlationId
+        );
+
+        $this->emitir($invoiceId, $correlationId, [
+            'reuse_id_dps' => $idDps,
+            'preserve_e2404_retry_counter' => true,
+        ]);
     }
 
     private function canAttemptE2404SameDpsReemit(array $nota, ?string $errorMessage): bool

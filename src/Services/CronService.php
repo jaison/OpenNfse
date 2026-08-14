@@ -98,11 +98,22 @@ final class CronService
     {
         (new QueueService())->processBatch(20);
 
-        $notas = Capsule::table('mod_opennfse_notas')
+        $activeQueueInvoiceIds = Capsule::table('mod_opennfse_queue')
+            ->whereIn('status', ['PENDING', 'RUNNING', 'WAIT_STATUS'])
+            ->distinct()
+            ->pluck('invoiceid')
+            ->all();
+
+        $query = Capsule::table('mod_opennfse_notas')
             ->where('status', 'PROCESSANDO')
             ->orderByRaw('COALESCE(last_status_checked_at, updated_at, created_at) ASC')
-            ->limit(50)
-            ->get();
+            ->limit(50);
+
+        if (!empty($activeQueueInvoiceIds)) {
+            $query->whereNotIn('invoiceid', array_map('intval', $activeQueueInvoiceIds));
+        }
+
+        $notas = $query->get();
 
         $nfseService = new NfseService();
         $notaRepo = new NotaRepository();

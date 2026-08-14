@@ -289,7 +289,7 @@ final class DpsBuilderService
                 '@attributes' => ['Id' => $idDps],
                 'tpAmb' => $tpAmb,
                 'dhEmi' => (new \DateTimeImmutable('now'))->format('Y-m-d\TH:i:sP'),
-                'verAplic' => 'whmcs-nfse/0.1.19',
+                'verAplic' => 'whmcs-nfse/0.1.20',
                 'serie' => $serieDps,
                 'nDPS' => (string) $numeroDps,
                 'dCompet' => date('Y-m-d'),

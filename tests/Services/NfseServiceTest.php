@@ -55,4 +55,36 @@ final class NfseServiceTest extends TestCase
 
         $this->assertSame(703, $result);
     }
+
+    public function testShouldRetryEmissionAfterTransientOutageWhenProcessandoAndErro503(): void
+    {
+        $service = new NfseService();
+        $method = new \ReflectionMethod($service, 'shouldRetryEmissionAfterTransientOutage');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($service, [
+            'status' => 'PROCESSANDO',
+            'id_dps' => 'DPS420820324006645700011300900000000000000710',
+            'chave_acesso' => '',
+            'erro_api' => 'Erro na requisição: Server error: `POST https://sefin.nfse.gov.br/...` resulted in a `503 Service Unavailable` response',
+        ]);
+
+        $this->assertTrue($result);
+    }
+
+    public function testShouldNotRetryEmissionAfterTransientOutageWhenChaveAlreadyExists(): void
+    {
+        $service = new NfseService();
+        $method = new \ReflectionMethod($service, 'shouldRetryEmissionAfterTransientOutage');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($service, [
+            'status' => 'PROCESSANDO',
+            'id_dps' => 'DPS420820324006645700011300900000000000000710',
+            'chave_acesso' => 'NFS123',
+            'erro_api' => 'Erro na requisição: Server error: `POST https://sefin.nfse.gov.br/...` resulted in a `503 Service Unavailable` response',
+        ]);
+
+        $this->assertFalse($result);
+    }
 }
