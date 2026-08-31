@@ -1,20 +1,24 @@
-# OpenNFS-e
+# OpenNfse
 
-![Logo do OpenNFS-e](assets/logo_horizontal.png)
+![Logo do OpenNfse](assets/logo_horizontal.png)
 
 Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emissão automática quando a fatura é paga, controle de automação por gateway de pagamento, configuração de NBS e código de serviço, geração de DANFS-e em PDF, armazenamento de XML organizado por ambiente e série, consulta de status, fila de processamento e envio de XML/PDF por e-mail ao cliente.
 
+## Notas do Autor
+
+**Atualizado em 31 de agosto de 2026.**
+
+O addon tem sido testado em produção nos últimos dois meses. Durante o uso real, diversos problemas inesperados foram identificados e resolvidos.
+
+Algumas funções de auditoria existentes já não são mais necessárias e provavelmente serão removidas ou unificadas em uma única tela. Nas próximas atualizações, serão realizados ajustes visuais e adicionadas novas funcionalidades. Mantenha sua instalação atualizada.
+
+Ao começar a utilizar o addon, configure primeiro o ambiente de homologação. Caso esteja testando em uma instalação de produção do WHMCS, não ative as automações de emissão automática. Valide as notas emitidas no ambiente de homologação do Emissor Nacional junto à sua contabilidade e verifique se todos os campos foram preenchidos corretamente.
+
+Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https://github.com/jaison/OpenNfse/issues/new).
+
 ## Screenshot
 
-![Screenshot do OpenNFS-e](opennfse.png)
-
-> **Aviso importante**
->
-> Este addon está em fase de testes.
->
-> Antes de utilizar em produção, faça a validação completa no ambiente de homologação da NFS-e Nacional e confirme todos os fluxos operacionais, fiscais e de comunicação com o seu WHMCS.
->
-> O uso deste software é por sua conta e risco. O autor não se responsabiliza por perdas, falhas operacionais, emissões incorretas, indisponibilidade, inconsistências fiscais, danos diretos ou indiretos decorrentes do uso deste addon.
+![Screenshot do OpenNfse](opennfse.png)
 
 ## Visão Geral
 
@@ -135,16 +139,16 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 2. Renomeie a pasta extraída para apenas `OpenNfse`.
 3. Copie a pasta `OpenNfse` para `modules/addons/` do WHMCS.
 4. No admin do WHMCS, acesse `Configuration > System Settings > Addon Modules`.
-5. Ative o addon `OpenNFS-e`.
+5. Ative o addon `OpenNfse`.
 6. Após a primeira ativação, clique em `Configure` e, em `Access Control`, marque quais grupos de usuários do WHMCS terão acesso ao addon.
-7. Acesse `Addons > OpenNFS-e` e preencha a configuração inicial.
+7. Acesse `Addons > OpenNfse` e preencha a configuração inicial.
 
 ## Atualização
 
 1. Baixe o release mais recente do módulo. Ao extrair o arquivo, por exemplo `OpenNfse-0.1.13.zip`, será criada uma pasta com nome versionado, como `OpenNfse-0.1.13`.
 2. Renomeie a pasta extraída para apenas `OpenNfse`.
 3. Envie a pasta `OpenNfse` para `modules/addons/` do WHMCS, substituindo os arquivos da versão anterior.
-4. No admin do WHMCS, acesse `Addons > OpenNFS-e` e revise a configuração, se necessário.
+4. No admin do WHMCS, acesse `Addons > OpenNfse` e revise a configuração, se necessário.
 
 ## Configuração Inicial
 

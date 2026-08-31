@@ -18,14 +18,14 @@ final class UiService
 
     public function renderError(string $message): void
     {
-        $this->renderHeader('OpenNFS-e');
+        $this->renderHeader('OpenNfse');
         echo '<div class="errorbox"><strong>Erro:</strong> ' . htmlspecialchars($message, ENT_QUOTES, 'UTF-8') . '</div>';
         $this->renderFooter();
     }
 
     public function renderSuccess(string $message): void
     {
-        $this->renderHeader('OpenNFS-e');
+        $this->renderHeader('OpenNfse');
         echo '<div class="successbox">' . htmlspecialchars($message, ENT_QUOTES, 'UTF-8') . '</div>';
         $this->renderFooter();
     }

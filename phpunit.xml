@@ -5,7 +5,7 @@
   cacheDirectory=".phpunit.cache"
 >
   <testsuites>
-    <testsuite name="OpenNFS-e Addon">
+    <testsuite name="OpenNfse Addon">
       <directory>tests</directory>
     </testsuite>
   </testsuites>

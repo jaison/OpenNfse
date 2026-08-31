@@ -34,7 +34,7 @@ composer cs:fix
 
 1. Admin → Configuration → System Settings → Addon Modules
 2. Ativar “Nfse”
-3. Admin → Addons → OpenNFS-e → salvar configuração
+3. Admin → Addons → OpenNfse → salvar configuração
 
 ## Permissões
 

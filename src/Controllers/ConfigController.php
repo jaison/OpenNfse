@@ -43,7 +43,7 @@ final class ConfigController
         $repo = new ConfigRepository();
         $config = $repo->get();
 
-        Module::ui()->renderHeader('Configuração - OpenNFS-e');
+        Module::ui()->renderHeader('Configuração - OpenNfse');
         $this->renderTabs('config');
         if ((string) ($_GET['saved'] ?? '') === '1') {
             echo '<div class="successbox">Configuração salva.</div>';
@@ -2090,7 +2090,7 @@ final class ConfigController
 
     public function showCodigosProdutosServicos(): void
     {
-        Module::ui()->renderHeader('Códigos Produtos/Serviços - OpenNFS-e');
+        Module::ui()->renderHeader('Códigos Produtos/Serviços - OpenNfse');
         $this->renderTabs('codigos');
 
         if ((string) ($_GET['saved'] ?? '') === '1') {

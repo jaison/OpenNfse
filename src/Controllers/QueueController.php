@@ -31,7 +31,7 @@ final class QueueController
 
     public function showFila(): void
     {
-        Module::ui()->renderHeader('OpenNFS-e');
+        Module::ui()->renderHeader('OpenNfse');
         $this->renderTabs('fila');
 
         $token = (new TokenService())->token();

@@ -369,7 +369,7 @@ final class AdminController
             (string) ($metrics['range_end'] ?? '')
         );
 
-        Module::ui()->renderHeader('Dashboard - OpenNFS-e');
+        Module::ui()->renderHeader('Dashboard - OpenNfse');
         $this->renderTabs('dashboard');
 
         $rangeStart = $this->formatDate((string) ($metrics['range_start'] ?? ''), 'd/m/Y');
@@ -573,7 +573,7 @@ final class AdminController
             echo '<div class="opennfse-dashboard__banner">';
             echo '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">';
             echo '<div style="min-width:280px;flex:1 1 520px;">';
-            echo '<div style="font-size:16px;font-weight:700;color:#8a4b08;margin-bottom:6px;">Atualização disponível para o OpenNFS-e</div>';
+            echo '<div style="font-size:16px;font-weight:700;color:#8a4b08;margin-bottom:6px;">Atualização disponível para o OpenNfse</div>';
             echo '<div style="font-size:13px;color:#5f4b32;line-height:1.5;margin-bottom:8px;">';
             echo 'Versão atual: <strong>' . $h($currentVersion !== '' ? $currentVersion : '—') . '</strong> ';
             echo '• Última versão: <strong>' . $h($latestVersion !== '' ? $latestVersion : '—') . '</strong>';

@@ -142,7 +142,7 @@ final class ReportsController
             return;
         }
 
-        Module::ui()->renderHeader('Relatórios - OpenNFS-e');
+        Module::ui()->renderHeader('Relatórios - OpenNfse');
         $this->renderTabs('relatorios');
 
         $params = $_GET;
@@ -3119,7 +3119,7 @@ final class ReportsController
             return;
         }
 
-        Module::ui()->renderHeader('OpenNFS-e');
+        Module::ui()->renderHeader('OpenNfse');
         $this->renderTabs('relatorios');
 
         $invoiceId = (int) ($row->invoiceid ?? 0);
@@ -3167,7 +3167,7 @@ final class ReportsController
             ->limit(100)
             ->get();
 
-        Module::ui()->renderHeader('OpenNFS-e');
+        Module::ui()->renderHeader('OpenNfse');
         $this->renderTabs('relatorios');
 
         $back = 'invoices.php?action=edit&id=' . $invoiceId;
