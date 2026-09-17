@@ -16,12 +16,12 @@ final class QueueService
 {
     private const MAX_TENTATIVAS = 5;
 
-    public function enqueueEmit(int $invoiceId, string $tipoLog): void
+    public function enqueueEmit(int $invoiceId, string $tipoLog, ?bool $allowUnpaid = null): void
     {
         (new Migrator())->up();
         $correlationId = CorrelationIdGenerator::generate($invoiceId);
         $repo = new QueueRepository();
-        $repo->enqueue($invoiceId, $correlationId);
+        $repo->enqueue($invoiceId, $correlationId, $allowUnpaid);
         (new LogRepository())->insert(null, $tipoLog, json_encode(['invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
     }
 
@@ -29,7 +29,7 @@ final class QueueService
     {
         (new Migrator())->up();
         $config = (new ConfigRepository())->get();
-        if (empty($config)) {
+if (empty($config)) {
             return;
         }
 
@@ -56,10 +56,10 @@ final class QueueService
         }
 
         $this->processStatusBatch($limit, $waitInterval);
-        $this->processEmissaoBatch($limit, $waitInterval);
+        $this->processEmissaoBatch($limit, $waitInterval, $config);
     }
 
-    private function processEmissaoBatch(int $limit, int $waitIntervalSeconds): void
+    private function processEmissaoBatch(int $limit, int $waitIntervalSeconds, array $config): void
     {
         $queueRepo = new QueueRepository();
         if ($limit <= 0 || $queueRepo->hasInFlightSequentialJob()) {
@@ -101,6 +101,7 @@ final class QueueService
                 $notaBefore = $notaRepo->findByInvoiceId($invoiceId);
                 if ($this->shouldMarkQueueDone($notaBefore)) {
                     $queueRepo->markDone($id);
+                    $this->sendAutomaticEmailAfterQueueDone($invoiceId, (int) ($notaBefore['id'] ?? 0), $notaRepo, $logRepo, $config, $correlationId);
                     $logRepo->insert(null, 'QUEUE_SKIP_ALREADY_EMITIDA', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
                     continue;
                 }
@@ -111,7 +112,12 @@ final class QueueService
                 }
 
                 $invoice = $invoiceRepo->getInvoice($invoiceId);
-                $eligibility = $eligibilityChecker->check($invoice);
+                                $allowUnpaidConfig = (string) ($config['allow_manual_unpaid'] ?? '0') === '1';
+$invoiceStatus = strtolower(trim((string) ($invoice['status'] ?? '')));
+$allowUnpaid = $allowUnpaidConfig
+&& $invoiceStatus === 'unpaid'
+&& (($job['allow_unpaid'] ?? null) === null || (int) $job['allow_unpaid'] === 1);
+                $eligibility = $eligibilityChecker->check($invoice, $allowUnpaid);
                 if ($eligibility !== null) {
                     $queueRepo->markDone($id);
                     switch ($eligibility['reason']) {
@@ -146,12 +152,13 @@ final class QueueService
                     continue;
                 }
 
-                $nfseService->emitir($invoiceId, $correlationId);
+                $nfseService->emitir($invoiceId, $correlationId, ['allow_unpaid' => $allowUnpaid]);
                 $nota = $notaRepo->findByInvoiceId($invoiceId);
                 if ($this->shouldMarkQueueDone($nota)) {
-                    $queueRepo->markDone($id);
-                    $logRepo->insert(null, 'QUEUE_DONE', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
-                } elseif ($this->shouldKeepWaitingForStatus($nota)) {
+ $queueRepo->markDone($id);
+ $this->sendAutomaticEmailAfterQueueDone($invoiceId, (int) ($nota['id'] ?? 0), $notaRepo, $logRepo, $config, $correlationId);
+ $logRepo->insert(null, 'QUEUE_DONE', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
+ } elseif ($this->shouldKeepWaitingForStatus($nota)) {
                     $queueRepo->markWaitStatus($id, $waitIntervalSeconds, $nota ? (string) ($nota['erro_api'] ?? '') : null);
                     $logRepo->insert(null, 'QUEUE_WAIT_STATUS', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
                     $mustWaitBeforeNextEmission = true;
@@ -216,10 +223,11 @@ final class QueueService
                 $nfseService->consultarStatus($invoiceId, $correlationId);
                 $nota = $notaRepo->findByInvoiceId($invoiceId);
                 if ($this->shouldMarkQueueDone($nota)) {
-                    $queueRepo->markDone($id);
-                    $logRepo->insert(null, 'QUEUE_DONE', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
-                } elseif ($this->shouldKeepWaitingForStatus($nota)) {
-                    $queueRepo->touchWaitStatus($id, $nextInterval);
+ $queueRepo->markDone($id);
+ $this->sendAutomaticEmailAfterQueueDone($invoiceId, (int) ($nota['id'] ?? 0), $notaRepo, $logRepo, (new ConfigRepository())->get(), $correlationId);
+ $logRepo->insert(null, 'QUEUE_DONE', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
+ } elseif ($this->shouldKeepWaitingForStatus($nota)) {
+ $queueRepo->touchWaitStatus($id, $nextInterval);
                 } else {
                     $status = $nota ? (string) ($nota['status'] ?? '') : '';
                     $err = $nota ? (string) ($nota['erro_api'] ?? '') : '';
@@ -237,8 +245,38 @@ final class QueueService
         }
     }
 
-    private function shouldMarkQueueDone(?array $nota): bool
-    {
+    private function sendAutomaticEmailAfterQueueDone(int $invoiceId, int $notaId, NotaRepository $notaRepo, LogRepository $logRepo, array $config, string $correlationId): void
+ {
+ if ((string) ($config['auto_send_nfse_email'] ?? '0') !== '1') {
+ return;
+ }
+
+ try {
+ if (!$notaRepo->claimAutomaticEmail($invoiceId)) {
+ return;
+ }
+ (new InvoiceEmailService())->sendToClient($invoiceId);
+ $notaRepo->markAutomaticEmailSent($invoiceId);
+ $logRepo->insert($notaId, 'EMAIL_NFSE_AUTO_SENT', json_encode(['invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
+ } catch (\Throwable $e) {
+ $message = $e->getMessage() !== '' ? $e->getMessage() : 'Falha no envio automático da NFS-e.';
+ try {
+ $notaRepo->markAutomaticEmailFailed($invoiceId);
+ } catch (\Throwable $ignored) {
+ }
+ try {
+ $logRepo->insert($notaId, 'EMAIL_NFSE_AUTO_ERROR', json_encode(['invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), $message, $correlationId);
+ } catch (\Throwable $ignored) {
+ }
+ try {
+ (new InvoiceHistoryService())->append($invoiceId, 'Falha no envio automático do e-mail da NFS-e. Motivo: ' . $message);
+ } catch (\Throwable $ignored) {
+ }
+ }
+ }
+
+ private function shouldMarkQueueDone(?array $nota): bool
+ {
         if (!$nota) {
             return false;
         }

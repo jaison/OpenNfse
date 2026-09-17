@@ -40,7 +40,8 @@ final class NfseService
         $preserveE2404RetryCounter = (bool) ($options['preserve_e2404_retry_counter'] ?? false);
 
         $invoice = $invoiceRepo->getInvoice($invoiceId);
-        $eligibility = (new EmissionEligibilityService())->check($invoice);
+        $allowUnpaid = (bool) ($options['allow_unpaid'] ?? false);
+        $eligibility = (new EmissionEligibilityService())->check($invoice, $allowUnpaid);
         if ($eligibility !== null) {
             switch ($eligibility['reason']) {
                 case EmissionEligibilityService::SKIP_NOT_PAID:
@@ -200,7 +201,7 @@ final class NfseService
         }
         $this->resolvePreviousQueueErrors($invoiceId, $notaId, $logRepo, $correlationId);
 
-        $logRepo->insert($notaId, 'EMISSAO_RESPONSE', null, $result->nfseXml ?? 'OK', $correlationId);
+ $logRepo->insert($notaId, 'EMISSAO_RESPONSE', null, $result->nfseXml ?? 'OK', $correlationId);
         $historyMessage = 'NFS-e emitida com sucesso.';
         if ($numeroNf !== null && trim($numeroNf) !== '') {
             $historyMessage .= ' Número: ' . trim($numeroNf) . '.';

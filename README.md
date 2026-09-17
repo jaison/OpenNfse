@@ -30,7 +30,9 @@ Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https:/
 - Permite configurar código de serviço, NBS, alíquota e parâmetros tributários padrão.
 - Suporta emissão de NFS-e para clientes no Brasil e no exterior.
 - Gera DANFS-e em PDF e envia XML/PDF por e-mail ao cliente.
+- Permite configurar o envio automático do PDF e XML por e-mail após a confirmação da emissão da NFS-e.
 - Possui fila de processamento, cron integrado ao WHMCS e consulta automática/manual de status.
+- Permite enfileirar manualmente faturas com status `Unpaid`, conforme a configuração de emissão manual.
 - Organiza XMLs emitidos por ambiente, série, ano e mês.
 
 ## Panorama Funcional
@@ -39,6 +41,8 @@ Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https:/
 - Emissão automática de NFS-e quando a fatura é paga.
 - Controle de automação separado por gateway de pagamento.
 - Fila de processamento para emissões, reprocessamentos e consultas de status.
+- Permite enfileirar manualmente faturas com status `Unpaid` quando a opção de emissão manual de faturas não pagas estiver habilitada.
+- Envio automático configurável de PDF e XML por e-mail somente após a fila concluir a emissão com status `DONE`.
 - Reconciliação automática de emissões quando a API nacional retorna indisponibilidade transitória, como erro `503`, timeout ou falha de conexão.
 - Cron integrado ao WHMCS com proteção contra execução duplicada.
 
@@ -79,6 +83,8 @@ Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https:/
 ### Configuração e Cadastros
 - Configuração de ambiente, certificado digital e dados do prestador.
 - Configuração de série DPS, sequenciais e parâmetros de processamento.
+- Configuração do envio automático de PDF e XML por e-mail na seção de processamento automático.
+- Configuração da emissão manual de faturas com status `Unpaid`, permitindo ou bloqueando o enfileiramento dessas faturas.
 - Catálogo de código de serviço e NBS.
 - Mapeamento por produto, grupo e gateway.
 - Configuração do DANFS-e e personalização de cabeçalho do PDF.
@@ -155,6 +161,8 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 - Configure ambiente, certificado digital e dados do prestador.
 - Configure a série DPS conforme a operação desejada.
 - Revise as opções de fila/processamento automático.
+- Em **Automação de E-mail**, configure **Enviar PDF/XML automaticamente por e-mail?** como `Sim` para enviar os anexos após a fila concluir a nota como `DONE`; a opção vem desativada por padrão.
+- Emita manualmente faturas com status `Unpaid` somente quando a opção **Permitir enfileirar manualmente a emissão de faturas não pagas?** estiver configurada como `Sim`.
 - Salve a configuração antes de realizar testes de emissão.
 
 ## Armazenamento de Arquivos

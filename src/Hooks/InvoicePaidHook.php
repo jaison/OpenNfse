@@ -66,7 +66,7 @@ final class InvoicePaidHook
                 }
                 return;
             }
-            (new QueueService())->enqueueEmit($invoiceId, 'QUEUE_ENQUEUE_AUTO_PAID');
+            (new QueueService())->enqueueEmit($invoiceId, 'QUEUE_ENQUEUE_AUTO_PAID', false);
         } catch (\Throwable $e) {
             (new LogRepository())->insert(
                 null,

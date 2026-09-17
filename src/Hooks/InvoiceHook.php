@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenNfse\Hooks;
 
 use OpenNfse\Helpers\ActionFormRenderer;
+use OpenNfse\Repositories\ConfigRepository;
 use OpenNfse\Repositories\NotaRepository;
 use OpenNfse\Repositories\PaymentGatewaySettingsRepository;
 use OpenNfse\Repositories\QueueRepository;
@@ -44,18 +45,24 @@ final class InvoiceHook
         $nota = $this->refreshAfterAutomaticStatusCheck($invoiceId, $nota);
 
         $gatewayEnabled = true;
-        $paymentMethod = '';
+$allowManualUnpaid = false;
+$paymentMethod = '';
         $invoiceStatus = '';
         $invoiceTotal = 0.0;
         $isPaid = false;
-        $isCreditPayment = false;
+$isUnpaid = false;
+$isCreditPayment = false;
         try {
             $invoice = (new WhmcsInvoiceRepository())->getInvoice($invoiceId);
-            $financials = new \OpenNfse\Services\InvoiceFinancialsService();
+$config = (new ConfigRepository())->get();
+$allowManualUnpaid = (string) ($config['allow_manual_unpaid'] ?? '0') === '1';
+$financials = new \OpenNfse\Services\InvoiceFinancialsService();
             $paymentMethod = strtolower(trim((string) ($invoice['paymentmethod'] ?? '')));
             $invoiceStatus = (string) ($invoice['status'] ?? '');
-            $isPaid = strtolower(trim($invoiceStatus)) === 'paid';
-            $invoiceTotal = $financials->getGatewayPaidAmount($invoice);
+            $normalizedInvoiceStatus = strtolower(trim($invoiceStatus));
+$isPaid = $normalizedInvoiceStatus === 'paid';
+$isUnpaid = $normalizedInvoiceStatus === 'unpaid';
+$invoiceTotal = $financials->getGatewayPaidAmount($invoice);
             $isCreditPayment = $financials->isCreditOnlyPayment($invoice);
             if ($paymentMethod !== '' && !(new PaymentGatewaySettingsRepository())->isEnabled($paymentMethod)) {
                 $gatewayEnabled = false;
@@ -163,7 +170,7 @@ final class InvoiceHook
             $html .= '<div class="errorbox">Erro ao solicitar reemissão. Verifique os logs do módulo e o histórico da invoice.</div>';
         }
         $primaryActions = '';
-        if ($gatewayEnabled && $isPaid && !$isCreditPayment) {
+        if ($gatewayEnabled && ($isPaid || ($isUnpaid && $allowManualUnpaid && (string) ($config['queue_enabled'] ?? '0') === '1')) && !$isCreditPayment) {
             $disabled = $emitDisabled ? ' disabled="disabled"' : '';
             $primaryActions .= $wrapAction(ActionFormRenderer::render(
                 $emitUrl,

@@ -40,7 +40,18 @@ final class EmissionEligibilityServiceTest extends TestCase
         $this->assertSame('unpaid', $result['status']);
     }
 
-    public function testSkipsWhenPaidWithCreditPaymentMethod(): void
+    public function testAllowsUnpaidWhenExplicitlyPermitted(): void
+{
+$invoice = [
+'status' => 'Unpaid',
+'paymentmethod' => 'paypal',
+'credit' => '0.00',
+];
+
+$this->assertNull($this->service->check($invoice, true));
+}
+
+public function testSkipsWhenPaidWithCreditPaymentMethod(): void
     {
         $invoice = [
             'status' => 'Paid',

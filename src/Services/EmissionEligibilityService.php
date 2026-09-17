@@ -18,7 +18,7 @@ final class EmissionEligibilityService
      *
      * @return array{reason: string, paymentMethod: string, status: string, credit: float, gatewayPaidAmount?: float}|null
      */
-    public function check(array $invoice): ?array
+    public function check(array $invoice, bool $allowUnpaid = false): ?array
     {
         $financials = new InvoiceFinancialsService();
         $paymentMethod = strtolower(trim((string) ($invoice['paymentmethod'] ?? '')));
@@ -26,7 +26,7 @@ final class EmissionEligibilityService
         $creditValue = $financials->getAppliedCredit($invoice);
         $gatewayPaidAmount = $financials->getGatewayPaidAmount($invoice);
 
-        if ($invoiceStatus !== 'paid') {
+        if ($invoiceStatus !== 'paid' && !$allowUnpaid) {
             return [
                 'reason' => self::SKIP_NOT_PAID,
                 'paymentMethod' => $paymentMethod,

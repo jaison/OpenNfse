@@ -316,7 +316,10 @@ final class NotasController
             $invoice = (new WhmcsInvoiceRepository())->getInvoice($invoiceId);
             $paymentMethod = strtolower(trim((string) ($invoice['paymentmethod'] ?? '')));
             $invoiceStatus = strtolower(trim((string) ($invoice['status'] ?? '')));
-            if ($invoiceStatus !== 'paid') {
+            $allowUnpaid = $invoiceStatus === 'unpaid'
+&& (string) ($config['allow_manual_unpaid'] ?? '0') === '1'
+&& (string) ($config['queue_enabled'] ?? '0') === '1';
+if ($invoiceStatus !== 'paid' && !$allowUnpaid) {
                 $this->redirectInvoice($invoiceId, ['nfse_emit' => 'not_paid']);
             }
             if ((new \OpenNfse\Services\InvoiceFinancialsService())->isCreditOnlyPayment($invoice)) {
@@ -330,7 +333,7 @@ final class NotasController
                 if ($queueRepo->hasActive($invoiceId)) {
                     $this->redirectInvoice($invoiceId, ['nfse_emit' => 'already_queued']);
                 }
-                (new QueueService())->enqueueEmit($invoiceId, 'QUEUE_ENQUEUE_MANUAL');
+                (new QueueService())->enqueueEmit($invoiceId, 'QUEUE_EMIT_MANUAL', $allowUnpaid);
                 $this->redirectInvoice($invoiceId, ['nfse_emit' => 'enqueued']);
             }
 

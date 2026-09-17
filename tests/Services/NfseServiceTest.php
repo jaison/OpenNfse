@@ -8,8 +8,13 @@ use OpenNfse\Services\NfseService;
 use PHPUnit\Framework\TestCase;
 
 final class NfseServiceTest extends TestCase
-{
-    public function testCanAttemptE2404SameDpsReemitWhenUnderLimit(): void
+ {
+ public function testAutomaticEmailIsNotPartOfNfseStatusFlow(): void
+ {
+ $this->assertFalse(method_exists(NfseService::class, 'sendAutomaticEmailIfEnabled'));
+ }
+
+ public function testCanAttemptE2404SameDpsReemitWhenUnderLimit(): void
     {
         $service = new NfseService();
         $method = new \ReflectionMethod($service, 'canAttemptE2404SameDpsReemit');

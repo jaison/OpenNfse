@@ -14,9 +14,43 @@ final class NotaRepository
         return $row ? (array) $row : null;
     }
 
-    public function upsert(array $data, array $options = []): void
-    {
-        $invoiceId = (int) $data['invoiceid'];
+    public function claimAutomaticEmail(int $invoiceId): bool
+ {
+  $updated = Capsule::table('mod_opennfse_notas')
+   ->where('invoiceid', $invoiceId)
+   ->whereNull('email_automatico_processado_at')
+   ->update([
+    'email_automatico_processado_at' => date('Y-m-d H:i:s'),
+    'email_automatico_status' => 'PROCESSANDO',
+    'updated_at' => date('Y-m-d H:i:s'),
+   ]);
+
+  return $updated === 1;
+ }
+
+ public function markAutomaticEmailSent(int $invoiceId): void
+ {
+  Capsule::table('mod_opennfse_notas')
+   ->where('invoiceid', $invoiceId)
+   ->update([
+    'email_automatico_status' => 'ENVIADO',
+    'updated_at' => date('Y-m-d H:i:s'),
+   ]);
+ }
+
+ public function markAutomaticEmailFailed(int $invoiceId): void
+ {
+  Capsule::table('mod_opennfse_notas')
+   ->where('invoiceid', $invoiceId)
+   ->update([
+    'email_automatico_status' => 'FALHOU',
+    'updated_at' => date('Y-m-d H:i:s'),
+   ]);
+ }
+
+ public function upsert(array $data, array $options = []): void
+ {
+  $invoiceId = (int) $data['invoiceid'];
         $now = date('Y-m-d H:i:s');
         $existing = $this->findByInvoiceId($invoiceId);
         $touchLastStatusCheckedAt = (bool) ($options['touch_last_status_checked_at'] ?? false);

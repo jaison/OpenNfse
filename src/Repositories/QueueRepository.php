@@ -44,7 +44,7 @@ final class QueueRepository
         return $row !== null;
     }
 
-    public function enqueue(int $invoiceId, ?string $correlationId = null): void
+    public function enqueue(int $invoiceId, ?string $correlationId = null, ?bool $allowUnpaid = null): void
     {
         if ($invoiceId <= 0) {
             return;
@@ -65,7 +65,8 @@ final class QueueRepository
             'last_error' => null,
             'status_checks' => 0,
             'next_check_at' => null,
-        ]);
+            'allow_unpaid' => $allowUnpaid === null ? null : ($allowUnpaid ? 1 : 0),
+]);
     }
 
     public function claimNext(int $limit): array

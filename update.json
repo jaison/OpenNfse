@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.20",
-  "release_date": "2026-08-12",
+  "latest_version": "0.1.22",
+ "release_date": "2026-09-17",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Foi ajustado o fluxo de indisponibilidade da API Nacional: quando o POST de emissao falha com erro transitório como 503, o modulo passa a reenviar a mesma emissao com o mesmo id_dps, em vez de consultar prematuramente a DPS e cair em E2404 como efeito colateral. Tambem foi removida a concorrencia entre cron e fila para notas em processamento, evitando consultas paralelas sobre a mesma invoice enquanto houver item ativo na fila."
+  "message": "Adicionada a opção de enfileirar manualmente faturas com status Unpaid, respeitando a configuração de permissão para emissões não pagas. Adicionado o envio automático de PDF e XML por e-mail após a fila confirmar o processamento da nota como DONE, com proteção contra duplicidade, registro de sucesso ou falha no histórico e manutenção do reenvio manual. Também foi ajustado o fluxo de indisponibilidade da API Nacional para repetir emissões transitórias com o mesmo id_dps."
 }

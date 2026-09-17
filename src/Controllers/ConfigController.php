@@ -569,21 +569,33 @@ final class ConfigController
         $this->renderUpdateCheckContent($updateStatus);
         $this->renderConfigSectionEnd();
         $this->renderConfigSectionStart('Automação da fila', 'Defina quando o módulo deve enfileirar e processar emissões automaticamente após o pagamento.');
-        $this->renderConfigFormTableStart();
+ $this->renderConfigFormTableStart();
         $this->renderSelectRow('queue_enabled', 'Habilitar fila/cron?', [
             '1' => 'Sim',
             '0' => 'Não',
         ], (string) ($config['queue_enabled'] ?? '0'));
         $this->renderSelectRow('auto_emit_on_payment', 'Enfileirar emissão ao pagar a fatura?', [
-            '1' => 'Sim',
-            '0' => 'Não',
-        ], (string) ($config['auto_emit_on_payment'] ?? '0'));
-        $this->renderTextRow('queue_wait_status_interval_seconds', 'Intervalo de consulta (segundos)', $config['queue_wait_status_interval_seconds'] ?? '120');
-        $this->renderConfigFormTableEnd();
-        $this->renderConfigSectionEnd();
-        echo '</div>';
+'1' => 'Sim',
+'0' => 'Não',
+], (string) ($config['auto_emit_on_payment'] ?? '0'));
+$this->renderSelectRow('allow_manual_unpaid', 'Permitir enfileirar manualmente a emissão de faturas não pagas?', [
+'1' => 'Sim',
+'0' => 'Não',
+], (string) ($config['allow_manual_unpaid'] ?? '0'));
+$this->renderTextRow('queue_wait_status_interval_seconds', 'Intervalo de consulta (segundos)', $config['queue_wait_status_interval_seconds'] ?? '120');
+ $this->renderConfigFormTableEnd();
+ $this->renderConfigSectionEnd();
+ $this->renderConfigSectionStart('Automação de E-mail', 'Envie automaticamente o XML e o PDF ao cliente quando a consulta confirmar a autorização da NFS-e.');
+ $this->renderConfigFormTableStart();
+ $this->renderSelectRow('auto_send_nfse_email', 'Enviar PDF/XML automaticamente por e-mail?', [
+ '1' => 'Sim',
+ '0' => 'Não',
+ ], (string) ($config['auto_send_nfse_email'] ?? '0'));
+ $this->renderConfigFormTableEnd();
+ $this->renderConfigSectionEnd();
+ echo '</div>';
 
-        echo '<div class="nfse-config-tab" data-tab="retencao">';
+ echo '<div class="nfse-config-tab" data-tab="retencao">';
         $this->renderConfigPaneHeader((string) $tabMeta['retencao']['title'], (string) $tabMeta['retencao']['description'], $tabStatuses['retencao'] ?? []);
         $this->renderConfigSectionStart('Política de retenção', 'Use prazos curtos para reduzir volume desnecessário, sem perder o histórico necessário para auditoria e suporte.');
         $this->renderConfigFormTableStart();
@@ -706,8 +718,10 @@ final class ConfigController
         $prestadorRegEspTrib = (string) ($_POST['prestador_reg_esp_trib'] ?? '');
         $queueEnabled = (string) ($_POST['queue_enabled'] ?? '0');
         $autoEmitOnPayment = (string) ($_POST['auto_emit_on_payment'] ?? '0');
-        $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '120');
-        $queueDoneRetentionDays = (string) ($_POST['queue_done_retention_days'] ?? '30');
+$allowManualUnpaid = (string) ($_POST['allow_manual_unpaid'] ?? '0');
+$queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '120');
+ $autoSendNfseEmail = (string) ($_POST['auto_send_nfse_email'] ?? '0');
+ $queueDoneRetentionDays = (string) ($_POST['queue_done_retention_days'] ?? '30');
         $logsRetentionDays = (string) ($_POST['logs_retention_days'] ?? '90');
         $tomadorCodigoIbgePadrao = (string) ($_POST['tomador_codigo_ibge_padrao'] ?? '');
         $tomadorNumeroPadrao = (string) ($_POST['tomador_numero_padrao'] ?? 'S/N');
@@ -798,9 +812,15 @@ final class ConfigController
             $errors[] = 'Opção inválida para fila/cron.';
         }
         if (!in_array($autoEmitOnPayment, ['0', '1'], true)) {
-            $errors[] = 'Opção inválida para emissão automática.';
-        }
-        if ($autoEmitOnPayment === '1' && $queueEnabled !== '1') {
+$errors[] = 'Opção inválida para emissão automática.';
+}
+if (!in_array($allowManualUnpaid, ['0', '1'], true)) {
+$errors[] = 'Opção inválida para emissão manual de faturas não pagas.';
+}
+if (!in_array($autoSendNfseEmail, ['0', '1'], true)) {
+$errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
+}
+if ($autoEmitOnPayment === '1' && $queueEnabled !== '1') {
             $errors[] = 'Para habilitar emissão automática, habilite também a fila/cron.';
         }
         if ($queueWaitInterval === '' || !ctype_digit($queueWaitInterval)) {
@@ -892,7 +912,9 @@ final class ConfigController
             'prestador_reg_esp_trib' => $prestadorRegEspTrib,
             'queue_enabled' => (int) $queueEnabled,
             'auto_emit_on_payment' => (int) $autoEmitOnPayment,
-            'queue_wait_status_interval_seconds' => (int) $queueWaitInterval,
+'allow_manual_unpaid' => (int) $allowManualUnpaid,
+'auto_send_nfse_email' => (int) $autoSendNfseEmail,
+'queue_wait_status_interval_seconds' => (int) $queueWaitInterval,
             'queue_done_retention_days' => (int) $queueDoneRetentionDays,
             'logs_retention_days' => (int) $logsRetentionDays,
             'tomador_codigo_ibge_padrao' => $tomadorCodigoIbgePadrao,
