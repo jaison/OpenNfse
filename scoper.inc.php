@@ -27,22 +27,29 @@ if ($runtimeDirs === []) {
     throw new RuntimeException('Nenhum pacote de produção encontrado em vendor/composer/installed.json.');
 }
 
-// Arquivos da SDK que não são usados em runtime: XSD/PDFs/XMLs de referência
-// (com dados pessoais de exemplo), exemplos, scripts, tipos TypeScript, testes
-// e scripts/configs de desenvolvimento da raiz do pacote.
-$sdkDir = $vendorDir . '/nfse-nacional/nfse-php/';
-$sdkExcluded = [
-    'references/',
-    'examples/',
-    'scripts/',
-    'types/',
-    'tests/',
-    'debug.php',
-    'reproduce_parsing.php',
-    'typescript-transformer.php',
-    'codecov.yml',
-    'phpstan.neon',
-    'phpstan-baseline.neon',
+// Arquivos não usados em runtime, por pacote (caminho relativo à raiz do
+// pacote; terminado em "/" exclui a pasta inteira).
+$packageExcluded = [
+    // SDK: XSD/PDFs/XMLs de referência (com dados pessoais de exemplo),
+    // exemplos, scripts, tipos TypeScript, testes e scripts/configs de
+    // desenvolvimento da raiz do pacote.
+    'nfse-nacional/nfse-php' => [
+        'references/',
+        'examples/',
+        'scripts/',
+        'types/',
+        'tests/',
+        'debug.php',
+        'reproduce_parsing.php',
+        'typescript-transformer.php',
+        'codecov.yml',
+        'phpstan.neon',
+        'phpstan-baseline.neon',
+    ],
+    // Gerador de PDF: script de exemplo da raiz.
+    'paseto/nfse-nacional-pdf' => [
+        'generate-pdf.php',
+    ],
 ];
 
 return [
@@ -61,16 +68,19 @@ return [
                 'Tests',
                 'docs',
             ])
-            ->filter(static function (\SplFileInfo $file) use ($sdkDir, $sdkExcluded): bool {
+            ->filter(static function (\SplFileInfo $file) use ($vendorDir, $packageExcluded): bool {
                 $path = str_replace('\\', '/', $file->getPathname());
-                if (!str_starts_with($path, $sdkDir)) {
-                    return true;
-                }
-                $relative = substr($path, strlen($sdkDir));
-                foreach ($sdkExcluded as $excluded) {
-                    $isDir = str_ends_with($excluded, '/');
-                    if ($relative === $excluded || ($isDir && str_starts_with($relative, $excluded))) {
-                        return false;
+                foreach ($packageExcluded as $package => $excludedPaths) {
+                    $packageDir = $vendorDir . '/' . $package . '/';
+                    if (!str_starts_with($path, $packageDir)) {
+                        continue;
+                    }
+                    $relative = substr($path, strlen($packageDir));
+                    foreach ($excludedPaths as $excluded) {
+                        $isDir = str_ends_with($excluded, '/');
+                        if ($relative === $excluded || ($isDir && str_starts_with($relative, $excluded))) {
+                            return false;
+                        }
                     }
                 }
 
