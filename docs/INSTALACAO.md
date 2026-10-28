@@ -3,6 +3,7 @@
 ## Requisitos
 
 - WHMCS `8.13.x` e PHP `8.1+`.
+- Banco recomendado: MySQL `5.7.5+` ou MariaDB `10.0.2+`. Nessas versões a sessão pode manter vários `GET_LOCK` ao mesmo tempo, e o módulo usa o lock do cron junto com o lock por fatura. Em versões anteriores o módulo continua funcionando, mas, dentro do processamento da fila, abre mão do lock por fatura e conta só com o lock do cron (ver [Locks em FLUXOS.md](FLUXOS.md#locks)).
 - Extensões PHP: `openssl` (leitura do certificado), `curl` (sincronização IBGE e checagem de atualização), `dom`, `simplexml`, `mbstring` e `zip` (exportação ZIP de XMLs), além das exigidas pela SDK.
 - Certificado A1 (`.pfx`/`.p12`) válido, fora do webroot.
 - Diretório `attachments` do WHMCS gravável pelo PHP.

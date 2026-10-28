@@ -15,6 +15,48 @@ final class CronLockService
 
     private static ?string $databaseName = null;
 
+    private static ?bool $multipleLocksSupported = null;
+
+    /** @var array<string, int> locks obtidos por este processo (nome => quantidade) */
+    private static array $held = [];
+
+    /**
+     * MySQL 5.7.5+ e MariaDB 10.0.2+ aceitam vários GET_LOCK na mesma sessão. Nas versões
+     * anteriores, um GET_LOCK novo solta o lock que a sessão já tinha. Versão desconhecida
+     * conta como "não aceita", o lado seguro.
+     */
+    public static function supportsMultipleLocks(string $version): bool
+    {
+        $version = strtolower(trim($version));
+        $isMariaDb = strpos($version, 'mariadb') !== false;
+        if ($isMariaDb && strpos($version, '5.5.5-') === 0) {
+            $version = substr($version, 6);
+        }
+
+        if (!preg_match('/^(\d+)\.(\d+)(?:\.(\d+))?/', $version, $m)) {
+            return false;
+        }
+
+        $normalized = $m[1] . '.' . $m[2] . '.' . ($m[3] ?? '0');
+
+        return version_compare($normalized, $isMariaDb ? '10.0.2' : '5.7.5', '>=');
+    }
+
+    public function serverSupportsMultipleLocks(): bool
+    {
+        if (self::$multipleLocksSupported === null) {
+            $row = Capsule::selectOne('SELECT VERSION() AS version');
+            self::$multipleLocksSupported = self::supportsMultipleLocks((string) ($row->version ?? ''));
+        }
+
+        return self::$multipleLocksSupported;
+    }
+
+    public function holdsAnyLock(): bool
+    {
+        return !empty(self::$held);
+    }
+
     /**
      * Prefixa o nome do lock com o banco atual, para que duas instalações no
      * mesmo servidor MySQL não disputem o mesmo lock. Se o nome passar de 64
@@ -59,7 +101,12 @@ final class CronLockService
         }
 
         $val = (int) ($res->locked ?? 0);
-        return $val === 1;
+        if ($val !== 1) {
+            return false;
+        }
+
+        self::$held[$name] = (self::$held[$name] ?? 0) + 1;
+        return true;
     }
 
     public function release(string $name): void
@@ -70,6 +117,13 @@ final class CronLockService
         }
 
         Capsule::selectOne('SELECT RELEASE_LOCK(?) AS released', [$name]);
+
+        if (isset(self::$held[$name])) {
+            self::$held[$name]--;
+            if (self::$held[$name] <= 0) {
+                unset(self::$held[$name]);
+            }
+        }
     }
 
     private function currentDatabase(): string

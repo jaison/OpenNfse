@@ -16,6 +16,9 @@ final class InvoiceLockService
 
     private CronLockService $locks;
 
+    /** @var array<int, int> faturas em que o lock não foi pedido (ver acquire) */
+    private array $skipped = [];
+
     public function __construct(?CronLockService $locks = null)
     {
         $this->locks = $locks ?? new CronLockService();
@@ -32,12 +35,25 @@ final class InvoiceLockService
             return false;
         }
 
+        // Em MySQL < 5.7.5 / MariaDB < 10.0.2, pedir este lock soltaria o que o processo já tem
+        // (o do cron, no lote da fila). Nesse caso o lock do cron segue garantindo a exclusão,
+        // como antes do lock por fatura existir.
+        if ($this->locks->holdsAnyLock() && !$this->locks->serverSupportsMultipleLocks()) {
+            $this->skipped[$invoiceId] = ($this->skipped[$invoiceId] ?? 0) + 1;
+            return true;
+        }
+
         return $this->locks->acquire($this->locks->scopedName(self::suffixFor($invoiceId)), $timeoutSeconds);
     }
 
     public function release(int $invoiceId): void
     {
         if ($invoiceId <= 0) {
+            return;
+        }
+
+        if (($this->skipped[$invoiceId] ?? 0) > 0) {
+            $this->skipped[$invoiceId]--;
             return;
         }
 

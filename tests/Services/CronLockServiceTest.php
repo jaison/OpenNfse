@@ -51,4 +51,34 @@ final class CronLockServiceTest extends TestCase
             CronLockService::buildScopedName($database . 'x', InvoiceLockService::suffixFor(987654321))
         );
     }
+
+    /**
+     * @dataProvider multipleLocksVersionProvider
+     */
+    public function testDetectsServersThatAcceptMultipleLocksPerSession(string $version, bool $expected): void
+    {
+        $this->assertSame($expected, CronLockService::supportsMultipleLocks($version), $version);
+    }
+
+    public static function multipleLocksVersionProvider(): array
+    {
+        return [
+            'mysql 5.5' => ['5.5.62', false],
+            'mysql 5.6' => ['5.6.51-log', false],
+            'mysql 5.7.4' => ['5.7.4-m14', false],
+            'mysql 5.7.5' => ['5.7.5', true],
+            'mysql 5.7 percona' => ['5.7.44-48-log', true],
+            'mysql 8.0' => ['8.0.36-0ubuntu0.22.04.1', true],
+            'mysql 8.4 sem patch' => ['8.4', true],
+            'mariadb 5.5' => ['5.5.68-MariaDB', false],
+            'mariadb 10.0.1' => ['10.0.1-MariaDB', false],
+            'mariadb 10.0.2' => ['10.0.2-MariaDB', true],
+            'mariadb 10.6' => ['10.6.18-MariaDB-0ubuntu0.22.04.1', true],
+            'mariadb 11.4' => ['11.4.2-MariaDB-log', true],
+            'mariadb com prefixo 5.5.5' => ['5.5.5-10.3.39-MariaDB', true],
+            'mariadb antigo com prefixo' => ['5.5.5-10.0.1-MariaDB', false],
+            'vazio' => ['', false],
+            'desconhecido' => ['versao-estranha', false],
+        ];
+    }
 }
