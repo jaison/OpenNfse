@@ -116,6 +116,7 @@ Botão **Reemitir NFS-e** (`NotasController::reemitir()`), disponível quando a 
 
 - Bloqueia se a fatura já tem item ativo na fila ou se o gateway está desabilitado.
 - Com a fila ligada, enfileira (`QUEUE_REEMITIR_ADMIN`). Sem fila, chama `emitir()` na hora.
+- Quando a fatura já tem item ativo, inclusive se outro pedido o criou no instante do enfileiramento, a reemissão não é registrada: grava o log `ADMIN_REEMITIR_BLOCKED` com motivo `active_queue` e mostra ao admin o aviso de item já ativo na fila.
 - A reemissão gera uma DPS nova, com o próximo número da sequência.
 
 ### Emissão automática ao pagar
