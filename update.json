@@ -1,7 +1,7 @@
 {
   "module": "OpenNfse",
   "latest_version": "0.1.23",
- "release_date": "2026-10-28",
+  "release_date": "2026-10-28",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
