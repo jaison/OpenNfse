@@ -2,6 +2,28 @@
 
 Como o OpenNfse usa a SDK oficial da NFS-e Nacional, no papel de **contribuinte (emissor)**. A versão exigida está em [`composer.json`](../composer.json).
 
+## Versão e patches
+
+- A SDK está fixada no commit `b89bf93` da `main` (`dev-main#b89bf93591e52671ddffb245c5d1e1100eea7198`), que traz o `finNFSe` da NT 009 (PR #65) e ainda não tem release.
+- O plugin `cweagans/composer-patches` (1.7.3) aplica os patches de [`patches/`](../patches/) no `vendor/` durante o `composer install`/`composer update`. A lista fica em `extra.patches` do `composer.json`, na ordem em que os patches são aplicados. Com `composer-exit-on-patch-failure`, o Composer para se algum patch não aplicar.
+
+| Patch | O que faz |
+|---|---|
+| `nfse-php-01-vservmoeda-duas-casas.patch` | Grava `vServMoeda` com duas casas decimais, como exige o tipo `TSDec15V2` do XSD. |
+| `nfse-php-02-tls-verificacao.patch` | Verificação TLS de cadeia e nome nos clients SEFIN, ADN e CNC. O endpoint de produção de Catanduva é acessado pelo nome do certificado, com o IP fixado via `CURLOPT_RESOLVE`. |
+| `nfse-php-03-connect-timeout.patch` | Connect timeout de 10s nos clients. |
+| `nfse-php-04-nt009-ordem-campos.patch` | Ordem de `xDescServ` e `finNFSe` no leiaute da NT 009, conferida com o XSD da produção restrita. |
+
+- O `vendor-scoped/` é gerado depois dos patches (`composer run scope`), e o `vendor-scoped/nfse-nacional/nfse-php/PATCHES.txt` lista os patches aplicados. O plugin fica fora do `vendor-scoped/` ([`scoper.inc.php`](../scoper.inc.php)).
+- **Voltar para uma tag estável**: quando sair a release que inclua o PR #65, troque a versão no `composer.json` (ex.: `^1.24`), confira se cada patch ainda se aplica ou já foi incorporado (remova de `extra.patches` os que não forem mais necessários), rode `composer update nfse-nacional/nfse-php`, `composer test` e `composer run scope`.
+
+## Rede, TLS e timeouts
+
+- Os clients da SDK (SEFIN, ADN e CNC) usam Guzzle com cURL, apresentam o certificado A1 do emissor e verificam o certificado TLS do servidor (cadeia e nome) com o pacote de CAs do sistema ou o `curl.cainfo` do `php.ini`.
+- Timeouts: connect de 10s e total de 60s por requisição. O total de 60s não corta um POST de emissão que ainda está em processamento.
+- Retry da SDK: só em `GET`/`HEAD`, até 2 novas tentativas em falha de conexão ou HTTP 502, 503 ou 504. O `POST` de emissão não é repetido pela SDK. O reenvio da mesma DPS após indisponibilidade é feito pelo módulo (ver [FLUXOS.md](FLUXOS.md#indisponibilidade-da-api-503-e-timeout)).
+- O botão **Testar conexão** da configuração faz uma consulta real à API e é a forma de conferir certificado, rede e CAs depois de instalar ou atualizar.
+
 ## Premissas
 
 - O módulo não implementa HTTP, assinatura ou autenticação próprios para a API: tudo passa pela SDK.
@@ -20,7 +42,7 @@ O release traz as dependências em [`vendor-scoped/`](../vendor-scoped/), gerada
 | `\Nfse\Nfse` | Ponto de entrada. O adapter chama `contribuinte()`. |
 | `\Nfse\Http\NfseContext` | Ambiente, certificado e município. Criado em `NfsePhpSdkAdapter::makeSdk()`. |
 | `\Nfse\Enums\TipoAmbiente` | `Producao` ou `Homologacao`, conforme `mod_opennfse_config.environment`. |
-| `\Nfse\Dto\Nfse\DpsData` | DPS montada por `DpsBuilderService::build()`. |
+| `\Nfse\Dto\Nfse\DpsData` | DPS montada por `DpsBuilderService::build()`, no leiaute escolhido pelo `DpsLayoutService` (ver [LEVANTAMENTO_API_NACIONAL.md](LEVANTAMENTO_API_NACIONAL.md#leiaute-da-dps-nt-009)). |
 | `\Nfse\Support\IdGenerator` | Gera o `Id` da DPS (`generateDpsId`). |
 | `\Nfse\Dto\Nfse\PedRegEventoData` | Pedido de evento de cancelamento 101101, montado em `NfseService::cancelarNfse()`. |
 | `\Nfse\Xml\DpsXmlBuilder` e `\Nfse\Xml\EventosXmlBuilder` | Só para registrar nos logs o XML enviado (`EMISSAO_REQUEST`, `CANCELAMENTO_REQUEST`). |
