@@ -1,124 +1,84 @@
-# Levantamento da SDK `nfse-nacional/nfse-php`
+# Uso da SDK `nfse-nacional/nfse-php`
 
-Este documento descreve os pontos principais da SDK oficial utilizada pelo módulo, com foco no uso como **Contribuinte (emissor)**.
+Como o OpenNfse usa a SDK oficial da NFS-e Nacional, no papel de **contribuinte (emissor)**. A versão exigida está em [`composer.json`](../composer.json).
 
-## Objetivo e premissas
+## Premissas
 
-- O módulo utiliza obrigatoriamente a SDK `nfse-nacional/nfse-php` e não implementa manualmente autenticação/assinatura ou HTTP direto quando a SDK já cobre o fluxo.
-- Hooks e UI não chamam a SDK diretamente; toda chamada passa por Adapter:
-  - [SdkAdapterInterface.php](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/src/Nfse/Api/SdkAdapterInterface.php)
-  - [NfsePhpSdkAdapter.php](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/src/Nfse/Api/NfsePhpSdkAdapter.php)
+- O módulo não implementa HTTP, assinatura ou autenticação próprios para a API: tudo passa pela SDK.
+- Só o adapter instancia a SDK. Hooks, controllers e services chamam o adapter:
+  - [`src/Api/SdkAdapterInterface.php`](../src/Api/SdkAdapterInterface.php)
+  - [`src/Api/NfsePhpSdkAdapter.php`](../src/Api/NfsePhpSdkAdapter.php)
 
-## Principais namespaces e classes
+## Empacotamento (`vendor-scoped/`)
 
-### Entrada principal
+O release traz as dependências em [`vendor-scoped/`](../vendor-scoped/), geradas pelo `php-scoper` ([`scoper.inc.php`](../scoper.inc.php) e [`tools/build-scoped-vendor.php`](../tools/build-scoped-vendor.php)). As bibliotecas de terceiros recebem o prefixo `OpenNfseVendor\`, para não conflitar com outros módulos do WHMCS. Ficam sem prefixo os namespaces da SDK (`Nfse\`), do gerador de PDF (`NfsePdf\`), do próprio módulo (`OpenNfse\`), as interfaces PSR e as classes globais usadas pelo nome completo, como `\TCPDF`. Por isso o código do módulo usa a SDK com os nomes originais (`\Nfse\Nfse`, `\Nfse\Http\NfseContext` etc.).
 
-- `\Nfse\Nfse`
-  - Fabrica os serviços (por exemplo: `contribuinte()` e `municipio()`).
+## Classes da SDK usadas pelo módulo
 
-### Contexto / configuração
+| Classe | Uso no módulo |
+|---|---|
+| `\Nfse\Nfse` | Ponto de entrada. O adapter chama `contribuinte()`. |
+| `\Nfse\Http\NfseContext` | Ambiente, certificado e município. Criado em `NfsePhpSdkAdapter::makeSdk()`. |
+| `\Nfse\Enums\TipoAmbiente` | `Producao` ou `Homologacao`, conforme `mod_opennfse_config.environment`. |
+| `\Nfse\Dto\Nfse\DpsData` | DPS montada por `DpsBuilderService::build()`. |
+| `\Nfse\Support\IdGenerator` | Gera o `Id` da DPS (`generateDpsId`). |
+| `\Nfse\Dto\Nfse\PedRegEventoData` | Pedido de evento de cancelamento 101101, montado em `NfseService::cancelarNfse()`. |
+| `\Nfse\Xml\DpsXmlBuilder` e `\Nfse\Xml\EventosXmlBuilder` | Só para registrar nos logs o XML enviado (`EMISSAO_REQUEST`, `CANCELAMENTO_REQUEST`). |
+| `\Nfse\Http\Exceptions\NfseApiException` | Erro devolvido pela API, com `getRawResponse()`. |
 
-- `\Nfse\Http\NfseContext`
-  - Concentra parâmetros de ambiente, certificado e resolução de endpoint.
-  - No módulo, é instanciado no Adapter em [NfsePhpSdkAdapter::makeSdk()](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/src/Nfse/Api/NfsePhpSdkAdapter.php#L138-L152).
+O `MunicipioService` da SDK (voltado a prefeituras) não é usado.
 
-### Serviços
+## Contexto e certificado
 
-- `ContribuinteService` (acessado via `\Nfse\Nfse::contribuinte()`)
-  - Serviço usado pelo módulo para emissão, consulta, consulta de DPS e cancelamento.
-- `MunicipioService` (acessado via `\Nfse\Nfse::municipio()`)
-  - Não é utilizado pelo módulo atualmente (voltado a prefeitura/órgão gestor).
+`NfseService::buildSdkConfig()` monta a configuração, e `NfsePhpSdkAdapter::makeSdk()` cria o contexto:
 
-### DTOs relevantes (emissão / eventos)
+```php
+new \Nfse\Http\NfseContext(
+    ambiente: $ambiente,               // TipoAmbiente::Producao ou ::Homologacao
+    certificatePath: $certificatePath, // caminho do .pfx/.p12
+    certificatePassword: $password,    // descriptografada só neste momento
+    codigoMunicipio: $codigoIbge       // permite à SDK aplicar endpoint por município
+);
+```
 
-- `\Nfse\Dto\Nfse\DpsData`
-  - Representa a DPS a ser enviada.
-  - No módulo, é montado em [DpsBuilderService::build()](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/src/Nfse/Services/DpsBuilderService.php#L12-L215).
-- `\Nfse\Support\IdGenerator`
-  - Gera `Id` da DPS (`generateDpsId(...)`), usado pelo módulo em [DpsBuilderService](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/src/Nfse/Services/DpsBuilderService.php#L57-L58).
-- `\Nfse\Dto\Nfse\PedRegEventoData` e estruturas relacionadas (evento 101101)
-  - Usadas para montar o evento de cancelamento (o módulo monta o objeto e chama `ContribuinteService::cancelar()` via Adapter).
+- A senha do certificado fica criptografada em `mod_opennfse_config.certificate_password_enc` (`CryptoService`, com `encrypt`/`decrypt` do WHMCS).
+- A resolução de endpoint (padrão nacional ou específico por município) é feita pela SDK.
 
-## Fluxo de autenticação e certificado (A1)
+## Métodos do adapter
 
-### Como a SDK autentica
+| Adapter | Chamada na SDK | Retorno |
+|---|---|---|
+| `emitir($config, $dps)` | `contribuinte()->emitir($dps)` | `EmitirResult`: `idDps`, `chaveAcesso`, `nfseXml` |
+| `consultarNfse($config, $chave)` | `contribuinte()->consultar($chave)` | `ConsultarNfseResult`: `found`, `nfseXml` |
+| `consultarDps($config, $idDps)` | `contribuinte()->consultarDps($idDps)` | `ConsultarDpsResult`: `found`, `chaveAcesso` |
+| `cancelarNfse($config, $evento)` | `contribuinte()->cancelar($evento)` | `CancelarResult`: `eventoXmlGZipB64` |
+| `baixarDfe($config, $nsu, $cnpj, $lote)` | `contribuinte()->baixarDfe(...)` | array com `ultimo_nsu`, `maior_nsu` e documentos (auditoria por NSU) |
 
-- A autenticação é feita com **certificado A1 (PFX)** informado ao `NfseContext`.
-- A SDK faz a assinatura/handshake conforme o contrato, e as requisições são realizadas internamente via HTTP (não há implementação manual no módulo).
+Quem chama cada método:
 
-### Como o módulo configura o certificado
-
-- Admin informa caminho do `.pfx` e senha.
-- O módulo armazena a senha criptografada com recursos do WHMCS (encrypt/decrypt) e só descriptografa no momento de criar o `NfseContext`.
-- Ponto de criação da SDK:
-  - [NfsePhpSdkAdapter::makeSdk()](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/src/Nfse/Api/NfsePhpSdkAdapter.php#L138-L152)
-
-## Ambientes (Homologação / Produção) e endpoints
-
-- A SDK suporta `TipoAmbiente::Homologacao` e `TipoAmbiente::Producao` via `NfseContext(ambiente: ...)`.
-- A resolução de endpoint pode ser:
-  - endpoint padrão nacional; ou
-  - endpoint específico por município; ou
-  - endpoint customizado informado manualmente.
-- Referência da própria SDK: [endpoints.md](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/vendor/nfse-nacional/nfse-php/endpoints.md).
-- No módulo, passamos `codigoMunicipio` no context para permitir que a SDK aplique mapeamento por IBGE quando aplicável.
-
-## Fluxo de emissão
-
-### Entrada do módulo
-
-- UI/Hook (admin) → Controller → Service → Adapter → SDK.
-- O módulo monta a DPS (DTO da SDK) em [DpsBuilderService](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/src/Nfse/Services/DpsBuilderService.php).
-
-### Chamada na SDK
-
-- `\Nfse\Nfse->contribuinte()->emitir($dpsData)`
-- No módulo: [NfsePhpSdkAdapter::emitir()](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/src/Nfse/Api/NfsePhpSdkAdapter.php#L14-L59)
-
-### Retorno esperado
-
-- A SDK retorna um objeto (ex.: `NfseData`) com:
-  - `infNfse->chaveAcesso` (quando disponível)
-  - `nfseXml` (XML da NFS-e, quando disponível)
-- O módulo normaliza isso em `EmitirResult`.
-
-## Fluxo de consulta
-
-### Consultar NFS-e por chave
-
-- `\Nfse\Nfse->contribuinte()->consultar($chaveAcesso)`
-- No módulo: [NfsePhpSdkAdapter::consultarNfse()](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/src/Nfse/Api/NfsePhpSdkAdapter.php#L61-L84)
-
-### Consultar DPS por Id
-
-- `\Nfse\Nfse->contribuinte()->consultarDps($idDps)`
-- No módulo: [NfsePhpSdkAdapter::consultarDps()](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/src/Nfse/Api/NfsePhpSdkAdapter.php#L86-L105)
-
-## Fluxo de cancelamento
-
-- A SDK expõe cancelamento via método dedicado:
-  - `\Nfse\Nfse->contribuinte()->cancelar($eventoData)`
-- No módulo: [NfsePhpSdkAdapter::cancelarNfse()](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/src/Nfse/Api/NfsePhpSdkAdapter.php#L107-L136)
+- `emitir`: `NfseService::emitir()` (emissão, reemissão e reenvio da mesma DPS).
+- `consultarNfse`: `NfseService::consultarStatus()`.
+- `consultarDps`: `NfseService::consultarStatus()`, cancelamento de XML órfão sem chave no XML, `DpsApiAuditService` e o botão **Testar conexão** da configuração.
+- `cancelarNfse`: `NfseService::cancelarNfse()` e `cancelarNfseOrfaPorXmlPath()`.
+- `baixarDfe`: `ApiAuditService::syncByNsu()`.
 
 ## Tratamento de erros
 
-### Exceções principais
+Cada método do adapter captura as exceções e devolve um DTO (`src/Dto/`), sem deixar a exceção subir:
 
-- `\Nfse\Http\Exceptions\NfseApiException`
-  - Normalmente representa erro retornado pela API/contrato.
-  - A SDK fornece uma forma de obter resposta crua; o módulo captura e persiste em log quando disponível.
-- Outras `\Throwable`
-  - Falhas técnicas (IO, parsing, runtime, etc.).
+- `NfseApiException` → `errorType = 'api'`, com `errorMessage` e `rawResponse`.
+- Qualquer outro `Throwable` → `errorType = 'tech'`, com `errorMessage`.
 
-### Como o módulo normaliza erros
+Na emissão, `NfseService` converte o resultado em status da nota: erro transitório (503, timeout, falha de conexão) → `PROCESSANDO`; `api` → `REJEITADA`; `tech` → `ERRO`. Ver [FLUXOS.md](FLUXOS.md#nfseserviceemitir).
 
-- Cada método do Adapter converte exceções em DTOs de resultado (`EmitirResult`, `ConsultarNfseResult`, `ConsultarDpsResult`, `CancelarResult`) com:
-  - `errorType` (`api` ou `tech`)
-  - `errorMessage`
-  - `rawResponse` (quando a exceção da SDK expõe)
+Se a SDK não estiver carregada, o adapter lança `RuntimeException` com a orientação de instalar as dependências.
 
-## Dependências relevantes
+## Geração de PDF
 
-- A SDK depende de bibliotecas HTTP e componentes internos; no módulo essas dependências vêm no `vendor/` após `composer install`.
-- O módulo também inclui `paseto/nfse-nacional-pdf` para PDF, mas isso não faz parte da SDK de emissão.
+O DANFS-e não usa a SDK de emissão. O PDF é gerado localmente a partir do XML salvo, por `DanfsePdfService` e `LocalNfsePdfGenerator` (TCPDF). O pacote `paseto/nfse-nacional-pdf` também é dependência, e [`src/PasetoOverrides/`](../src/PasetoOverrides/) sobrepõe sua classe `NfsePdf\NfsePdfGenerator`.
 
+## Referências da SDK
+
+- Repositório: <https://github.com/nfse-nacional/nfse-php>
+- Contratos OpenAPI e schemas XSD embarcados: [`vendor-scoped/nfse-nacional/nfse-php/references/`](../vendor-scoped/nfse-nacional/nfse-php/references/)
+- Exemplos de uso: [`vendor-scoped/nfse-nacional/nfse-php/examples/`](../vendor-scoped/nfse-nacional/nfse-php/examples/)
