@@ -161,7 +161,7 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 
 1. Baixe o release mais recente do módulo. Ao extrair o arquivo, por exemplo `OpenNfse-0.1.23.zip`, será criada uma pasta com nome versionado, como `OpenNfse-0.1.23`.
 2. Renomeie a pasta extraída para apenas `OpenNfse`.
-3. Envie a pasta `OpenNfse` para `modules/addons/` do WHMCS, substituindo os arquivos da versão anterior.
+3. Apague a pasta `modules/addons/OpenNfse/` da versão anterior (ou, no mínimo, a subpasta `vendor-scoped/`) e envie a pasta `OpenNfse` nova para `modules/addons/`. O módulo não guarda dados nessa pasta: a configuração fica no banco, e os XML e PDF ficam em `attachments/`. Se você colocou algum arquivo dentro dela, como o certificado `.pfx` (que deve ficar fora do webroot), mova-o antes. Enviar por cima também funciona, mas deixa no servidor arquivos que a versão nova não usa mais.
 4. No admin do WHMCS, acesse `Addons > OpenNfse` e revise a configuração, se necessário.
 
 ## Configuração Inicial
