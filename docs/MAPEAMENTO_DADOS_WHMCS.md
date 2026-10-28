@@ -98,7 +98,7 @@ Criadas e atualizadas pelos arquivos de [`migrations/`](../migrations/):
 
 | Tabela | Conteúdo |
 |---|---|
-| `mod_opennfse_config` | Ambiente, certificado, prestador, tributação, padrões do tomador, fila, e-mail, DANFS-e, aviso da área do cliente, retenção e metadados de cron, IBGE e atualização. |
+| `mod_opennfse_config` | Ambiente, leiaute da DPS (`dps_leiaute`: `auto`, `pre_nt009` ou `nt009`), certificado, prestador, tributação, padrões do tomador, fila, e-mail, DANFS-e, aviso da área do cliente, retenção e metadados de cron, IBGE e atualização. |
 | `mod_opennfse_notas` | Uma linha por fatura: status, `id_dps`, chave, número, competência, `xml_path`, dados de cancelamento, erro, contador de E2404 e controle do e-mail automático. |
 | `mod_opennfse_notas_history` | Histórico fiscal: cada emissão, cancelamento e snapshot. |
 | `mod_opennfse_queue` | Fila: status, tentativas, consultas, `next_check_at`, `last_error`, `correlation_id` e `allow_unpaid`. |
