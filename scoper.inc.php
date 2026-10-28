@@ -4,6 +4,54 @@ declare(strict_types=1);
 
 use Isolated\Symfony\Component\Finder\Finder;
 
+// Só os pacotes de produção entram no vendor-scoped/. A lista vem do
+// vendor/composer/installed.json: tudo que não está em "dev-package-names".
+// Não dá para usar um `composer install --no-dev` temporário porque o plugin
+// que aplica patches/ na SDK (cweagans/composer-patches) é de desenvolvimento.
+$vendorDir = __DIR__ . '/vendor';
+$installed = json_decode((string) @file_get_contents($vendorDir . '/composer/installed.json'), true);
+if (!is_array($installed) || !isset($installed['packages'], $installed['dev-package-names'])) {
+    throw new RuntimeException(
+        'vendor/composer/installed.json não encontrado ou incompleto. Rode composer install antes do scope.'
+    );
+}
+
+$devPackages = array_flip($installed['dev-package-names']);
+$runtimeDirs = [];
+foreach ($installed['packages'] as $package) {
+    if (!isset($devPackages[$package['name']])) {
+        $runtimeDirs[] = $vendorDir . '/' . $package['name'];
+    }
+}
+if ($runtimeDirs === []) {
+    throw new RuntimeException('Nenhum pacote de produção encontrado em vendor/composer/installed.json.');
+}
+
+// Arquivos não usados em runtime, por pacote (caminho relativo à raiz do
+// pacote; terminado em "/" exclui a pasta inteira).
+$packageExcluded = [
+    // SDK: XSD/PDFs/XMLs de referência (com dados pessoais de exemplo),
+    // exemplos, scripts, tipos TypeScript, testes e scripts/configs de
+    // desenvolvimento da raiz do pacote.
+    'nfse-nacional/nfse-php' => [
+        'references/',
+        'examples/',
+        'scripts/',
+        'types/',
+        'tests/',
+        'debug.php',
+        'reproduce_parsing.php',
+        'typescript-transformer.php',
+        'codecov.yml',
+        'phpstan.neon',
+        'phpstan-baseline.neon',
+    ],
+    // Gerador de PDF: script de exemplo da raiz.
+    'paseto/nfse-nacional-pdf' => [
+        'generate-pdf.php',
+    ],
+];
+
 return [
     'prefix' => 'OpenNfseVendor',
 
@@ -19,37 +67,48 @@ return [
                 'tests',
                 'Tests',
                 'docs',
-                'phpunit',
-                'squizlabs',
-                'humbug',
-                'sebastian',
-                'phar-io',
-                'theseer',
-                'myclabs',
-                'fidry',
-                'symfony/finder',
-                'symfony/console',
-                'symfony/filesystem',
-                // Plugin do Composer usado só para aplicar patches/ no vendor/.
-                'cweagans',
             ])
-            ->in('vendor'),
+            ->filter(static function (\SplFileInfo $file) use ($vendorDir, $packageExcluded): bool {
+                $path = str_replace('\\', '/', $file->getPathname());
+                foreach ($packageExcluded as $package => $excludedPaths) {
+                    $packageDir = $vendorDir . '/' . $package . '/';
+                    if (!str_starts_with($path, $packageDir)) {
+                        continue;
+                    }
+                    $relative = substr($path, strlen($packageDir));
+                    foreach ($excludedPaths as $excluded) {
+                        $isDir = str_ends_with($excluded, '/');
+                        if ($relative === $excluded || ($isDir && str_starts_with($relative, $excluded))) {
+                            return false;
+                        }
+                    }
+                }
+
+                return true;
+            })
+            ->in($runtimeDirs),
     ],
 
+    // Sempre regex ancorada (namespace exato ou sub-namespace). Um nome simples
+    // aqui é comparado pelo php-scoper como SUBSTRING (str_contains, sem
+    // diferenciar maiúsculas): 'Psr' também excluía GuzzleHttp\Psr7, que ficava
+    // sem prefixo e era servido pela psr7 do WHMCS ou de outro módulo.
+    // Ao mudar esta lista, ajuste também $globalNamespaces em
+    // tools/build-scoped-vendor.php, que confere os namespaces do resultado.
     'exclude-namespaces' => [
-        // Keep our own code and WHMCS runtime untouched.
-        'OpenNfse',
-        'NfsePdf',
-        'WHMCS',
-        // The nfse-php SDK is referenced by FQCN throughout src/ — keep it
-        // global so those references keep working without a mass rewrite.
-        'Nfse',
-        // PSR interfaces must stay global so Guzzle's prefixed classes still
-        // satisfy the (unprefixed) type-hints used by the excluded SDKs.
-        'Psr',
-        // The nfse-php SDK extends Spatie\DataTransferObject\DataTransferObject
-        // directly; keep it global so those references keep resolving.
-        'Spatie',
+        // Código do próprio módulo e do WHMCS (não estão no vendor-scoped, mas
+        // podem ser referenciados por ele).
+        '~^OpenNfse(\\\\|$)~',
+        '~^WHMCS(\\\\|$)~',
+        // SDK nfse-php: o src/ usa as classes pelo nome completo (\Nfse\...).
+        '~^Nfse(\\\\|$)~',
+        // Gerador de PDF: o src/PasetoOverrides/ redefine NfsePdf\NfsePdfGenerator.
+        '~^NfsePdf(\\\\|$)~',
+        // Interfaces PSR (http-message, http-client, http-factory): contratos
+        // estáveis entre versões, compartilhados com o host como era antes.
+        '~^Psr(\\\\|$)~',
+        // Base dos DTOs da SDK (Spatie\DataTransferObject).
+        '~^Spatie(\\\\|$)~',
     ],
 
     'exclude-classes' => [

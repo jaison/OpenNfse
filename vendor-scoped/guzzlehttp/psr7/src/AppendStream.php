@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\StreamInterface;
 /**
@@ -62,7 +62,7 @@ final class AppendStream implements StreamInterface
     }
     public function getContents(): string
     {
-        return \GuzzleHttp\Psr7\Utils::copyToString($this);
+        return Utils::copyToString($this);
     }
     /**
      * Closes each attached stream.

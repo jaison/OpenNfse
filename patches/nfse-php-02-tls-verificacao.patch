@@ -1,6 +1,6 @@
 nfse-nacional/nfse-php — religa a verificação TLS
 
-Base: b89bf93 + patch 01. Remove CURLOPT_SSL_VERIFYPEER=0 e CURLOPT_SSL_VERIFYHOST=0 dos
+Base: a9bdf8c + patch 01. Remove CURLOPT_SSL_VERIFYPEER=0 e CURLOPT_SSL_VERIFYHOST=0 dos
 clients SEFIN, ADN e CNC (o Guzzle volta ao padrão: verifica cadeia e nome).
 
 Exceção tratada: o endpoint de produção de Catanduva (3511102) era um IP (164.152.60.237),
@@ -10,50 +10,50 @@ A URL passa a usar o nome e o IP fica fixado por CURLOPT_RESOLVE nos clients SEF
 (mesmo destino de rede, verificação completa). Nada é desligado.
 
 diff --git a/src/Http/Client/AdnClient.php b/src/Http/Client/AdnClient.php
-index d931e82..0e4271f 100644
+index b9e8a98..ea42248 100644
 --- a/src/Http/Client/AdnClient.php
 +++ b/src/Http/Client/AdnClient.php
-@@ -71,8 +71,9 @@ class AdnClient implements AdnDanfseInterface
-                 CURLOPT_CONNECTTIMEOUT => 30,
-                 CURLOPT_TIMEOUT => 60,
-                 CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
--                CURLOPT_SSL_VERIFYHOST => 0,
--                CURLOPT_SSL_VERIFYPEER => 0,
-+                // Endpoints municipais publicados por IP: o nome do certificado é fixado
-+                // no IP original para que a verificação de host funcione.
-+                CURLOPT_RESOLVE => SefinEndpointResolver::pinnedHosts(),
-             ],
-             RequestOptions::HEADERS => [
-                 'Content-Type' => 'application/json',
+@@ -65,8 +65,9 @@ class AdnClient implements AdnDanfseInterface
+             CURLOPT_CONNECTTIMEOUT => 30,
+             CURLOPT_TIMEOUT => 60,
+             CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-            CURLOPT_SSL_VERIFYHOST => 0,
+-            CURLOPT_SSL_VERIFYPEER => 0,
++            // Endpoints municipais publicados por IP: o nome do certificado é fixado
++            // no IP original para que a verificação de host funcione.
++            CURLOPT_RESOLVE => SefinEndpointResolver::pinnedHosts(),
+         ];
+ 
+         if ($this->context->nssCertificateSelector !== null) {
 diff --git a/src/Http/Client/CncClient.php b/src/Http/Client/CncClient.php
-index 4023ef1..15b9f76 100644
+index 6a5dafb..2072a03 100644
 --- a/src/Http/Client/CncClient.php
 +++ b/src/Http/Client/CncClient.php
-@@ -62,8 +62,6 @@ class CncClient
-                 CURLOPT_CONNECTTIMEOUT => 30,
-                 CURLOPT_TIMEOUT => 60,
-                 CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
--                CURLOPT_SSL_VERIFYHOST => 0,
--                CURLOPT_SSL_VERIFYPEER => 0,
-             ],
-             RequestOptions::HEADERS => [
-                 'Content-Type' => 'application/json',
+@@ -56,8 +56,6 @@ class CncClient
+             CURLOPT_CONNECTTIMEOUT => 30,
+             CURLOPT_TIMEOUT => 60,
+             CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-            CURLOPT_SSL_VERIFYHOST => 0,
+-            CURLOPT_SSL_VERIFYPEER => 0,
+         ];
+ 
+         if ($this->context->nssCertificateSelector !== null) {
 diff --git a/src/Http/Client/SefinClient.php b/src/Http/Client/SefinClient.php
-index 0f74c25..e104830 100644
+index e93e226..589b2b9 100644
 --- a/src/Http/Client/SefinClient.php
 +++ b/src/Http/Client/SefinClient.php
-@@ -63,8 +63,9 @@ class SefinClient implements SefinNacionalInterface
-                 CURLOPT_CONNECTTIMEOUT => 30,
-                 CURLOPT_TIMEOUT => 60,
-                 CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
--                CURLOPT_SSL_VERIFYHOST => 0,
--                CURLOPT_SSL_VERIFYPEER => 0,
-+                // Endpoints municipais publicados por IP: o nome do certificado é fixado
-+                // no IP original para que a verificação de host funcione.
-+                CURLOPT_RESOLVE => SefinEndpointResolver::pinnedHosts(),
-             ],
-             RequestOptions::HEADERS => [
-                 'Content-Type' => 'application/json',
+@@ -57,8 +57,9 @@ class SefinClient implements SefinNacionalInterface
+             CURLOPT_CONNECTTIMEOUT => 30,
+             CURLOPT_TIMEOUT => 60,
+             CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-            CURLOPT_SSL_VERIFYHOST => 0,
+-            CURLOPT_SSL_VERIFYPEER => 0,
++            // Endpoints municipais publicados por IP: o nome do certificado é fixado
++            // no IP original para que a verificação de host funcione.
++            CURLOPT_RESOLVE => SefinEndpointResolver::pinnedHosts(),
+         ];
+ 
+         if ($this->context->nssCertificateSelector !== null) {
 diff --git a/src/Support/SefinEndpointResolver.php b/src/Support/SefinEndpointResolver.php
 index 807c47c..663e71c 100644
 --- a/src/Support/SefinEndpointResolver.php

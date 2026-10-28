@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\UriInterface;
 /**
@@ -44,9 +44,33 @@ final class UriResolver
         return $newPath;
     }
     /**
+     * Returns the path, prefixed with "./" when it would otherwise begin a relative-path reference with a segment
+     * containing a colon.
+     *
+     * Such a segment would be mistaken for a scheme name (RFC 3986 Section 4.2), so a URI without a scheme and
+     * authority cannot hold the path, but reference resolution and percent-encoding normalization can produce one.
+     * The "./" prefix the RFC prescribes resolves back to the same path.
+     *
+     * @see https://datatracker.ietf.org/doc/html/rfc3986#section-4.2
+     *
+     * @internal
+     */
+    public static function guardedPath(UriInterface $uri, string $path): string
+    {
+        if ($uri->getScheme() !== '' || $uri->getAuthority() !== '' || strpos(explode('/', $path, 2)[0], ':') === \false) {
+            return $path;
+        }
+        return './' . $path;
+    }
+    /**
      * Converts the relative URI into a new URI that is resolved against the base URI.
      *
+     * When the resolved path is a relative-path reference whose first segment contains a colon,
+     * which would be mistaken for a scheme name (RFC 3986 Section 4.2), it is prefixed with "./",
+     * e.g. "./a:b".
+     *
      * @see https://datatracker.ietf.org/doc/html/rfc3986#section-5.2
+     * @see https://datatracker.ietf.org/doc/html/rfc3986#section-4.2
      */
     public static function resolve(UriInterface $base, UriInterface $rel): UriInterface
     {
@@ -79,6 +103,9 @@ final class UriResolver
             $targetPath = self::removeDotSegments($targetPath);
             $targetQuery = $rel->getQuery();
         }
+        if ($targetPath !== $base->getPath()) {
+            $targetPath = self::guardedPath($base, $targetPath);
+        }
         return $base->withPath($targetPath)->withQuery($targetQuery)->withFragment($rel->getFragment());
     }
     /**
@@ -107,7 +134,7 @@ final class UriResolver
         if ($target->getScheme() !== '' && ($base->getScheme() !== $target->getScheme() || $target->getAuthority() === '' && $base->getAuthority() !== '')) {
             return $target;
         }
-        if (\GuzzleHttp\Psr7\Uri::isRelativePathReference($target)) {
+        if (Uri::isRelativePathReference($target)) {
             // As the target is already highly relative we return it as-is. It would be possible to resolve
             // the target with `$target = self::resolve($base, $target);` and then try make it more relative
             // by removing a duplicate query. But let's not do that automatically.

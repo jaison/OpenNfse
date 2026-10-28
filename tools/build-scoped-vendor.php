@@ -25,6 +25,71 @@ if (!is_dir($scopedDir)) {
     exit(1);
 }
 
+// Pacotes de produção (fora de "dev-package-names"); o scoper.inc.php usa a
+// mesma regra. Se o build/scoped tiver qualquer outro pacote, ou faltar um,
+// o build para antes de tocar no vendor-scoped/.
+$installed = json_decode((string) @file_get_contents($root . '/vendor/composer/installed.json'), true);
+if (!is_array($installed) || !isset($installed['packages'], $installed['dev-package-names'])) {
+    fwrite(STDERR, "vendor/composer/installed.json não encontrado ou incompleto.\n");
+    fwrite(STDERR, "Rode composer install antes do scope.\n");
+    exit(1);
+}
+$devPackages = array_flip($installed['dev-package-names']);
+$runtimePackages = [];
+foreach ($installed['packages'] as $package) {
+    if (!isset($devPackages[$package['name']])) {
+        $runtimePackages[] = $package['name'];
+    }
+}
+sort($runtimePackages);
+
+$scopedPackages = [];
+foreach (glob($scopedDir . '/*/*', GLOB_ONLYDIR) ?: [] as $pkgDir) {
+    $scopedPackages[] = substr($pkgDir, strlen($scopedDir) + 1);
+}
+sort($scopedPackages);
+
+if ($scopedPackages !== $runtimePackages) {
+    fwrite(STDERR, "build/scoped não corresponde aos pacotes de produção.\n");
+    fwrite(STDERR, "Sobrando: " . implode(', ', array_diff($scopedPackages, $runtimePackages)) . "\n");
+    fwrite(STDERR, "Faltando: " . implode(', ', array_diff($runtimePackages, $scopedPackages)) . "\n");
+    exit(1);
+}
+
+// Todo namespace declarado no resultado precisa ter o prefixo, exceto os que
+// ficam globais de propósito (os mesmos de exclude-namespaces no scoper.inc.php):
+// - Nfse\: SDK, usada pelo src/ com o nome completo;
+// - NfsePdf\: gerador de PDF, cuja classe principal o src/PasetoOverrides/ redefine;
+// - Psr\: interfaces PSR, compartilhadas com o host;
+// - Spatie\: base dos DTOs da SDK.
+// Um namespace de terceiro sem prefixo (como o GuzzleHttp\Psr7 que o
+// php-scoper deixava passar) seria servido pela cópia do WHMCS ou de outro
+// módulo, porque o nosso autoload é registrado por último.
+$globalNamespaces = ['Nfse', 'NfsePdf', 'Psr', 'Spatie'];
+$namespaceViolations = [];
+$scopedFiles = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($scopedDir, FilesystemIterator::SKIP_DOTS));
+foreach ($scopedFiles as $file) {
+    if ($file->getExtension() !== 'php') {
+        continue;
+    }
+    $source = (string) file_get_contents((string) $file);
+    if (!preg_match_all('/^\s*namespace\s+([A-Za-z0-9_\\\\]+)\s*[;{]/m', $source, $matches)) {
+        continue;
+    }
+    foreach ($matches[1] as $namespace) {
+        $namespaceRoot = explode('\\', $namespace)[0];
+        if ($namespaceRoot !== 'OpenNfseVendor' && !in_array($namespaceRoot, $globalNamespaces, true)) {
+            $namespaceViolations[] = substr((string) $file, strlen($scopedDir) + 1) . ': namespace ' . $namespace;
+        }
+    }
+}
+if ($namespaceViolations !== []) {
+    fwrite(STDERR, "Namespaces sem o prefixo OpenNfseVendor\\ em build/scoped:\n");
+    fwrite(STDERR, '  ' . implode("\n  ", array_slice($namespaceViolations, 0, 20)) . "\n");
+    fwrite(STDERR, 'Total: ' . count($namespaceViolations) . ". Revise exclude-namespaces no scoper.inc.php.\n");
+    exit(1);
+}
+
 function extractClassNames(string $source): array
 {
     $classes = [];
@@ -195,5 +260,17 @@ $classLoaderCode = preg_replace('/^namespace\s+Composer\\\\Autoload;\s*$/m', '',
 
 mkdir($outDir . '/composer-classloader', 0777, true);
 file_put_contents($outDir . '/composer-classloader/ClassLoader.php', (string) $classLoaderCode);
+
+// Os composer.json/composer.lock dos pacotes só servem para gerar o autoload
+// acima (lidos em build/scoped). No resultado final eles saem: não são usados
+// em runtime e fazem o Dependabot tratar o vendor-scoped/ como manifests
+// (com os require-dev de cada pacote).
+$manifests = array_merge(
+    glob($outDir . '/*/*/composer.json') ?: [],
+    glob($outDir . '/*/*/composer.lock') ?: []
+);
+foreach ($manifests as $manifest) {
+    unlink($manifest);
+}
 
 fwrite(STDOUT, "vendor-scoped/ generated with " . count($psr4) . " psr-4 prefixes and " . count($files) . " files autoloads.\n");

@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\StreamInterface;
 /**
@@ -9,7 +9,7 @@ use Psr\Http\Message\StreamInterface;
  */
 final class LimitStream implements StreamInterface
 {
-    use \GuzzleHttp\Psr7\StreamDecoratorTrait;
+    use StreamDecoratorTrait;
     /** @var int Offset to start reading from */
     private $offset;
     /** @var int Limit the number of bytes that can be read */

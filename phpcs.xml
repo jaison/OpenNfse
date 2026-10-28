@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
-<ruleset name="Nfse WHMCS Addon">
-  <description>PSR-12 validation for the Nfse addon module.</description>
+<ruleset name="OpenNfse WHMCS Addon">
+  <description>PSR-12 validation for the OpenNfse addon module.</description>
 
   <arg name="basepath" value="."/>
   <arg name="colors"/>
@@ -17,7 +17,7 @@
   <file>src</file>
   <file>hooks.php</file>
   <file>cron.php</file>
-  <file>Nfse.php</file>
+  <file>OpenNfse.php</file>
   <file>bootstrap.php</file>
   <file>functions.php</file>
   <file>scripts</file>

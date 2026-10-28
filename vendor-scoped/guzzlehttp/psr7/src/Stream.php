@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\StreamInterface;
 /**
@@ -89,7 +89,7 @@ class Stream implements StreamInterface
         if (!$this->readable) {
             throw new \RuntimeException('Cannot read from non-readable stream');
         }
-        return \GuzzleHttp\Psr7\Utils::tryGetContents($this->stream);
+        return Utils::tryGetContents($this->stream);
     }
     public function close(): void
     {

@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 final class MimeType
 {
@@ -22,6 +22,6 @@ final class MimeType
      */
     public static function fromExtension(string $extension): ?string
     {
-        return self::MIME_TYPES[strtolower($extension)] ?? null;
+        return self::MIME_TYPES[Utils::asciiToLower($extension)] ?? null;
     }
 }

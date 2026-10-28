@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use InvalidArgumentException;
 use Psr\Http\Message\RequestInterface;
@@ -12,7 +12,7 @@ use Psr\Http\Message\UriInterface;
  */
 class Request implements RequestInterface
 {
-    use \GuzzleHttp\Psr7\MessageTrait;
+    use MessageTrait;
     /** @var string */
     private $method;
     /** @var string|null */
@@ -29,11 +29,12 @@ class Request implements RequestInterface
     public function __construct(string $method, $uri, array $headers = [], $body = null, string $version = '1.1')
     {
         $this->assertMethod($method);
+        $this->assertProtocolVersion($version);
         if (!$uri instanceof UriInterface) {
-            $uri = new \GuzzleHttp\Psr7\Uri($uri);
+            $uri = new Uri($uri);
         }
         self::warnOnMethodCasingChange($method);
-        $this->method = strtoupper($method);
+        $this->method = Utils::asciiToUpper($method);
         $this->uri = $uri;
         $this->setHeaders($headers);
         $this->protocol = $version;
@@ -41,7 +42,7 @@ class Request implements RequestInterface
             $this->updateHostFromUri();
         }
         if ($body !== '' && $body !== null) {
-            $this->stream = \GuzzleHttp\Psr7\Utils::streamFor($body);
+            $this->stream = Utils::streamFor($body);
         }
     }
     public function getRequestTarget(): string
@@ -60,7 +61,11 @@ class Request implements RequestInterface
     }
     public function withRequestTarget($requestTarget): RequestInterface
     {
-        if (preg_match('#\s#', $requestTarget)) {
+        $hasWhitespace = preg_match('#\s#', $requestTarget);
+        if ($hasWhitespace === \false) {
+            throw new \RuntimeException('Unable to validate request target: ' . preg_last_error_msg());
+        }
+        if ($hasWhitespace === 1) {
             throw new InvalidArgumentException('Invalid request target provided; cannot contain whitespace');
         }
         $new = clone $this;
@@ -76,7 +81,7 @@ class Request implements RequestInterface
         $this->assertMethod($method);
         self::warnOnMethodCasingChange($method);
         $new = clone $this;
-        $new->method = strtoupper($method);
+        $new->method = Utils::asciiToUpper($method);
         return $new;
     }
     public function getUri(): UriInterface
@@ -104,7 +109,7 @@ class Request implements RequestInterface
         if ($host == '') {
             return;
         }
-        \GuzzleHttp\Psr7\Uri::assertValidHost($host);
+        Uri::assertValidHost($host);
         if (($port = $this->uri->getPort()) !== null) {
             $host .= ':' . $port;
         }
@@ -127,10 +132,11 @@ class Request implements RequestInterface
         if (!is_string($method) || $method === '') {
             throw new InvalidArgumentException('Method must be a non-empty string.');
         }
+        $this->assertNoLineSeparators($method, 'Method');
     }
     private static function warnOnMethodCasingChange(string $method): void
     {
-        if ($method !== strtoupper($method)) {
+        if ($method !== Utils::asciiToUpper($method)) {
             \OpenNfseVendor\trigger_deprecation('guzzlehttp/psr7', '2.11', 'Passing a non-uppercase HTTP method is deprecated; guzzlehttp/psr7 3.0 preserves method casing and will no longer uppercase it. Normalize the method before constructing or modifying requests if uppercase is required.');
         }
     }

@@ -161,7 +161,7 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 
 1. Baixe o release mais recente do módulo. Ao extrair o arquivo, por exemplo `OpenNfse-0.1.23.zip`, será criada uma pasta com nome versionado, como `OpenNfse-0.1.23`.
 2. Renomeie a pasta extraída para apenas `OpenNfse`.
-3. Envie a pasta `OpenNfse` para `modules/addons/` do WHMCS, substituindo os arquivos da versão anterior.
+3. Apague a pasta `modules/addons/OpenNfse/` da versão anterior (ou, no mínimo, a subpasta `vendor-scoped/`) e envie a pasta `OpenNfse` nova para `modules/addons/`. O módulo não guarda dados nessa pasta: a configuração fica no banco, e os XML e PDF ficam em `attachments/`. Se você colocou algum arquivo dentro dela, como o certificado `.pfx` (que deve ficar fora do webroot), mova-o antes. Enviar por cima também funciona, mas deixa no servidor arquivos que a versão nova não usa mais.
 4. No admin do WHMCS, acesse `Addons > OpenNfse` e revise a configuração, se necessário.
 
 ## Configuração Inicial
@@ -233,11 +233,18 @@ composer install
 composer run scope
 ```
 
-Isso reconstrói a pasta `vendor-scoped/`.
+Isso reconstrói a pasta `vendor-scoped/`. O `composer install` precisa incluir as dependências de desenvolvimento (sem `--no-dev`), porque o `php-scoper` e o plugin que aplica os patches da SDK são de desenvolvimento.
+
+O `vendor-scoped/` leva só as dependências de produção:
+
+- O `scoper.inc.php` parte dos pacotes do `vendor/composer/installed.json` que não estão em `dev-package-names`. O `tools/build-scoped-vendor.php` interrompe o build se o resultado tiver algum pacote a mais ou a menos.
+- Da SDK saem `references/`, `examples/`, `scripts/`, `types/`, `tests/` e os scripts e configurações de desenvolvimento da raiz do pacote. Do `paseto/nfse-nacional-pdf` sai o script de exemplo `generate-pdf.php`. De todos os pacotes saem os arquivos `.md` e `.dist` e as pastas `bin/`, `docs/` e de testes.
+- Depois de gerar o `vendor-scoped/autoload.php`, o build remove os `composer.json` e `composer.lock` de dentro dos pacotes, que não são usados em runtime e que o Dependabot leria como manifests.
+- Uma biblioteca usada em runtime precisa estar no `require` do `composer.json`. O que chega apenas como dependência de desenvolvimento fica fora do `vendor-scoped/`. Por esse motivo, o `symfony/polyfill-intl-normalizer` está no `require`: ele fornece a classe `\Normalizer`, que a SDK usa para normalizar textos quando o servidor não tem a extensão `intl`.
 
 ### Versão da SDK nfse-php
 
-A SDK está fixada no commit `b89bf93` da `main` (`dev-main#b89bf93591e52671ddffb245c5d1e1100eea7198`), que traz o `finNFSe` da NT 009 (PR #65) e ainda não tem release. Quando sair a tag que inclua o #65, volte o `composer.json` para a versão estável (ex.: `^1.24`), confira se os patches abaixo ainda se aplicam ou já foram incorporados e regere o `vendor-scoped/`.
+A SDK está fixada no commit `a9bdf8c` da `main` (`dev-main#a9bdf8cc58c333b4bbda791fd20ab77cfdcabab3`), que traz o `finNFSe` da NT 009 (PR #65), o suporte a certificado NSS (PR #60) e o `totTrib` com `pTotTribSN` igual a 0 (PR #62) e ainda não tem release (a última é a `v1.23.0-beta`). Quando sair a tag que inclua esses PRs, volte o `composer.json` para a versão estável (ex.: `^1.24`), confira se os patches abaixo ainda se aplicam ou já foram incorporados e regere o `vendor-scoped/`.
 
 ### Patches da SDK
 
@@ -258,7 +265,7 @@ Para adicionar um patch:
 4. Rode `composer reinstall nfse-nacional/nfse-php` (ou `composer install`), confira o `vendor/nfse-nacional/nfse-php/PATCHES.txt` e rode `composer test`.
 5. Rode `composer run scope` e confira se o diff de `vendor-scoped/` só traz o que o patch muda.
 
-O plugin fica fora do `vendor-scoped/` (excluído em `scoper.inc.php`), porque só é usado no build.
+O plugin é dependência de desenvolvimento e por isso fica fora do `vendor-scoped/`, porque só é usado no build.
 
 ## Desenvolvimento Local
 

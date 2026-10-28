@@ -38,17 +38,23 @@ class CncClient
     private function createHttpClient(): Client
     {
         $baseUrl = $this->context->ambiente === TipoAmbiente::Producao ? self::URL_PRODUCTION : self::URL_HOMOLOGATION;
-        return new Client(['base_uri' => $baseUrl, 'handler' => Retry::stack(), 'curl' => [
-            \CURLOPT_SSLCERTTYPE => 'P12',
-            \CURLOPT_SSLCERT => $this->resolveCertificatePath(),
-            \CURLOPT_SSLCERTPASSWD => $this->context->certificatePassword,
+        $curlOptions = [
             \CURLOPT_IPRESOLVE => \CURL_IPRESOLVE_V4,
             // Com o Retry (3 tentativas), um host inacessível segura a requisição
             // por até 3x o connect timeout; 10s basta para o handshake.
             \CURLOPT_CONNECTTIMEOUT => 10,
             \CURLOPT_TIMEOUT => 60,
             \CURLOPT_HTTP_VERSION => \CURL_HTTP_VERSION_1_1,
-        ], RequestOptions::HEADERS => ['Content-Type' => 'application/json', 'Accept' => 'application/json']]);
+        ];
+        if ($this->context->nssCertificateSelector !== null) {
+            $curlOptions[\CURLOPT_SSLCERTTYPE] = 'ENG';
+            $curlOptions[\CURLOPT_SSLCERT] = $this->context->nssCertificateSelector;
+        } else {
+            $curlOptions[\CURLOPT_SSLCERTTYPE] = 'P12';
+            $curlOptions[\CURLOPT_SSLCERT] = $this->resolveCertificatePath();
+            $curlOptions[\CURLOPT_SSLCERTPASSWD] = $this->context->certificatePassword;
+        }
+        return new Client(['base_uri' => $baseUrl, 'handler' => Retry::stack(), 'curl' => $curlOptions, RequestOptions::HEADERS => ['Content-Type' => 'application/json', 'Accept' => 'application/json']]);
     }
     private function get(string $endpoint): array
     {
@@ -104,9 +110,9 @@ class CncClient
         return array_map(fn($m) => new MensagemProcessamentoDto(['mensagem' => $m['Mensagem'] ?? $m['mensagem'] ?? null, 'parametros' => $m['Parametros'] ?? $m['parametros'] ?? null, 'codigo' => $m['Codigo'] ?? $m['codigo'] ?? null, 'descricao' => $m['Descricao'] ?? $m['descricao'] ?? null, 'complemento' => $m['Complemento'] ?? $m['complemento'] ?? null]), $mensagens);
     }
     /**
-     * @param  \Exception|GuzzleException  $e
      * @param  array  $decoded
      * @return mixed
+     *
      * @throws NfseApiException
      */
     private function handleException(\Exception|GuzzleException $e)

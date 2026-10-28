@@ -7,7 +7,6 @@ use OpenNfseVendor\GuzzleHttp\HandlerStack;
 use OpenNfseVendor\GuzzleHttp\Promise as P;
 use OpenNfseVendor\GuzzleHttp\Promise\PromiseInterface;
 use OpenNfseVendor\GuzzleHttp\TransferStats;
-use OpenNfseVendor\GuzzleHttp\Utils;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
@@ -74,7 +73,7 @@ class MockHandler implements \Countable
             throw new \OutOfBoundsException('Mock queue is empty');
         }
         if (isset($options['delay']) && \is_numeric($options['delay'])) {
-            \usleep((int) $options['delay'] * 1000);
+            \usleep((int) ($options['delay'] * 1000));
         }
         $this->lastRequest = $request;
         $this->lastOptions = $options;
@@ -131,7 +130,7 @@ class MockHandler implements \Countable
             if ($value instanceof ResponseInterface || $value instanceof \Throwable || $value instanceof PromiseInterface || \is_callable($value)) {
                 $this->queue[] = $value;
             } else {
-                throw new \TypeError('Expected a Response, Promise, Throwable or callable. Found ' . Utils::describeType($value));
+                throw new \TypeError('Expected a Response, Promise, Throwable or callable. Found ' . \get_debug_type($value));
             }
         }
     }

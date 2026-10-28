@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\RequestInterface;
@@ -28,27 +28,27 @@ final class HttpFactory implements RequestFactoryInterface, ResponseFactoryInter
         if ($size === null) {
             $size = $stream->getSize();
         }
-        return new \GuzzleHttp\Psr7\UploadedFile($stream, $size, $error, $clientFilename, $clientMediaType);
+        return new UploadedFile($stream, $size, $error, $clientFilename, $clientMediaType);
     }
     public function createStream(string $content = ''): StreamInterface
     {
-        return \GuzzleHttp\Psr7\Utils::streamFor($content);
+        return Utils::streamFor($content);
     }
     public function createStreamFromFile(string $file, string $mode = 'r'): StreamInterface
     {
         try {
-            $resource = \GuzzleHttp\Psr7\Utils::tryFopen($file, $mode);
+            $resource = Utils::tryFopen($file, $mode);
         } catch (\RuntimeException $e) {
             if ('' === $mode || \false === \in_array($mode[0], ['r', 'w', 'a', 'x', 'c'], \true)) {
                 throw new \InvalidArgumentException(sprintf('Invalid file opening mode "%s"', $mode), 0, $e);
             }
             throw $e;
         }
-        return \GuzzleHttp\Psr7\Utils::streamFor($resource);
+        return Utils::streamFor($resource);
     }
     public function createStreamFromResource($resource): StreamInterface
     {
-        return \GuzzleHttp\Psr7\Utils::streamFor($resource);
+        return Utils::streamFor($resource);
     }
     public function createServerRequest(string $method, $uri, array $serverParams = []): ServerRequestInterface
     {
@@ -59,18 +59,18 @@ final class HttpFactory implements RequestFactoryInterface, ResponseFactoryInter
                 throw new \InvalidArgumentException('Cannot determine HTTP method');
             }
         }
-        return new \GuzzleHttp\Psr7\ServerRequest($method, $uri, [], null, '1.1', $serverParams);
+        return new ServerRequest($method, $uri, [], null, '1.1', $serverParams);
     }
     public function createResponse(int $code = 200, string $reasonPhrase = ''): ResponseInterface
     {
-        return new \GuzzleHttp\Psr7\Response($code, [], null, '1.1', $reasonPhrase);
+        return new Response($code, [], null, '1.1', $reasonPhrase);
     }
     public function createRequest(string $method, $uri): RequestInterface
     {
-        return new \GuzzleHttp\Psr7\Request($method, $uri);
+        return new Request($method, $uri);
     }
     public function createUri(string $uri = ''): UriInterface
     {
-        return new \GuzzleHttp\Psr7\Uri($uri);
+        return new Uri($uri);
     }
 }

@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 /**
  * @internal
@@ -59,7 +59,11 @@ final class Rfc7230
     }
     private static function isValidHostHeaderHost(string $host): bool
     {
-        if (preg_match('/[\x00-\x20\x7F\/\?#@\\\\]/', $host)) {
+        $invalidHost = preg_match('/[\x00-\x20\x7F\/\?#@\\\\]/', $host);
+        if ($invalidHost === \false) {
+            return \false;
+        }
+        if ($invalidHost === 1) {
             return \false;
         }
         if (strpos($host, '[') !== \false || strpos($host, ']') !== \false) {
@@ -67,7 +71,7 @@ final class Rfc7230
                 return \false;
             }
             $address = substr($host, 1, -1);
-            return filter_var($address, \FILTER_VALIDATE_IP, \FILTER_FLAG_IPV6) !== \false || preg_match('/^v[0-9a-f]+\.[' . \GuzzleHttp\Psr7\Rfc3986::CHAR_UNRESERVED . \GuzzleHttp\Psr7\Rfc3986::CHAR_SUB_DELIMS . ':]+$/iD', $address) === 1;
+            return filter_var($address, \FILTER_VALIDATE_IP, \FILTER_FLAG_IPV6) !== \false || preg_match('/^v[0-9a-f]+\.[' . Rfc3986::CHAR_UNRESERVED . Rfc3986::CHAR_SUB_DELIMS . ':]+$/iD', $address) === 1;
         }
         return strpos($host, ':') === \false;
     }

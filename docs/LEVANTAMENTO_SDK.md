@@ -4,7 +4,8 @@ Como o OpenNfse usa a SDK oficial da NFS-e Nacional, no papel de **contribuinte 
 
 ## Versão e patches
 
-- A SDK está fixada no commit `b89bf93` da `main` (`dev-main#b89bf93591e52671ddffb245c5d1e1100eea7198`), que traz o `finNFSe` da NT 009 (PR #65) e ainda não tem release.
+- A SDK está fixada no commit `a9bdf8c` da `main` (`dev-main#a9bdf8cc58c333b4bbda791fd20ab77cfdcabab3`), que traz o `finNFSe` da NT 009 (PR #65), o suporte a certificado NSS (PR #60, não usado pelo módulo) e o `totTrib` com `pTotTribSN` igual a 0 (PR #62, que não muda a DPS do módulo, já que ela não usa `pTotTribSN`) e ainda não tem release.
+- Os patches 02 e 03 foram regenerados para esse commit, que reorganizou as opções cURL dos clients. Os patches 01 e 04 são os mesmos da versão anterior. As correções correspondem aos PRs #68 a #71 do upstream, ainda abertos.
 - O plugin `cweagans/composer-patches` (1.7.3) aplica os patches de [`patches/`](../patches/) no `vendor/` durante o `composer install`/`composer update`. A lista fica em `extra.patches` do `composer.json`, na ordem em que os patches são aplicados. Com `composer-exit-on-patch-failure`, o Composer para se algum patch não aplicar.
 
 | Patch | O que faz |
@@ -14,8 +15,8 @@ Como o OpenNfse usa a SDK oficial da NFS-e Nacional, no papel de **contribuinte 
 | `nfse-php-03-connect-timeout.patch` | Connect timeout de 10s nos clients. |
 | `nfse-php-04-nt009-ordem-campos.patch` | Ordem de `xDescServ` e `finNFSe` no leiaute da NT 009, conferida com o XSD da produção restrita. |
 
-- O `vendor-scoped/` é gerado depois dos patches (`composer run scope`), e o `vendor-scoped/nfse-nacional/nfse-php/PATCHES.txt` lista os patches aplicados. O plugin fica fora do `vendor-scoped/` ([`scoper.inc.php`](../scoper.inc.php)).
-- **Voltar para uma tag estável**: quando sair a release que inclua o PR #65, troque a versão no `composer.json` (ex.: `^1.24`), confira se cada patch ainda se aplica ou já foi incorporado (remova de `extra.patches` os que não forem mais necessários), rode `composer update nfse-nacional/nfse-php`, `composer test` e `composer run scope`.
+- O `vendor-scoped/` é gerado depois dos patches (`composer run scope`), e o `vendor-scoped/nfse-nacional/nfse-php/PATCHES.txt` lista os patches aplicados. O plugin é dependência de desenvolvimento e fica fora do `vendor-scoped/`.
+- **Voltar para uma tag estável**: quando sair a release que inclua os PRs #60, #62 e #65, troque a versão no `composer.json` (ex.: `^1.24`), confira se cada patch ainda se aplica ou já foi incorporado (remova de `extra.patches` os que não forem mais necessários), rode `composer update nfse-nacional/nfse-php`, `composer test` e `composer run scope`.
 
 ## Rede, TLS e timeouts
 
@@ -33,7 +34,17 @@ Como o OpenNfse usa a SDK oficial da NFS-e Nacional, no papel de **contribuinte 
 
 ## Empacotamento (`vendor-scoped/`)
 
-O release traz as dependências em [`vendor-scoped/`](../vendor-scoped/), geradas pelo `php-scoper` ([`scoper.inc.php`](../scoper.inc.php) e [`tools/build-scoped-vendor.php`](../tools/build-scoped-vendor.php)). As bibliotecas de terceiros recebem o prefixo `OpenNfseVendor\`, para não conflitar com outros módulos do WHMCS. Ficam sem prefixo os namespaces da SDK (`Nfse\`), do gerador de PDF (`NfsePdf\`), do próprio módulo (`OpenNfse\`), as interfaces PSR e as classes globais usadas pelo nome completo, como `\TCPDF`. Por isso o código do módulo usa a SDK com os nomes originais (`\Nfse\Nfse`, `\Nfse\Http\NfseContext` etc.).
+O release traz as dependências em [`vendor-scoped/`](../vendor-scoped/), geradas pelo `php-scoper` ([`scoper.inc.php`](../scoper.inc.php) e [`tools/build-scoped-vendor.php`](../tools/build-scoped-vendor.php)). As bibliotecas de terceiros recebem o prefixo `OpenNfseVendor\`, para não conflitar com outros módulos do WHMCS. Ficam sem prefixo os namespaces da SDK (`Nfse\`), do gerador de PDF (`NfsePdf\`), do próprio módulo (`OpenNfse\`), as interfaces PSR (`Psr\`), a base dos DTOs da SDK (`Spatie\`) e as classes globais usadas pelo nome completo, como `\TCPDF`. Por isso o código do módulo usa a SDK com os nomes originais (`\Nfse\Nfse`, `\Nfse\Http\NfseContext` etc.).
+
+As exclusões de `exclude-namespaces` são regex ancoradas (por exemplo, `~^Psr(\\|$)~`). Com um nome simples, o php-scoper compara por substring, e `Psr` deixava sem prefixo também o `GuzzleHttp\Psr7`. Como o nosso autoload é registrado por último, essa psr7 era atendida pela cópia do WHMCS ou de outro módulo, e uma versão antiga quebrava a Guzzle. O `tools/build-scoped-vendor.php` confere todo `namespace` declarado no resultado e interrompe o build se algum não começar com `OpenNfseVendor\` e não estiver na lista de globais (`Nfse\`, `NfsePdf\`, `Psr\` e `Spatie\`).
+
+Só as dependências de produção entram no `vendor-scoped/`:
+
+- O `scoper.inc.php` considera os pacotes do `vendor/composer/installed.json` que não estão em `dev-package-names`, e o build para se o resultado não bater com essa lista.
+- Da SDK vão apenas `src/` e o `PATCHES.txt`. Ficam de fora `references/` (contratos, XSD, manuais e exemplos de XML e PDF com dados de terceiros), `examples/`, `scripts/`, `types/`, `tests/` e os scripts e configurações de desenvolvimento da raiz.
+- Os `composer.json` e `composer.lock` dos pacotes são lidos em `build/scoped/` para gerar o `vendor-scoped/autoload.php` e depois removidos do resultado. O autoload não depende deles nem de `vendor-scoped/composer/`: usa a cópia do `ClassLoader` em `vendor-scoped/composer-classloader/`.
+- O `autoload.php` faz `require_once` só dos arquivos de `autoload.files` dos pacotes de produção (funções do Guzzle, `getallheaders`, `deprecation-contracts` e os bootstraps dos polyfills `intl-normalizer` e `php80`).
+- O `symfony/polyfill-intl-normalizer` está no `require` porque a SDK usa `\Normalizer` (quando existe) para normalizar textos em NFC antes de montar a DPS. Em servidores sem a extensão `intl`, a classe vem desse polyfill.
 
 ## Classes da SDK usadas pelo módulo
 
@@ -102,5 +113,5 @@ O DANFS-e não usa a SDK de emissão. O PDF é gerado localmente a partir do XML
 ## Referências da SDK
 
 - Repositório: <https://github.com/nfse-nacional/nfse-php>
-- Contratos OpenAPI e schemas XSD embarcados: [`vendor-scoped/nfse-nacional/nfse-php/references/`](../vendor-scoped/nfse-nacional/nfse-php/references/)
-- Exemplos de uso: [`vendor-scoped/nfse-nacional/nfse-php/examples/`](../vendor-scoped/nfse-nacional/nfse-php/examples/)
+- Contratos OpenAPI e schemas XSD: [`references/`](https://github.com/nfse-nacional/nfse-php/tree/main/references) no repositório da SDK (e em `vendor/nfse-nacional/nfse-php/references/` depois do `composer install`; não vão para o `vendor-scoped/`)
+- Exemplos de uso: [`examples/`](https://github.com/nfse-nacional/nfse-php/tree/main/examples) no repositório da SDK (e em `vendor/nfse-nacional/nfse-php/examples/`)

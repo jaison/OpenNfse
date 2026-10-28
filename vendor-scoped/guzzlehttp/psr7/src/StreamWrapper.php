@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\StreamInterface;
 /**
@@ -77,6 +77,10 @@ final class StreamWrapper
     public function stream_write(string $data): int
     {
         return $this->stream->write($data);
+    }
+    public function stream_flush(): bool
+    {
+        return \true;
     }
     public function stream_tell(): int
     {
