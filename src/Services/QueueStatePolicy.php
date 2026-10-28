@@ -19,6 +19,9 @@ final class QueueStatePolicy
     // Tempo em RUNNING a partir do qual o item é considerado travado (processo morto).
     public const RUNNING_STALE_SECONDS = 900;
 
+    // Recuperações para WAIT_STATUS permitidas antes de desistir do item (a consulta derruba o processo).
+    public const MAX_RUNNING_RECOVERIES = 3;
+
     /**
      * Momento em que o item entrou em RUNNING. O claim grava ultima_tentativa;
      * updated_at e created_at são apenas fallback para linhas antigas.
@@ -84,19 +87,21 @@ final class QueueStatePolicy
     /**
      * Para onde volta um item travado em RUNNING.
      * - WAIT_STATUS se a nota já está PROCESSANDO com DPS (ou EMITIDA sem chave): a consulta resolve, sem nova DPS.
+     *   Depois de MAX_RUNNING_RECOVERIES recuperações assim, vai para ERROR: a consulta derruba o processo sempre.
      * - ERROR se as tentativas automáticas já se esgotaram, para não repetir um processo que morre sempre.
      * - PENDING nos demais casos (o claim seguinte reavalia a nota antes de emitir).
      *
      * @param int $tentativas valor gravado na fila (já inclui a tentativa interrompida)
+     * @param int $previousRecoveries recuperações anteriores do item (desde o último reprocessar manual)
      */
-    public static function recoveryTargetStatus(?array $nota, int $tentativas): string
+    public static function recoveryTargetStatus(?array $nota, int $tentativas, int $previousRecoveries = 0): string
     {
         $notaStatus = $nota ? trim((string) ($nota['status'] ?? '')) : '';
         $idDps = $nota ? trim((string) ($nota['id_dps'] ?? '')) : '';
         $chave = $nota ? trim((string) ($nota['chave_acesso'] ?? '')) : '';
 
         if ($idDps !== '' && ($notaStatus === 'PROCESSANDO' || ($notaStatus === 'EMITIDA' && $chave === ''))) {
-            return 'WAIT_STATUS';
+            return self::isRecoveryLimitReached($previousRecoveries) ? 'ERROR' : 'WAIT_STATUS';
         }
 
         $notaEmitida = $notaStatus === 'EMITIDA' && $chave !== '';
@@ -105,6 +110,11 @@ final class QueueStatePolicy
         }
 
         return 'PENDING';
+    }
+
+    public static function isRecoveryLimitReached(int $previousRecoveries): bool
+    {
+        return $previousRecoveries >= self::MAX_RUNNING_RECOVERIES;
     }
 
     public static function attemptsLabel(int $tentativas): string

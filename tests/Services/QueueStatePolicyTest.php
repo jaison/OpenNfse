@@ -139,4 +139,29 @@ final class QueueStatePolicyTest extends TestCase
         $this->assertSame('Tentativa 0 de 6', QueueStatePolicy::attemptsLabel(0));
         $this->assertSame('Tentativa 3 de 6', QueueStatePolicy::attemptsLabel(3));
     }
+
+    public function testRecoveryToWaitStatusAllowedBelowLimit(): void
+    {
+        $nota = ['status' => 'PROCESSANDO', 'id_dps' => 'DPS123', 'chave_acesso' => ''];
+        $this->assertSame('WAIT_STATUS', QueueStatePolicy::recoveryTargetStatus($nota, 1, 0));
+        $this->assertSame('WAIT_STATUS', QueueStatePolicy::recoveryTargetStatus($nota, 1, 2));
+    }
+
+    public function testRecoveryToWaitStatusGoesToErrorAfterLimit(): void
+    {
+        $nota = ['status' => 'PROCESSANDO', 'id_dps' => 'DPS123', 'chave_acesso' => ''];
+        $limit = QueueStatePolicy::MAX_RUNNING_RECOVERIES;
+        $this->assertSame(3, $limit);
+        $this->assertSame('ERROR', QueueStatePolicy::recoveryTargetStatus($nota, 1, $limit));
+        $this->assertSame('ERROR', QueueStatePolicy::recoveryTargetStatus($nota, 1, $limit + 5));
+        $this->assertTrue(QueueStatePolicy::isRecoveryLimitReached($limit));
+        $this->assertFalse(QueueStatePolicy::isRecoveryLimitReached($limit - 1));
+    }
+
+    public function testRecoveryLimitDoesNotAffectPendingPath(): void
+    {
+        $this->assertSame('PENDING', QueueStatePolicy::recoveryTargetStatus(null, 1, 10));
+        $emitida = ['status' => 'EMITIDA', 'id_dps' => 'DPS123', 'chave_acesso' => 'CHAVE'];
+        $this->assertSame('PENDING', QueueStatePolicy::recoveryTargetStatus($emitida, 1, 10));
+    }
 }

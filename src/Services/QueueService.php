@@ -117,12 +117,26 @@ if (empty($config)) {
 
             $nota = $invoiceId > 0 ? $notaRepo->findByInvoiceId($invoiceId) : null;
             $tentativas = (int) ($row['tentativas'] ?? 0);
-            $target = QueueStatePolicy::recoveryTargetStatus($nota, $tentativas);
+            $correlationId = trim((string) ($row['correlation_id'] ?? ''));
+            // Contador pelos logs do próprio item (correlation_id indexado), zerado pelo reprocessar manual.
+            $previousRecoveries = $logRepo->countByCorrelationSinceLast(
+                $correlationId,
+                'QUEUE_RUNNING_RECOVERED',
+                'QUEUE_MANUAL_RETRY'
+            );
+            $target = QueueStatePolicy::recoveryTargetStatus($nota, $tentativas, $previousRecoveries);
             $message = sprintf(
                 'Item recuperado automaticamente após ficar em RUNNING desde %s (processo interrompido).',
                 (string) $since
             );
-            if ($target === 'ERROR') {
+            if ($target === 'ERROR' && QueueStatePolicy::recoveryTargetStatus($nota, $tentativas) === 'WAIT_STATUS') {
+                $message .= sprintf(
+                    ' O item já foi recuperado %d vezes sem concluir a consulta: o processo parece cair sempre nesta'
+                    . ' fatura (erro fatal, memory_limit ou max_execution_time). Marcado como ERROR para não travar'
+                    . ' a fila; verifique os logs e use Consultar Status na fatura ou Reprocessar.',
+                    $previousRecoveries
+                );
+            } elseif ($target === 'ERROR') {
                 $message .= ' Tentativas automáticas esgotadas.';
             }
 
@@ -131,7 +145,6 @@ if (empty($config)) {
             }
 
             $recovered++;
-            $correlationId = trim((string) ($row['correlation_id'] ?? ''));
             $logRepo->insert(
                 $nota ? (int) ($nota['id'] ?? 0) : null,
                 'QUEUE_RUNNING_RECOVERED',
@@ -141,6 +154,7 @@ if (empty($config)) {
                     'running_since' => $since,
                     'tentativas' => $tentativas,
                     'nota_status' => $nota['status'] ?? null,
+                    'recuperacoes_anteriores' => $previousRecoveries,
                     'novo_status' => $target,
                 ], JSON_UNESCAPED_UNICODE),
                 $message,
