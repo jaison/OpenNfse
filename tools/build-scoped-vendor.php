@@ -12,6 +12,10 @@ declare(strict_types=1);
  * that maps the prefixed namespaces to the scoped source directories.
  */
 
+if (PHP_SAPI !== 'cli') {
+    exit;
+}
+
 $root = dirname(__DIR__);
 $scopedDir = $root . '/build/scoped';
 $outDir = $root . '/vendor-scoped';

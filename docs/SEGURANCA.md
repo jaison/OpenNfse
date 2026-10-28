@@ -84,6 +84,23 @@ Limitações:
 - Se o `AllowOverride` não incluir `AuthConfig`, `Limit` e `FileInfo`, o Apache responde 500 para tudo dentro de `modules/addons/OpenNfse/`. Os arquivos continuam protegidos, mas o CSS e o logo deixam de carregar. O resto do WHMCS não é afetado.
 - Ao copiar o addon por FTP ou pelo Finder, confira se os arquivos ocultos `.htaccess` foram copiados.
 
+#### Apache: configuração do servidor (preferencial)
+
+Se você tem acesso à configuração do Apache (vhost ou `httpd.conf`), prefira um bloco `<Directory>`. Ele casa pelo caminho físico, não pela URL, e vale mesmo com `AllowOverride None`:
+
+```apache
+<Directory "/caminho/do/whmcs/modules/addons/OpenNfse">
+    Require all denied
+</Directory>
+<Directory "/caminho/do/whmcs/modules/addons/OpenNfse/assets">
+    <FilesMatch "^[^.][^/]*\.(css|png|jpe?g|gif|webp|ico)$">
+        Require all granted
+    </FilesMatch>
+</Directory>
+```
+
+Use o mesmo caminho que aparece no `DocumentRoot`. Em Linux, que diferencia maiúsculas de minúsculas no sistema de arquivos, não há outra forma de chegar ao diretório. Em servidores macOS, mantenha também os `.htaccess`: lá, uma URL com outra caixa (`/Modules/Addons/...`) não casa com o `<Directory>`, mas ainda é barrada pelo `.htaccess`.
+
 #### LiteSpeed e OpenLiteSpeed
 
 - **LiteSpeed Enterprise** lê o `.htaccess` como o Apache (acesso, `FilesMatch` e rewrite).
@@ -93,12 +110,12 @@ Limitações:
 - Em qualquer LiteSpeed, se a validação abaixo ainda mostrar 200 depois do restart, aplique a regra no nível do servidor (vhost > Rewrite > Rewrite Rules), que não depende do `.htaccess`:
 
 ```apache
-RewriteCond %{REQUEST_URI} ^/modules/addons/OpenNfse/
-RewriteCond %{REQUEST_URI} !^/modules/addons/OpenNfse/assets/[^./][^/]*\.(css|png|jpe?g|gif|webp|ico)$
+RewriteCond %{REQUEST_URI} ^/modules/addons/OpenNfse/ [NC]
+RewriteCond %{REQUEST_URI} !^/modules/addons/OpenNfse/assets/[^./][^/]*\.(css|png|jpe?g|gif|webp|ico)$ [NC]
 RewriteRule .* - [F]
 ```
 
-Ajuste o prefixo se o WHMCS estiver em um subdiretório (por exemplo, `/whmcs/modules/addons/OpenNfse/`).
+Essa regra casa pela URL, por isso no Apache prefira o `<Directory>` acima. O `[NC]` impede o contorno com outra caixa (`/Modules/Addons/...`) em sistemas de arquivos que não diferenciam maiúsculas. Ajuste o prefixo se o WHMCS estiver em um subdiretório (por exemplo, `/whmcs/modules/addons/OpenNfse/`).
 
 #### nginx
 
@@ -128,6 +145,7 @@ Rode a partir de qualquer máquina, trocando o domínio. O parâmetro `?t=` evit
 B=https://seu-whmcs.com.br/modules/addons/OpenNfse
 for p in README.md composer.lock .gitignore docs/SEGURANCA.md \
          vendor-scoped/autoload.php src/Module.php assets/brasao_itajai.svg \
+         %52EADME.md src/Module.php/x \
          assets/nfse-ui.css assets/opennsfe_logo.png; do
   printf '%-30s %s\n' "$p" "$(curl -s -o /dev/null -w '%{http_code}' "$B/$p?t=$(date +%s)")"
 done
