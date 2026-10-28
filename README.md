@@ -244,7 +244,7 @@ O `vendor-scoped/` leva só as dependências de produção:
 
 ### Versão da SDK nfse-php
 
-A SDK está fixada no commit `b89bf93` da `main` (`dev-main#b89bf93591e52671ddffb245c5d1e1100eea7198`), que traz o `finNFSe` da NT 009 (PR #65) e ainda não tem release. Quando sair a tag que inclua o #65, volte o `composer.json` para a versão estável (ex.: `^1.24`), confira se os patches abaixo ainda se aplicam ou já foram incorporados e regere o `vendor-scoped/`.
+A SDK está fixada no commit `a9bdf8c` da `main` (`dev-main#a9bdf8cc58c333b4bbda791fd20ab77cfdcabab3`), que traz o `finNFSe` da NT 009 (PR #65), o suporte a certificado NSS (PR #60) e o `totTrib` com `pTotTribSN` igual a 0 (PR #62) e ainda não tem release (a última é a `v1.23.0-beta`). Quando sair a tag que inclua esses PRs, volte o `composer.json` para a versão estável (ex.: `^1.24`), confira se os patches abaixo ainda se aplicam ou já foram incorporados e regere o `vendor-scoped/`.
 
 ### Patches da SDK
 

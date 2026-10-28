@@ -4,7 +4,8 @@ Como o OpenNfse usa a SDK oficial da NFS-e Nacional, no papel de **contribuinte 
 
 ## Versão e patches
 
-- A SDK está fixada no commit `b89bf93` da `main` (`dev-main#b89bf93591e52671ddffb245c5d1e1100eea7198`), que traz o `finNFSe` da NT 009 (PR #65) e ainda não tem release.
+- A SDK está fixada no commit `a9bdf8c` da `main` (`dev-main#a9bdf8cc58c333b4bbda791fd20ab77cfdcabab3`), que traz o `finNFSe` da NT 009 (PR #65), o suporte a certificado NSS (PR #60, não usado pelo módulo) e o `totTrib` com `pTotTribSN` igual a 0 (PR #62, que não muda a DPS do módulo, já que ela não usa `pTotTribSN`) e ainda não tem release.
+- Os patches 02 e 03 foram regenerados para esse commit, que reorganizou as opções cURL dos clients. Os patches 01 e 04 são os mesmos da versão anterior. As correções correspondem aos PRs #68 a #71 do upstream, ainda abertos.
 - O plugin `cweagans/composer-patches` (1.7.3) aplica os patches de [`patches/`](../patches/) no `vendor/` durante o `composer install`/`composer update`. A lista fica em `extra.patches` do `composer.json`, na ordem em que os patches são aplicados. Com `composer-exit-on-patch-failure`, o Composer para se algum patch não aplicar.
 
 | Patch | O que faz |
@@ -15,7 +16,7 @@ Como o OpenNfse usa a SDK oficial da NFS-e Nacional, no papel de **contribuinte 
 | `nfse-php-04-nt009-ordem-campos.patch` | Ordem de `xDescServ` e `finNFSe` no leiaute da NT 009, conferida com o XSD da produção restrita. |
 
 - O `vendor-scoped/` é gerado depois dos patches (`composer run scope`), e o `vendor-scoped/nfse-nacional/nfse-php/PATCHES.txt` lista os patches aplicados. O plugin é dependência de desenvolvimento e fica fora do `vendor-scoped/`.
-- **Voltar para uma tag estável**: quando sair a release que inclua o PR #65, troque a versão no `composer.json` (ex.: `^1.24`), confira se cada patch ainda se aplica ou já foi incorporado (remova de `extra.patches` os que não forem mais necessários), rode `composer update nfse-nacional/nfse-php`, `composer test` e `composer run scope`.
+- **Voltar para uma tag estável**: quando sair a release que inclua os PRs #60, #62 e #65, troque a versão no `composer.json` (ex.: `^1.24`), confira se cada patch ainda se aplica ou já foi incorporado (remova de `extra.patches` os que não forem mais necessários), rode `composer update nfse-nacional/nfse-php`, `composer test` e `composer run scope`.
 
 ## Rede, TLS e timeouts
 
