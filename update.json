@@ -6,5 +6,5 @@
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "As dependências foram atualizadas e o pacote do módulo ficou menor e mais leve. A fila de emissão ficou mais robusta, com proteção contra emissão duplicada, recuperação automática de itens travados e o Reprocessar reiniciando as tentativas automáticas. IMPORTANTE: antes de atualizar, apague a pasta modules/addons/OpenNfse (mova antes qualquer arquivo seu que esteja nela, como o certificado .pfx) e envie a nova; depois, clique em \"Testar conexão\"."
+  "message": "As dependências foram atualizadas e o pacote do módulo ficou menor e mais leve. A fila de emissão ficou mais robusta, com proteção contra emissão duplicada, recuperação automática de itens travados e o Reprocessar reiniciando as tentativas automáticas. IMPORTANTE: antes de atualizar, apague a pasta modules/addons/OpenNfse e envie a nova (a pasta não guarda dados: a configuração fica no banco, os XML/PDF ficam em attachments/ e o certificado fica obrigatoriamente fora do webroot); depois, clique em \"Testar conexão\"."
 }
