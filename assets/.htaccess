@@ -1,0 +1,29 @@
+# OpenNfse - assets públicos
+#
+# Libera somente imagens e CSS usados pelas telas do WHMCS. Todo o resto
+# continua negado, inclusive .svg (o brasão é lido só pelo PHP) e dotfiles.
+# Detalhes: docs/SEGURANCA.md.
+
+# Apache 2.4+ e LiteSpeed Enterprise
+<IfModule mod_authz_core.c>
+    Require all denied
+    <FilesMatch "^[^.][^/]*\.(css|png|jpe?g|gif|webp|ico)$">
+        Require all granted
+    </FilesMatch>
+</IfModule>
+
+# Apache 2.2 (ou 2.4 apenas com mod_access_compat)
+<IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+    <FilesMatch "^[^.][^/]*\.(css|png|jpe?g|gif|webp|ico)$">
+        Order allow,deny
+        Allow from all
+    </FilesMatch>
+</IfModule>
+
+# Fallback para OpenLiteSpeed (só lê regras de rewrite do .htaccess)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule !^[^./][^/]*\.(css|png|jpe?g|gif|webp|ico)$ - [F]
+</IfModule>

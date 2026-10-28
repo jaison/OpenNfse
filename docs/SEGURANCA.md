@@ -54,6 +54,89 @@ Documentar as regras de segurança operacionais do addon `Nfse`, os controles j�
   - atributos `href`/`xlink:href` com `http:`, `https:`, `file:` ou `data:`
 - O XML usado no PDF é carregado com `LIBXML_NONET`, evitando resolução de recursos externos.
 
+### 5. Acesso web direto ao diretório do addon
+
+O addon fica em `<whmcs>/modules/addons/OpenNfse`, dentro do webroot, mas o WHMCS o carrega por `include` (`addonmodules.php` e `index.php?m=OpenNfse`). `cron.php` roda só pela CLI. A web só precisa acessar diretamente:
+
+- `assets/nfse-ui.css` (incluído pelos hooks de admin e área do cliente);
+- `assets/opennsfe_logo.png` (logo da tela administrativa).
+
+Sem proteção, qualquer arquivo responde pela web: `README.md`, `composer.lock`, `docs/*.md` expõem conteúdo, e arquivos PHP de `src/` e `vendor-scoped/` são **executados** fora do WHMCS.
+
+O addon traz dois `.htaccess`:
+
+- `.htaccess` (raiz): nega tudo.
+- `assets/.htaccess`: libera só `css`, `png`, `jpg`/`jpeg`, `gif`, `webp` e `ico`. Continuam negados `.svg` (o brasão é lido só pelo PHP), dotfiles e qualquer outra extensão.
+
+Cada arquivo tem três camadas, para funcionar em servidores diferentes:
+
+| Camada | Servidor |
+|---|---|
+| `Require all denied` (`<IfModule mod_authz_core.c>`) | Apache 2.4+, LiteSpeed Enterprise |
+| `Order`/`Deny` (`<IfModule !mod_authz_core.c>`) | Apache 2.2 ou 2.4 só com `mod_access_compat` |
+| `RewriteRule ... [F]` (`<IfModule mod_rewrite.c>`) | OpenLiteSpeed, que só lê regras de rewrite do `.htaccess` |
+
+`Options -Indexes` foi omitido de propósito: em servidores onde o `AllowOverride` não inclui `Options`, ele gera erro 500. A negação já impede a listagem do diretório.
+
+Limitações:
+
+- Com `AllowOverride None`, o Apache ignora os `.htaccess` e nada é bloqueado. Nesse caso, use a configuração do servidor (exemplos abaixo).
+- Se o `AllowOverride` não incluir `AuthConfig`, `Limit` e `FileInfo`, o Apache responde 500 para tudo dentro de `modules/addons/OpenNfse/`. Os arquivos continuam protegidos, mas o CSS e o logo deixam de carregar. O resto do WHMCS não é afetado.
+- Ao copiar o addon por FTP ou pelo Finder, confira se os arquivos ocultos `.htaccess` foram copiados.
+
+#### LiteSpeed e OpenLiteSpeed
+
+- **LiteSpeed Enterprise** lê o `.htaccess` como o Apache (acesso, `FilesMatch` e rewrite).
+- **OpenLiteSpeed** só usa as regras de rewrite do `.htaccess` e ignora `Require`, `Order`/`Deny`, `FilesMatch` e `Options`. A proteção depende da camada de rewrite e de duas condições:
+  - O vhost precisa ter **Enable Rewrite** e **Auto Load from .htaccess** ativados (WebAdmin > Virtual Hosts > vhost > Rewrite; no arquivo do vhost: `rewrite { enable 1  autoLoadHtaccess 1 }`).
+  - O OpenLiteSpeed carrega o `.htaccess` na primeira leitura e não percebe alterações depois. Após instalar ou atualizar o addon, faça um **graceful restart** (`/usr/local/lsws/bin/lswsctrl restart` ou WebAdmin > Graceful Restart).
+- Em qualquer LiteSpeed, se a validação abaixo ainda mostrar 200 depois do restart, aplique a regra no nível do servidor (vhost > Rewrite > Rewrite Rules), que não depende do `.htaccess`:
+
+```apache
+RewriteCond %{REQUEST_URI} ^/modules/addons/OpenNfse/
+RewriteCond %{REQUEST_URI} !^/modules/addons/OpenNfse/assets/[^./][^/]*\.(css|png|jpe?g|gif|webp|ico)$
+RewriteRule .* - [F]
+```
+
+Ajuste o prefixo se o WHMCS estiver em um subdiretório (por exemplo, `/whmcs/modules/addons/OpenNfse/`).
+
+#### nginx
+
+O nginx ignora `.htaccess`. Adicione no `server {}` do WHMCS, **antes** do `location ~ \.php$`:
+
+```nginx
+location ^~ /modules/addons/OpenNfse/ {
+    deny all;
+
+    location ~ ^/modules/addons/OpenNfse/assets/[^/.][^/]*\.(css|png|jpe?g|gif|webp|ico)$ {
+        allow all;
+    }
+}
+```
+
+O `^~` impede que o `location` de PHP seja avaliado para esse caminho. O `allow all` do bloco interno substitui o `deny all` só para os assets estáticos.
+
+#### IIS
+
+O IIS também ignora `.htaccess`. O equivalente é um `web.config` com regra de negação (por exemplo, `<requestFiltering>` com `hiddenSegments` ou regra do URL Rewrite) e uma exceção para `assets/`. O addon não traz `web.config`; configure no site, se for o caso.
+
+#### Como validar
+
+Rode a partir de qualquer máquina, trocando o domínio. O parâmetro `?t=` evita respostas antigas em cache de CDN:
+
+```bash
+B=https://seu-whmcs.com.br/modules/addons/OpenNfse
+for p in README.md composer.lock .gitignore docs/SEGURANCA.md \
+         vendor-scoped/autoload.php src/Module.php assets/brasao_itajai.svg \
+         assets/nfse-ui.css assets/opennsfe_logo.png; do
+  printf '%-30s %s\n' "$p" "$(curl -s -o /dev/null -w '%{http_code}' "$B/$p?t=$(date +%s)")"
+done
+```
+
+Resultado esperado: `403` (ou `404`) para todos, exceto `assets/nfse-ui.css` e `assets/opennsfe_logo.png`, que devem responder `200`.
+
+Atrás do Cloudflare, confira também o cabeçalho `cf-cache-status` (`curl -sI`). Se um arquivo bloqueado ainda responder 200 com `HIT`, a resposta veio do cache: faça um purge no Cloudflare e teste de novo.
+
 ## Diretrizes para desenvolvimento
 
 ### Novas actions
@@ -86,6 +169,7 @@ Sempre que uma feature usar path vindo de config, banco ou mergefield:
 Antes de colocar o módulo em produção:
 
 - Confirmar que o certificado A1 está fora do webroot.
+- Confirmar que o acesso web direto ao diretório do addon está bloqueado (seção 5).
 - Confirmar permissões corretas em `attachments/`.
 - Validar emissão, consulta, download XML, download PDF e envio por e-mail.
 - Confirmar que não existem links com `token=` expostos nas telas do módulo.

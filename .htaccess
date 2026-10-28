@@ -1,0 +1,30 @@
+# OpenNfse - bloqueio de acesso web direto
+#
+# O WHMCS carrega o addon por include (addonmodules.php / index.php?m=OpenNfse),
+# nunca por URL direta. Nenhum arquivo deste diretório deve ser servido ou
+# executado pela web, exceto os assets estáticos liberados em assets/.htaccess.
+# Detalhes, validação e equivalentes para nginx/IIS: docs/SEGURANCA.md.
+#
+# "Options -Indexes" foi omitido de propósito: gera erro 500 onde o
+# AllowOverride não inclui Options, e a negação abaixo já impede a listagem.
+
+# Apache 2.4+ e LiteSpeed Enterprise
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+
+# Apache 2.2 (ou 2.4 apenas com mod_access_compat)
+<IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+</IfModule>
+
+# Fallback para OpenLiteSpeed, que só lê regras de rewrite do .htaccess.
+# A exceção para imagens/CSS evita bloquear os assets caso o servidor
+# herde esta regra em assets/ (no Apache, assets/.htaccess substitui esta).
+# O prefixo "assets/" é opcional porque, na herança, o caminho pode chegar
+# relativo a assets/; liberar imagem/CSS da raiz não expõe nada sensível.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule !^(assets/)?[^./][^/]*\.(css|png|jpe?g|gif|webp|ico)$ - [F]
+</IfModule>
