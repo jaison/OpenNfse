@@ -3,13 +3,14 @@
 ## Requisitos
 
 - WHMCS `8.13.x` e PHP `8.1+`.
-- Extensões PHP: `openssl` (leitura do certificado), `curl` (sincronização IBGE e checagem de atualização), `dom`, `simplexml`, `mbstring` e `zip` (exportação ZIP de XMLs), além das exigidas pela SDK.
+- Extensões PHP: `openssl` (certificado e assinatura), `curl` (chamadas à API Nacional, sincronização IBGE e checagem de atualização), `dom`, `simplexml`, `mbstring`, `zlib` (compactação da DPS e leitura dos documentos da API) e `zip` (exportação ZIP de XMLs).
+- Pacote de certificados raiz (CAs) atualizado no servidor (`ca-certificates`, ou o bundle apontado por `curl.cainfo` no `php.ini`). As chamadas à API Nacional verificam o certificado TLS do servidor.
 - Certificado A1 (`.pfx`/`.p12`) válido, fora do webroot.
 - Diretório `attachments` do WHMCS gravável pelo PHP.
 
 ## Instalação a partir do release
 
-1. Baixe o release e extraia. A pasta extraída tem nome versionado (por exemplo, `OpenNfse-0.1.22`): renomeie para `OpenNfse`.
+1. Baixe o release e extraia. A pasta extraída tem nome versionado (por exemplo, `OpenNfse-0.1.23`): renomeie para `OpenNfse`.
 2. Copie a pasta para `<whmcs>/modules/addons/OpenNfse/`. Confira se os arquivos ocultos `.htaccess` (raiz e `assets/`) foram copiados.
 3. No admin do WHMCS, acesse **Configuration > System Settings > Addon Modules** e ative **OpenNfse**. A ativação cria as tabelas `mod_opennfse_*`.
 4. Em **Configure > Access Control**, marque os grupos de administradores com acesso ao addon.
@@ -21,7 +22,7 @@ O release já traz as dependências em `vendor-scoped/`, com namespaces prefixad
 
 1. Substitua os arquivos de `modules/addons/OpenNfse/` pelos da nova versão, mantendo o nome da pasta.
 2. As migrations novas são aplicadas automaticamente no próximo acesso ao addon, ciclo do cron ou emissão. Desativar e reativar o addon não é necessário.
-3. Revise a configuração em **Addons > OpenNfse**.
+3. Revise a configuração em **Addons > OpenNfse** e clique em **Testar conexão**. Se o teste falhar com erro de certificado (por exemplo, `unable to get local issuer certificate`), atualize o pacote `ca-certificates` do servidor ou aponte `curl.cainfo` no `php.ini` para um bundle atualizado.
 4. No OpenLiteSpeed, faça um graceful restart para que os `.htaccess` sejam relidos (ver [SEGURANCA.md](SEGURANCA.md#5-acesso-web-direto-ao-diretório-do-addon)).
 
 O dashboard do addon avisa quando há versão nova. A checagem lê o `update.json` do repositório a cada 24 h, ou na hora, pelo botão **Verificar atualizações agora**.
@@ -30,8 +31,9 @@ O dashboard do addon avisa quando há versão nova. A checagem lê o `update.jso
 
 Comece pelo ambiente de **homologação** e valide as notas com a contabilidade antes de usar produção.
 
-1. **Ambiente e certificado**: ambiente (homologação/produção), caminho do certificado A1 e senha. A senha é gravada criptografada com o `encrypt` do WHMCS. Use **Revalidar certificado** e **Testar conexão**.
-2. **Prestador**: CNPJ, inscrição municipal (e se ela deve ser informada na DPS), código IBGE do município, regime tributário e dados de contato e endereço.
+1. **Ambiente e certificado**: ambiente (homologação/produção), **Leiaute da DPS**, caminho do certificado A1 e senha. A senha é gravada criptografada com o `encrypt` do WHMCS. Use **Revalidar certificado** e **Testar conexão**.
+   - Em **Leiaute da DPS**, mantenha **Automático**: ele segue a NT 009 (homologação já usa o leiaute novo; produção passa a usá-lo em 01/12/2026 00:00, horário de Brasília). A tela mostra o leiaute ativo. Só force **Pré-NT 009** ou **NT 009** se a SEFIN rejeitar a DPS com E1235 por leiaute; a mensagem de erro da nota indica o ajuste. Detalhes em [LEVANTAMENTO_API_NACIONAL.md](LEVANTAMENTO_API_NACIONAL.md#leiaute-da-dps-nt-009).
+2. **Prestador**: CNPJ, inscrição municipal (e se ela deve ser informada na DPS), código IBGE do município, regime tributário (o regime especial aceita `0` a `6` ou `9`) e dados de contato e endereço.
 3. **Tributação**: código de serviço (`cTribNac`), NBS padrão e alíquota de ISS. Os pares Serviço/NBS podem ser cadastrados no catálogo e mapeados por grupo de produto do WHMCS (ver [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_WHMCS.md)).
 4. **Tomador**: ID do custom field de cliente que guarda o CPF/CNPJ, número e bairro padrão e código IBGE padrão para quando o município não for encontrado.
 5. **Série DPS** e, se necessário, ajuste dos sequenciais em **Sequenciais**.
@@ -74,6 +76,12 @@ composer cs:fix        # correções automáticas (phpcbf)
 composer run scope     # reconstrói vendor-scoped/ com php-scoper
 ```
 
-Depois de alterar dependências, rode `composer run scope` para que `vendor-scoped/` reflita o `composer.lock`.
+Fluxo das dependências:
+
+1. `composer install` (ou `composer update`) instala a SDK no commit fixado no `composer.json`.
+2. Na mesma etapa, o `cweagans/composer-patches` aplica os patches de [`patches/`](../patches/) na SDK em `vendor/`. Se algum patch não aplicar, o Composer para.
+3. `composer run scope` gera o `vendor-scoped/` a partir do `vendor/` já com os patches.
+
+Depois de alterar dependências ou patches, rode `composer run scope` para que `vendor-scoped/` reflita o `composer.lock`. A versão da SDK e a lista de patches estão em [LEVANTAMENTO_SDK.md](LEVANTAMENTO_SDK.md#versão-e-patches).
 
 O script `scripts/import_municipios.php` importa o catálogo de municípios pela CLI. Aceita como argumento opcional uma URL ou um arquivo JSON local.
