@@ -657,6 +657,36 @@ final class QueueController
 
         $status = (string) ($row['status'] ?? '');
         $invoiceId = (int) ($row['invoiceid'] ?? 0);
+
+        // RUNNING travado: só reprocessa se nenhum lote estiver vivo (lock do cron livre), para não
+        // mexer num item que ainda está na vez de um lote lento. Ordem cron -> fatura, como no lote.
+        $cronLock = null;
+        $cronLockName = '';
+        if ($status === 'RUNNING') {
+            $cronLock = new CronLockService();
+            $cronLockName = $cronLock->cronLockName();
+            if (!$cronLock->acquire($cronLockName)) {
+                Module::ui()->renderError('Processamento da fila em andamento. Tente novamente em instantes.');
+                return;
+            }
+        }
+
+        try {
+            $this->resetItemForManualRetry($queueRepo, $row, $queueId, $status, $invoiceId);
+        } finally {
+            if ($cronLock !== null) {
+                $cronLock->release($cronLockName);
+            }
+        }
+    }
+
+    private function resetItemForManualRetry(
+        QueueRepository $queueRepo,
+        array $row,
+        int $queueId,
+        string $status,
+        int $invoiceId
+    ): void {
         $lock = new InvoiceLockService();
         if (!$lock->acquire($invoiceId)) {
             Module::ui()->renderError(InvoiceLockService::BUSY_MESSAGE);
