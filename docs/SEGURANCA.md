@@ -33,7 +33,6 @@ Documentar as regras de segurança operacionais do addon `Nfse`, os controles j�
 
 - XML/PDF persistidos pelo módulo são resolvidos via `StorageService::resolveAbsolutePath()`.
 - O caminho relativo persistido é limitado às áreas controladas do módulo em `attachments/nfse/...`.
-- O hook de e-mail só aceita `nfse_pdf_temp_path` dentro de `sys_get_temp_dir()`.
 
 ### 3. Certificado digital
 
