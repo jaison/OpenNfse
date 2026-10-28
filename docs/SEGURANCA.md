@@ -1,8 +1,8 @@
-# Segurança do Módulo NFS-e
+# Segurança do OpenNfse
 
 ## Objetivo
 
-Documentar as regras de segurança operacionais do addon `Nfse`, os controles já implementados e os cuidados que devem ser mantidos em novas evoluções.
+Documentar as regras de segurança operacionais do OpenNfse, os controles já implementados e os cuidados que devem ser mantidos em novas evoluções.
 
 ## Princípios adotados
 
@@ -17,28 +17,27 @@ Documentar as regras de segurança operacionais do addon `Nfse`, os controles j�
 
 ### 1. CSRF e método HTTP
 
-- O fallback do token CSRF em `TokenService` aceita apenas `$_POST['token']`.
+- O `TokenService` usa o `check_token()` do WHMCS quando disponível. O fallback aceita apenas `$_POST['token']`.
 - Downloads de XML/PDF na área do cliente e no admin usam `POST`, não links com token em URL.
-- Actions mutáveis do admin exigem `POST`, incluindo:
-  - emissão
-  - reemissão
-  - cancelamento
-  - fila (`filaCheckNow`, `filaRetry`)
-  - salvamento de configuração
-  - CRUD do catálogo Serviço/NBS
-  - sequenciais
-  - downloads e envio por e-mail
+- O roteador do admin (`AdminController::handle()`) declara para cada action o método HTTP e se ela exige token. Exigem `POST` e token, entre outras:
+  - emissão, reemissão, consulta de status e cancelamento (inclusive de XML órfão);
+  - fila (`filaCheckNow`, `filaRetry`, `filaProcessNow`);
+  - salvamento de configuração, DANFS-e, catálogo Serviço/NBS e mapeamento por grupo;
+  - validação de certificado, teste de conexão, sincronização IBGE e verificação de atualização;
+  - sequenciais;
+  - downloads, envio por e-mail, exportações CSV/ZIP e visualização detalhada de log.
+- Na área do cliente, `downloadXml`, `downloadPdf` e `sendEmail` exigem `POST`, token e que a fatura pertença ao cliente logado.
 
 ### 2. Proteção de arquivos
 
 - XML/PDF persistidos pelo módulo são resolvidos via `StorageService::resolveAbsolutePath()`.
 - O caminho relativo persistido é limitado às áreas controladas do módulo em `attachments/nfse/...`.
-- O hook de e-mail só aceita `nfse_pdf_temp_path` dentro de `sys_get_temp_dir()`.
+- Os anexos de e-mail são montados pelo serviço de e-mail a partir dos arquivos do módulo.
 
 ### 3. Certificado digital
 
 - O `certificate_path` continua livre, mas deve apontar para um arquivo real e legível.
-- O módulo bloqueia certificados localizados dentro do webroot.
+- O módulo bloqueia certificados localizados dentro do webroot (`DOCUMENT_ROOT`) ou do diretório do WHMCS.
 - Regra prática:
   - permitido: `/home/usuario/certs/certificado.pfx`
   - proibido: `/home/usuario/public_html/certificado.pfx`
@@ -192,9 +191,3 @@ Antes de colocar o módulo em produção:
 - Validar emissão, consulta, download XML, download PDF e envio por e-mail.
 - Confirmar que não existem links com `token=` expostos nas telas do módulo.
 - Revisar logs para garantir que não há vazamento desnecessário de dados sensíveis.
-
-## Itens ainda recomendados
-
-- Reduzir exposição de mensagens internas em erros administrativos.
-- Revisar o conteúdo persistido em logs para mascaramento adicional, se necessário.
-- Adicionar testes automatizados cobrindo POST-only, validação de paths e sanitização de SVG/XML.

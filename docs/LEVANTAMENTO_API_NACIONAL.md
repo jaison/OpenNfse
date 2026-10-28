@@ -1,132 +1,90 @@
-# Levantamento da API Nacional (NFS-e) para o módulo WHMCS
+# API Nacional da NFS-e no OpenNfse
 
-Este documento consolida o que o módulo precisa conhecer da API Nacional da NFS-e (padrão nacional), com foco nos fluxos de **Contribuinte/Emissor**: emissão, consulta e cancelamento.
+O que o módulo usa da API Nacional da NFS-e, no papel de **contribuinte/emissor**: emissão, consulta, cancelamento e distribuição de documentos. As chamadas passam pela SDK (ver [LEVANTAMENTO_SDK.md](LEVANTAMENTO_SDK.md)), e o comportamento do módulo diante de cada resposta está em [FLUXOS.md](FLUXOS.md).
 
-## Visão geral (DPS x NFS-e)
+## DPS e NFS-e
 
-- **DPS (Declaração de Prestação de Serviços)**: documento “de entrada” enviado pelo emissor. É o payload assinado (via certificado) que representa a prestação e seus dados (tomador, serviço, valores, tributação etc.).
-- **NFS-e**: documento fiscal resultante do processamento da DPS. Possui chave de acesso e XML próprio (`NFSe`), utilizado para:
-  - download/armazenamento do XML;
-  - consulta pública por chave;
-  - geração do DANFSe (PDF).
+- **DPS (Declaração de Prestação de Serviços)**: documento enviado pelo emissor, assinado com o certificado A1. Leva prestador, tomador, serviço, valores e tributação. É identificada pelo `Id` (`id_dps`), formado a partir de CNPJ, município, série e número sequencial.
+- **NFS-e**: documento fiscal gerado pela API a partir da DPS. Tem chave de acesso e XML próprio, que o módulo guarda e usa para listagens, relatórios e geração do DANFS-e.
 
 No módulo:
-- A DPS é montada usando DTOs da SDK em [DpsBuilderService](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/src/Nfse/Services/DpsBuilderService.php).
-- A NFS-e (XML) retornada é armazenada e usada como fonte de dados para listagem e PDF.
 
-## Ambientes e regras de homologação
+- a DPS é montada em [`src/Services/DpsBuilderService.php`](../src/Services/DpsBuilderService.php);
+- o número da DPS vem de `mod_opennfse_sequences`, por ambiente, CNPJ e série;
+- o XML da NFS-e é salvo por `StorageService` em `attachments/nfse/xml/{ambiente}/{serie}/{ano}/{mes}/`.
 
-- A operação inicia em homologação e não deve impactar produção.
-- O ambiente é controlado pelo campo `tpAmb` na DPS:
-  - `1` = Produção
-  - `2` = Homologação (produção restrita)
-- No módulo:
-  - `tpAmb` é definido a partir da configuração em [DpsBuilderService::build()](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/src/Nfse/Services/DpsBuilderService.php#L16-L17).
-  - O ambiente também define o endpoint no `NfseContext` (via SDK).
+## Ambientes
 
-## Fluxo completo de emissão (visão funcional)
+| `tpAmb` | Ambiente | Configuração (`environment`) |
+|---|---|---|
+| `1` | Produção | `producao` |
+| `2` | Homologação (produção restrita) | `homologacao` |
 
-1. O operador (admin) solicita emissão para uma fatura (invoice).
-2. O módulo:
-   - lê configuração do emissor;
-   - lê invoice e itens;
-   - lê dados do cliente e documento (CPF/CNPJ);
-   - monta DPS (com `Id`, `tpAmb`, `dhEmi`, `dCompet`, `prest`, `toma`, `serv`, `valores` etc.).
-3. A SDK envia a DPS para a API (autenticada/assinada via A1).
-4. A API pode:
-   - retornar imediatamente a NFS-e (com XML);
-   - ou retornar um estado intermediário, exigindo consultas posteriores (via consulta de DPS e/ou consulta de NFS-e).
-5. O módulo persiste:
-   - `id_dps` (Id da DPS)
-   - `chave_acesso` (quando disponível)
-   - `status` interno
-   - `xml_path` (quando houver XML)
-   - logs request/response
+O ambiente define o `tpAmb` da DPS e do evento de cancelamento e o `TipoAmbiente` passado à SDK, que resolve o endpoint. A sequência de DPS e a pasta de XMLs são separadas por ambiente. Em homologação, o DANFS-e recebe o aviso "NFS-e SEM VALIDADE JURÍDICA".
 
-## Fluxo completo de consulta
+Diferenças práticas: homologação pode ter validações e tempos de resposta diferentes de produção, e as notas emitidas lá não têm valor fiscal. Comece sempre por homologação.
 
-O módulo possui duas estratégias:
+## Operações usadas
 
-### 1) Consultar NFS-e por chave de acesso
+| Operação | Quando o módulo usa |
+|---|---|
+| Emitir NFS-e a partir da DPS | Emissão, reemissão, reenvio da mesma DPS após indisponibilidade e reemissão após E2404. |
+| Consultar NFS-e pela chave de acesso | Consulta de status quando a nota já tem chave: obtém o XML. |
+| Consultar DPS pelo `Id` | Consulta de status sem chave (obtém a chave), auditoria DPS > API, cancelamento de XML órfão sem chave e teste de conexão. |
+| Registrar evento (cancelamento 101101) | Cancelamento pelo admin e de XML órfão. |
+| Distribuição de DF-e por NSU | Auditoria API (`ApiAuditService::syncByNsu()`). |
 
-Quando existe `chave_acesso`:
-- consulta a NFS-e por chave;
-- se houver XML, armazena/atualiza o XML.
+### Emissão
 
-### 2) Consultar DPS por Id (para obter chave)
+1. O módulo valida configuração, fatura e tomador e monta a DPS.
+2. A SDK envia a DPS assinada.
+3. A API pode devolver a NFS-e na hora (chave e XML) ou responder sem o documento final, e então o resultado vem pelas consultas seguintes.
+4. O módulo grava `id_dps`, `chave_acesso`, status interno, `xml_path`, número, competência e data de emissão, além dos logs de request e response.
 
-Quando ainda não existe `chave_acesso`, mas existe `id_dps`:
-- consulta a DPS para descobrir `chave_acesso`;
-- quando obtém a chave, passa a consultar a NFS-e.
+### Consulta
 
-Referência do fluxo MVP no projeto:
-- [FLUXOS.md](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/docs/FLUXOS.md)
+- **Com chave de acesso**: consulta a NFS-e e salva o XML retornado.
+- **Sem chave, com `id_dps`**: consulta a DPS para obter a chave. Depois disso, a próxima consulta usa a chave.
 
-## Fluxo completo de cancelamento
+### Cancelamento (evento 101101)
 
-Premissas:
-- Cancelamento é um **evento** associado a uma NFS-e emitida.
-- O módulo usa o fluxo suportado pela SDK (que encapsula as chamadas de evento).
+Regras aplicadas pelo módulo antes de enviar:
 
-No módulo (regra de negócio já aplicada):
-- `xDesc` do evento 101101 deve ser fixo: “Cancelamento de NFS-e”.
-- `cMotivo` permitido: `1`, `2` ou `9`.
-- `xMotivo` deve cumprir tamanho mínimo/máximo; o módulo compõe a partir de motivo + descrição quando necessário.
+- só para nota `EMITIDA` com chave;
+- `cMotivo`: `1`, `2` ou `9` (o `3` é convertido para `9`);
+- `xMotivo`: de 15 a 255 caracteres, composto como "motivo - descrição";
+- `xDesc` fixo: "Cancelamento de NFS-e";
+- autor do evento: o CNPJ do emissor configurado.
 
-## Estados possíveis do processamento
+O XML do evento devolvido pela API (`eventoXmlGZipB64`) é salvo como `cancelamento_nfse_{numero}_{invoiceid}_{data}.xml`.
 
-A API possui estados/códigos próprios (por exemplo `cStat` no XML de NFS-e).
-O módulo mantém um status interno padronizado para operação:
+## Respostas tratadas de forma especial
 
-- `PROCESSANDO`: DPS enviada e ainda sem XML final/estado definitivo.
-- `EMITIDA`: XML disponível e/ou chave de acesso registrada.
-- `REJEITADA`: rejeição por regra/validação.
-- `ERRO`: falha técnica/transitória (transporte, timeout, exceção, parsing etc.).
+- **Indisponibilidade transitória** (503, timeout, falha de conexão): na emissão, a nota fica `PROCESSANDO` e a mesma DPS é reenviada, com o mesmo `id_dps`, na consulta seguinte. Na consulta, o status atual é preservado.
+- **E2404** ("não foi gerada uma NFS-e com o identificador de DPS informado"), na consulta da DPS: o módulo reenvia a mesma DPS até 2 vezes antes de marcar `ERRO`.
+- Demais erros da API na emissão → `REJEITADA`. Erros técnicos → `ERRO`.
 
-Definição em docs:
-- [ARQUITETURA.md](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/docs/ARQUITETURA.md#L47-L53)
+Detalhes em [FLUXOS.md](FLUXOS.md#indisponibilidade-da-api-503-e-timeout).
 
-## Campos obrigatórios e opcionais (DPS) — visão prática do módulo
+## Status interno x API
 
-O módulo valida e preenche o mínimo para emissão conforme a configuração atual.
+A API tem códigos próprios (mensagens e códigos `E...`). O módulo resume o estado em `PROCESSANDO`, `EMITIDA`, `REJEITADA`, `ERRO` e `CANCELADA` (ver [ARQUITETURA.md](ARQUITETURA.md#status-internos)). A mensagem da API fica em `mod_opennfse_notas.erro_api` (ou `cancel_erro`) e, completa, em `mod_opennfse_logs`.
 
-Campos que o módulo trata explicitamente como necessários (validações):
-- CNPJ do emissor (14 dígitos)
-- Código IBGE do município (7 dígitos)
-- Inscrição Municipal (quando configurado para informar IM)
-- Código do serviço (`cTribNac`)
-- Alíquota/configuração de tributação (com regras conforme Simples Nacional)
-- E-mail do tomador
-- Total da fatura > 0
+## Campos da DPS preenchidos pelo módulo
 
-Campos preenchidos na DPS (principais, conforme implementação):
-- Identificação:
-  - `tpAmb`, `dhEmi`, `verAplic`, `serie`, `nDPS`, `dCompet`, `tpEmit`, `cLocEmi`
-- Prestador:
-  - `CNPJ`, opcionalmente `IM`, `email`, `fone`, `regTrib`, e endereço (dependendo do `tpEmit`)
-- Tomador:
-  - `CPF`/`CNPJ`, `xNome`, `email`, `end/endNac` quando CEP disponível
-- Serviço:
-  - `locPrest/cLocPrestacao`, `cServ/cTribNac`, `cServ/xDescServ`
-- Valores/Tributação:
-  - `valores/vServPrest/vServ`, `valores/trib/tribMun/*`, `totTrib` conforme regime
+Visão prática do `DpsBuilderService` atual. O leiaute oficial está nos schemas da SDK.
 
-Fonte (implementação):
-- [DpsBuilderService.php](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/src/Nfse/Services/DpsBuilderService.php)
+- **Identificação**: `tpAmb`, `dhEmi`, `verAplic`, `serie`, `nDPS`, `dCompet` (data da emissão), `tpEmit = 1` (prestador) e `cLocEmi`.
+- **Prestador** (`prest`): `CNPJ`, `IM` (quando configurado para informar), `fone` e `email` (quando preenchidos) e `regTrib` (`opSimpNac`, `regApTribSN`, `regEspTrib`). Como `tpEmit = 1`, nome e endereço do prestador não são enviados.
+- **Tomador** (`toma`):
+  - Brasil: `CPF` ou `CNPJ` (custom field), `xNome`, `email` e, quando há CEP, `end/endNac` (`cMun` resolvido pelo catálogo IBGE ou pelo padrão configurado) com `xLgr`, `nro`, `xCpl` e `xBairro`;
+  - exterior: `cNaoNIF = 2`, `xNome`, `email` e `end/endExt` (`cPais`, `cEndPost`, `xCidade`, `xEstProvReg`).
+- **Serviço** (`serv`): `locPrest/cLocPrestacao`, `cServ/cTribNac`, `cServ/cNBS` e `cServ/xDescServ` (descrição montada com o número da fatura e os itens, limitada a 1900 caracteres). Para tomador no exterior, também `comExt`, com `tpMoeda` mapeado da moeda do cliente e `vServMoeda`.
+- **Valores**: `vServPrest/vServ` (total da fatura), `trib/tribMun` (`tribISSQN`, `tpRetISSQN`, `pAliq` conforme o regime do Simples) e `trib/totTrib`.
 
-## Diferenças entre homologação e produção (impactos no módulo)
+Validações feitas antes do envio (`EmissionPreValidationService` e `DpsBuilderService`): certificado configurado e existente, CNPJ com 14 dígitos, código IBGE com 7 dígitos, série, código de serviço, IM quando exigida, opção do Simples Nacional, total maior que zero, fatura com itens, nome, e-mail, país e documento do tomador, endereço completo do tomador no exterior, NBS com 9 dígitos e NBS obrigatória para tomador no exterior.
 
-- `tpAmb` muda (1/2).
-- Endpoint muda (homologação vs produção), resolvido pela SDK.
-- Na prática, homologação pode:
-  - ter regras adicionais de validação;
-  - exigir dados consistentes “de teste”;
-  - apresentar respostas e tempos de processamento diferentes.
+## Referências
 
-## Fontes de referência dentro do repositório
-
-- OpenAPI (contratos) embarcados na SDK (homologação/produção):
-  - `modules/addons/Nfse/vendor/nfse-nacional/nfse-php/references/api-specs/`
-- Schemas XML (DPS, NFSe, Eventos):
-  - `modules/addons/Nfse/vendor/nfse-nacional/nfse-php/references/schemas/`
-
+- Contratos OpenAPI (homologação e produção), schemas XSD e manuais oficiais embarcados na SDK: [`vendor-scoped/nfse-nacional/nfse-php/references/`](../vendor-scoped/nfse-nacional/nfse-php/references/)
+- SDK: <https://github.com/nfse-nacional/nfse-php>
