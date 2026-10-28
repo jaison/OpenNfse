@@ -152,11 +152,22 @@ final class NfseService
             $status = $isTransientOutage
                 ? 'PROCESSANDO'
                 : ($result->errorType === 'tech' ? 'ERRO' : 'REJEITADA');
+            $erroApi = $result->errorMessage;
+            $layoutEnviado = ($dps->infDps->finalidadeNfse ?? null) !== null
+                ? DpsLayoutService::LAYOUT_NT009
+                : DpsLayoutService::LAYOUT_PRE_NT009;
+            $layoutHint = DpsLayoutService::layoutRejectionHint(
+                (string) ($erroApi ?? $result->rawResponse ?? ''),
+                $layoutEnviado
+            );
+            if ($layoutHint !== null) {
+                $erroApi = $layoutHint . ' Detalhe: ' . (string) $erroApi;
+            }
             $notaRepo->upsert([
                 'invoiceid' => $invoiceId,
                 'userid' => $userId,
                 'status' => $status,
-                'erro_api' => $result->errorMessage,
+                'erro_api' => $erroApi,
                 'id_dps' => $idDps,
                 'protocolo' => $idDps,
             ]);

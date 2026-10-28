@@ -16,6 +16,7 @@ use OpenNfse\Repositories\ServiceNbsCatalogRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
 use OpenNfse\Repositories\WhmcsPaymentGatewayRepository;
 use OpenNfse\Services\CryptoService;
+use OpenNfse\Services\DpsLayoutService;
 use OpenNfse\Services\IbgeService;
 use OpenNfse\Services\InvoiceEmailService;
 use OpenNfse\Services\NfseService;
@@ -30,6 +31,9 @@ use OpenNfse\Controllers\Support\AdminHelpersTrait;
 final class ConfigController
 {
     use AdminHelpersTrait;
+
+    /** Valores aceitos pelo TSRegEspTrib do leiaute nacional 1.01. */
+    private const REG_ESP_TRIB_VALIDOS = ['0', '1', '2', '3', '4', '5', '6', '9'];
 
     private SequenciaisController $sequenciaisController;
 
@@ -299,7 +303,16 @@ final class ConfigController
             'homologacao' => 'Homologação',
             'producao' => 'Produção',
         ], $config['environment'] ?? 'homologacao');
+        $this->renderSelectRow(
+            'dps_leiaute',
+            'Leiaute da DPS',
+            DpsLayoutService::modeOptions(),
+            DpsLayoutService::normalizeMode((string) ($config['dps_leiaute'] ?? DpsLayoutService::MODE_AUTO))
+        );
         $this->renderConfigFormTableEnd();
+        echo '<div class="nfse-config-note" style="padding:0 16px 14px 16px;">Leiaute ativo agora: <strong>'
+            . htmlspecialchars((new DpsLayoutService())->describe($config), ENT_QUOTES, 'UTF-8')
+            . '</strong>. Depois de mudar o ambiente ou o leiaute, salve para atualizar esta informação.</div>';
         $this->renderConfigSectionEnd();
         $this->renderConfigSectionStart('Certificado digital', 'Defina o arquivo A1 e a senha utilizados nas chamadas à API. Esses dados são críticos para a autenticação do emissor.');
         $this->renderConfigFormTableStart();
@@ -626,7 +639,11 @@ $this->renderTextRow('queue_wait_status_interval_seconds', 'Intervalo de consult
             '1' => '1 - Apura pelo SN',
             '2' => '2 - Apura fora do SN',
         ], (string) ($config['prestador_reg_ap_trib_sn'] ?? ''));
-        $this->renderTextRow('prestador_reg_esp_trib', 'Regime Especial (0=Nenhum, 1..)', $config['prestador_reg_esp_trib'] ?? '0');
+        $this->renderTextRow(
+            'prestador_reg_esp_trib',
+            'Regime Especial (0 a 6 ou 9)',
+            $config['prestador_reg_esp_trib'] ?? '0'
+        );
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
         echo '</div>';
@@ -693,6 +710,7 @@ $this->renderTextRow('queue_wait_status_interval_seconds', 'Intervalo de consult
     {
         $existingConfig = (new ConfigRepository())->get();
         $environment = (string) ($_POST['environment'] ?? '');
+        $dpsLeiaute = trim((string) ($_POST['dps_leiaute'] ?? DpsLayoutService::MODE_AUTO));
         $activeConfigTab = trim((string) ($_POST['active_config_tab'] ?? 'ambiente'));
         $certificatePath = (string) ($_POST['certificate_path'] ?? '');
         $certificatePassword = (string) ($_POST['certificate_password'] ?? '');
@@ -737,6 +755,9 @@ $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '
         $errors = [];
         if ($environment !== 'homologacao' && $environment !== 'producao') {
             $errors[] = 'Ambiente inválido.';
+        }
+        if (!DpsLayoutService::isValidMode($dpsLeiaute)) {
+            $errors[] = 'Leiaute da DPS inválido.';
         }
         if ($certificatePath === '') {
             $errors[] = 'Informe o caminho do certificado.';
@@ -805,8 +826,12 @@ $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '
         if ($prestadorRegEspTrib === '') {
             $prestadorRegEspTrib = '0';
         }
-        if (!ctype_digit($prestadorRegEspTrib)) {
-            $errors[] = 'Regime especial inválido.';
+        $prestadorRegEspTrib = trim($prestadorRegEspTrib);
+        if (!in_array($prestadorRegEspTrib, self::REG_ESP_TRIB_VALIDOS, true)) {
+            $errors[] = 'Regime especial inválido: use 0 (Nenhum), 1 (Ato Cooperado), 2 (Estimativa), '
+                . '3 (Microempresa Municipal), 4 (Notário ou Registrador), 5 (Profissional Autônomo), '
+                . '6 (Sociedade de Profissionais) ou 9 (Outros). '
+                . 'Os valores 7, 8 e 10 não existem no leiaute nacional e a nota seria rejeitada.';
         }
         if (!in_array($queueEnabled, ['0', '1'], true)) {
             $errors[] = 'Opção inválida para fila/cron.';
@@ -885,6 +910,7 @@ if ($autoEmitOnPayment === '1' && $queueEnabled !== '1') {
 
         $repo->save([
             'environment' => $environment,
+            'dps_leiaute' => $dpsLeiaute,
             'certificate_path' => $certificatePath,
             'certificate_password_enc' => $passwordEnc,
             'cnpj_emissor' => $cnpjEmissor,
