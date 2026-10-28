@@ -15,7 +15,7 @@ use OpenNfse\Repositories\WhmcsInvoiceRepository;
 
 final class QueueService
 {
-    private const MAX_TENTATIVAS = 5;
+    private const MAX_TENTATIVAS = QueueStatePolicy::MAX_TENTATIVAS;
 
     public function enqueueEmit(int $invoiceId, string $tipoLog, ?bool $allowUnpaid = null): bool
     {
@@ -62,6 +62,10 @@ if (empty($config)) {
             return;
         }
 
+        // Roda sob o lock do cron (CronService e "Processar fila agora"), então nenhum
+        // outro lote está em andamento: um RUNNING antigo é de processo que morreu.
+        $this->recoverStaleRunningItems();
+
         $resolvedLegacy = (new QueueRepository())->resolveErrorsForIssuedInvoices(100);
         if ($resolvedLegacy > 0) {
             (new LogRepository())->insert(
@@ -82,6 +86,69 @@ if (empty($config)) {
 
         $this->processStatusBatch($limit, $waitInterval);
         $this->processEmissaoBatch($limit, $waitInterval, $config);
+    }
+
+    /**
+     * Devolve à fila os itens presos em RUNNING há mais de QueueStatePolicy::RUNNING_STALE_SECONDS.
+     * Itens com DPS já enviada vão para WAIT_STATUS (continuam "em voo", preservando a ordem
+     * sequencial); os demais voltam para PENDING, e o claim seguinte reavalia a nota.
+     */
+    public function recoverStaleRunningItems(): int
+    {
+        $queueRepo = new QueueRepository();
+        $now = time();
+        $cutoff = date('Y-m-d H:i:s', $now - QueueStatePolicy::RUNNING_STALE_SECONDS);
+        $rows = $queueRepo->findStaleRunning($cutoff);
+        if (empty($rows)) {
+            return 0;
+        }
+
+        $notaRepo = new NotaRepository();
+        $logRepo = new LogRepository();
+        $recovered = 0;
+
+        foreach ($rows as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            $invoiceId = (int) ($row['invoiceid'] ?? 0);
+            $since = QueueStatePolicy::runningSince($row);
+            if ($id <= 0 || !QueueStatePolicy::isRunningStale($since, $now)) {
+                continue;
+            }
+
+            $nota = $invoiceId > 0 ? $notaRepo->findByInvoiceId($invoiceId) : null;
+            $tentativas = (int) ($row['tentativas'] ?? 0);
+            $target = QueueStatePolicy::recoveryTargetStatus($nota, $tentativas);
+            $message = sprintf(
+                'Item recuperado automaticamente após ficar em RUNNING desde %s (processo interrompido).',
+                (string) $since
+            );
+            if ($target === 'ERROR') {
+                $message .= ' Tentativas automáticas esgotadas.';
+            }
+
+            if (!$queueRepo->recoverStaleRunning($id, $target, $message)) {
+                continue;
+            }
+
+            $recovered++;
+            $correlationId = trim((string) ($row['correlation_id'] ?? ''));
+            $logRepo->insert(
+                $nota ? (int) ($nota['id'] ?? 0) : null,
+                'QUEUE_RUNNING_RECOVERED',
+                json_encode([
+                    'queue_id' => $id,
+                    'invoiceid' => $invoiceId,
+                    'running_since' => $since,
+                    'tentativas' => $tentativas,
+                    'nota_status' => $nota['status'] ?? null,
+                    'novo_status' => $target,
+                ], JSON_UNESCAPED_UNICODE),
+                $message,
+                $correlationId !== '' ? $correlationId : null
+            );
+        }
+
+        return $recovered;
     }
 
     private function processEmissaoBatch(int $limit, int $waitIntervalSeconds, array $config): void
