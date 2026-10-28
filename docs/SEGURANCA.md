@@ -33,6 +33,7 @@ Documentar as regras de segurança operacionais do OpenNfse, os controles já im
 - XML/PDF persistidos pelo módulo são resolvidos via `StorageService::resolveAbsolutePath()`.
 - O caminho relativo persistido é limitado às áreas controladas do módulo em `attachments/nfse/...`.
 - Os anexos de e-mail são montados pelo serviço de e-mail a partir dos arquivos do módulo.
+- Quando o `xml_path` salvo não resolve, o módulo só usa um XML da própria fatura (ID exato no nome do arquivo) cujo conteúdo (chave de acesso e/ou número da NFS-e) confere com a nota.
 
 ### 3. Certificado digital
 
@@ -154,6 +155,16 @@ Resultado esperado: `403` (ou `404`) para todos, exceto `assets/nfse-ui.css` e `
 
 Atrás do Cloudflare, confira também o cabeçalho `cf-cache-status` (`curl -sI`). Se um arquivo bloqueado ainda responder 200 com `HIT`, a resposta veio do cache: faça um purge no Cloudflare e teste de novo.
 
+### 6. Comunicação com a API Nacional
+
+- As chamadas à SEFIN, ao ADN e ao CNC usam HTTPS com autenticação pelo certificado A1 do emissor e verificam o certificado TLS do servidor (cadeia e nome).
+- A verificação usa o pacote de CAs do sistema (`ca-certificates`) ou o bundle apontado por `curl.cainfo` no `php.ini`. Mantenha esse pacote atualizado.
+- Endpoints municipais que usam outro nome são acessados pelo nome que consta no certificado, com o IP fixado na própria requisição, sem desligar a verificação.
+- Timeouts: 10s para conectar e 60s no total por requisição.
+- Use **Testar conexão** depois de instalar ou atualizar. Se falhar com erro de certificado (por exemplo, `unable to get local issuer certificate`), atualize as CAs do servidor.
+
+Detalhes em [LEVANTAMENTO_SDK.md](LEVANTAMENTO_SDK.md#rede-tls-e-timeouts).
+
 ## Diretrizes para desenvolvimento
 
 ### Novas actions
@@ -188,6 +199,7 @@ Antes de colocar o módulo em produção:
 - Confirmar que o certificado A1 está fora do webroot.
 - Confirmar que o acesso web direto ao diretório do addon está bloqueado (seção 5).
 - Confirmar permissões corretas em `attachments/`.
+- Rodar **Testar conexão** e confirmar que a verificação TLS passa com as CAs do servidor (seção 6).
 - Validar emissão, consulta, download XML, download PDF e envio por e-mail.
 - Confirmar que não existem links com `token=` expostos nas telas do módulo.
 - Revisar logs para garantir que não há vazamento desnecessário de dados sensíveis.
