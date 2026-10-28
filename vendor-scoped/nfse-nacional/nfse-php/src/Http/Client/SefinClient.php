@@ -43,10 +43,7 @@ class SefinClient implements SefinNacionalInterface
     }
     private function createHttpClient(): Client
     {
-        return new Client(['base_uri' => rtrim($this->baseUrl, '/') . '/', 'handler' => Retry::stack(), 'curl' => [
-            \CURLOPT_SSLCERTTYPE => 'P12',
-            \CURLOPT_SSLCERT => $this->resolveCertificatePath(),
-            \CURLOPT_SSLCERTPASSWD => $this->context->certificatePassword,
+        $curlOptions = [
             \CURLOPT_IPRESOLVE => \CURL_IPRESOLVE_V4,
             // Com o Retry (3 tentativas), um host inacessível segura a requisição
             // por até 3x o connect timeout; 10s basta para o handshake.
@@ -56,7 +53,16 @@ class SefinClient implements SefinNacionalInterface
             // Endpoints municipais publicados por IP: o nome do certificado é fixado
             // no IP original para que a verificação de host funcione.
             \CURLOPT_RESOLVE => SefinEndpointResolver::pinnedHosts(),
-        ], RequestOptions::HEADERS => ['Content-Type' => 'application/json', 'Accept' => 'application/json']]);
+        ];
+        if ($this->context->nssCertificateSelector !== null) {
+            $curlOptions[\CURLOPT_SSLCERTTYPE] = 'ENG';
+            $curlOptions[\CURLOPT_SSLCERT] = $this->context->nssCertificateSelector;
+        } else {
+            $curlOptions[\CURLOPT_SSLCERTTYPE] = 'P12';
+            $curlOptions[\CURLOPT_SSLCERT] = $this->resolveCertificatePath();
+            $curlOptions[\CURLOPT_SSLCERTPASSWD] = $this->context->certificatePassword;
+        }
+        return new Client(['base_uri' => rtrim($this->baseUrl, '/') . '/', 'handler' => Retry::stack(), 'curl' => $curlOptions, RequestOptions::HEADERS => ['Content-Type' => 'application/json', 'Accept' => 'application/json']]);
     }
     private function post(string $endpoint, array $data): array
     {
@@ -131,8 +137,8 @@ class SefinClient implements SefinNacionalInterface
         return array_map(fn($m) => new MensagemProcessamentoDto(mensagem: $m['mensagem'] ?? $m['Mensagem'] ?? null, parametros: $m['parametros'] ?? $m['Parametros'] ?? null, codigo: $m['codigo'] ?? $m['Codigo'] ?? null, descricao: $m['descricao'] ?? $m['Descricao'] ?? null, complemento: $m['complemento'] ?? $m['Complemento'] ?? null), $mensagens);
     }
     /**
-     * @param  \Exception|GuzzleException  $e
      * @return mixed
+     *
      * @throws NfseApiException
      */
     private function handleException(\Exception|GuzzleException $e)

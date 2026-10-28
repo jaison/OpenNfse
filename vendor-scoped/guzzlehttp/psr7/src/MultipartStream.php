@@ -20,8 +20,9 @@ final class MultipartStream implements StreamInterface
      * @param array       $elements Array of associative arrays, each containing a
      *                              required "name" key mapping to the form field,
      *                              name, a required "contents" key mapping to any
-     *                              non-array value accepted by Utils::streamFor(),
-     *                              or an array for nested expansion.
+     *                              non-array value accepted by Utils::streamFor()
+     *                              (non-string scalar field values are cast to
+     *                              string), or an array for nested expansion.
      *                              Optional keys include "headers" (associative
      *                              array of custom headers) and "filename" (string
      *                              to send as the filename in the part).
@@ -62,7 +63,7 @@ final class MultipartStream implements StreamInterface
             $key = (string) $key;
             $str .= "{$key}: {$value}\r\n";
         }
-        return "--{$this->boundary}\r\n" . trim($str) . "\r\n\r\n";
+        return "--{$this->boundary}\r\n" . trim($str, " \n\r\t\x00\v") . "\r\n\r\n";
     }
     /**
      * Create the aggregate stream that will be used to upload the POST data
@@ -97,7 +98,21 @@ final class MultipartStream implements StreamInterface
             $this->addNestedElements($stream, $element['contents'], (string) $element['name']);
             return;
         }
-        $element['contents'] = \GuzzleHttp\Psr7\Utils::streamFor($element['contents']);
+        $contents = $element['contents'];
+        if (is_scalar($contents) && !is_string($contents)) {
+            // Multipart field values are byte strings on the wire, so finite
+            // numeric and boolean field values are cast to string here rather
+            // than tripping streamFor()'s non-string-scalar deprecation. Non-finite
+            // floats are deprecated and normalized here too, so the deprecation is
+            // reported against MultipartStream instead of transitively through
+            // streamFor().
+            if (is_float($contents) && !is_finite($contents)) {
+                \OpenNfseVendor\trigger_deprecation('guzzlehttp/psr7', '2.12', 'Passing a non-finite float as multipart contents is deprecated; guzzlehttp/psr7 3.0 rejects non-finite floats.');
+                $contents = is_nan($contents) ? 'NAN' : ($contents > 0 ? 'INF' : '-INF');
+            }
+            $contents = (string) $contents;
+        }
+        $element['contents'] = \GuzzleHttp\Psr7\Utils::streamFor($contents);
         if (empty($element['filename'])) {
             $uri = $element['contents']->getMetadata('uri');
             if ($uri && \is_string($uri) && \substr($uri, 0, 6) !== 'php://' && \substr($uri, 0, 7) !== 'data://') {
@@ -157,9 +172,9 @@ final class MultipartStream implements StreamInterface
      */
     private static function getHeader(array $headers, string $key): ?string
     {
-        $lowercaseHeader = strtolower($key);
+        $lowercaseHeader = \GuzzleHttp\Psr7\Utils::asciiToLower($key);
         foreach ($headers as $k => $v) {
-            if (strtolower((string) $k) === $lowercaseHeader) {
+            if (\GuzzleHttp\Psr7\Utils::asciiToLower((string) $k) === $lowercaseHeader) {
                 return $v;
             }
         }

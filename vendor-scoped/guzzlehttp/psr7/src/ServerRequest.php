@@ -129,7 +129,7 @@ class ServerRequest extends \GuzzleHttp\Psr7\Request implements ServerRequestInt
      */
     public static function fromGlobals(): ServerRequestInterface
     {
-        $method = strtoupper(self::getServerParam('REQUEST_METHOD') ?? 'GET');
+        $method = \GuzzleHttp\Psr7\Utils::asciiToUpper(self::getServerParam('REQUEST_METHOD') ?? 'GET');
         $headers = self::removeInvalidHostHeader(self::getAllHeaders());
         $uri = self::getUriFromGlobals();
         $body = new \GuzzleHttp\Psr7\CachingStream(new \GuzzleHttp\Psr7\LazyOpenStream('php://input', 'r+'));
@@ -172,7 +172,7 @@ class ServerRequest extends \GuzzleHttp\Psr7\Request implements ServerRequestInt
     private static function removeInvalidHostHeader(array $headers): array
     {
         foreach ($headers as $name => $value) {
-            if (strtolower((string) $name) !== 'host') {
+            if (\GuzzleHttp\Psr7\Utils::asciiToLower((string) $name) !== 'host') {
                 continue;
             }
             if (\GuzzleHttp\Psr7\Rfc7230::parseHostHeader($value) === null) {
@@ -213,7 +213,7 @@ class ServerRequest extends \GuzzleHttp\Psr7\Request implements ServerRequestInt
             $uri = $uri->withHost($serverAddr);
         }
         $serverPort = self::getServerParam('SERVER_PORT');
-        if (!$hasPort && $serverPort !== null && preg_match('/^[+-]?\d+$/', $serverPort) === 1) {
+        if (!$hasPort && $serverPort !== null && preg_match('/^[+-]?\d+$/D', $serverPort) === 1) {
             $uri = $uri->withPort((int) $serverPort);
         }
         $hasQuery = \false;

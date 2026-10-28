@@ -3,7 +3,6 @@
 namespace OpenNfseVendor\GuzzleHttp\Handler;
 
 use OpenNfseVendor\GuzzleHttp\TransportSharing;
-use OpenNfseVendor\GuzzleHttp\Utils;
 /**
  * @internal
  */
@@ -56,7 +55,7 @@ final class CurlShareHandleState
         if ($sharing === TransportSharing::HANDLER_PREFER || $sharing === TransportSharing::HANDLER_REQUIRE) {
             return $sharing;
         }
-        throw new \InvalidArgumentException(\sprintf('The "%s" option must be null or a GuzzleHttp\TransportSharing::* constant; received %s.', $option, Utils::describeType($sharing)));
+        throw new \InvalidArgumentException(\sprintf('The "%s" option must be null or a GuzzleHttp\TransportSharing::* constant; received %s.', $option, \get_debug_type($sharing)));
     }
     public static function assertNoRequiredSharingCustomFactoryConflict(array $options, string $handlerName): void
     {
@@ -84,7 +83,7 @@ final class CurlShareHandleState
         }
         self::requireCurlConstant('CURLOPT_SHARE');
         $shareOption = self::requireCurlConstant('CURLSHOPT_SHARE');
-        $locks = self::handlerLocks();
+        $locks = self::handlerLocks($mode);
         $handle = curl_share_init();
         try {
             foreach ($locks as $lock) {
@@ -106,9 +105,17 @@ final class CurlShareHandleState
     /**
      * @return int[]
      */
-    private static function handlerLocks(): array
+    private static function handlerLocks(string $mode): array
     {
-        return [self::requireCurlConstant('CURL_LOCK_DATA_DNS'), self::requireCurlConstant('CURL_LOCK_DATA_SSL_SESSION')];
+        CurlVersion::ensureHandlerSharingSupported();
+        if ($mode === TransportSharing::HANDLER_REQUIRE) {
+            CurlVersion::ensureSslSessionSharingSupported();
+        }
+        $locks = [self::requireCurlConstant('CURL_LOCK_DATA_DNS')];
+        if (CurlVersion::supportsSslSessionSharing()) {
+            $locks[] = self::requireCurlConstant('CURL_LOCK_DATA_SSL_SESSION');
+        }
+        return $locks;
     }
     private static function requireCurlConstant(string $constant): int
     {

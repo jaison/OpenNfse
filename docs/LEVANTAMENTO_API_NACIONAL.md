@@ -107,5 +107,5 @@ Validações feitas antes do envio (`EmissionPreValidationService` e `DpsBuilder
 
 ## Referências
 
-- Contratos OpenAPI (homologação e produção), schemas XSD e manuais oficiais embarcados na SDK: [`vendor-scoped/nfse-nacional/nfse-php/references/`](../vendor-scoped/nfse-nacional/nfse-php/references/)
+- Contratos OpenAPI (homologação e produção), schemas XSD e manuais oficiais mantidos pela SDK: [`references/`](https://github.com/nfse-nacional/nfse-php/tree/main/references) no repositório da SDK (e em `vendor/nfse-nacional/nfse-php/references/` depois do `composer install`; não vão para o `vendor-scoped/`)
 - SDK: <https://github.com/nfse-nacional/nfse-php>
