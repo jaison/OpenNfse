@@ -54,7 +54,7 @@ final class QueueRepository
         }
 
         $now = date('Y-m-d H:i:s');
-        Capsule::table('mod_opennfse_queue')->insert([
+        $row = [
             'invoiceid' => $invoiceId,
             'correlation_id' => $correlationId,
             'status' => 'PENDING',
@@ -65,8 +65,12 @@ final class QueueRepository
             'last_error' => null,
             'status_checks' => 0,
             'next_check_at' => null,
-            'allow_unpaid' => $allowUnpaid === null ? null : ($allowUnpaid ? 1 : 0),
-]);
+        ];
+        // Sem valor informado, a coluna fica com o DEFAULT do banco.
+        if ($allowUnpaid !== null) {
+            $row['allow_unpaid'] = $allowUnpaid ? 1 : 0;
+        }
+        Capsule::table('mod_opennfse_queue')->insert($row);
     }
 
     public function claimNext(int $limit): array
