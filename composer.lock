@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "ebb43f618a7e819923c9b9a11c1677d6",
+    "content-hash": "929822355b0362285c8f09b52ab19fef",
     "packages": [
         {
             "name": "guzzlehttp/guzzle",
@@ -343,12 +343,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/nfse-nacional/nfse-php.git",
-                "reference": "b89bf93591e52671ddffb245c5d1e1100eea7198"
+                "reference": "a9bdf8cc58c333b4bbda791fd20ab77cfdcabab3"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/nfse-nacional/nfse-php/zipball/b89bf93591e52671ddffb245c5d1e1100eea7198",
-                "reference": "b89bf93591e52671ddffb245c5d1e1100eea7198",
+                "url": "https://api.github.com/repos/nfse-nacional/nfse-php/zipball/a9bdf8cc58c333b4bbda791fd20ab77cfdcabab3",
+                "reference": "a9bdf8cc58c333b4bbda791fd20ab77cfdcabab3",
                 "shasum": ""
             },
             "require": {
@@ -400,7 +400,7 @@
                 "issues": "https://github.com/nfse-nacional/nfse-php/issues",
                 "source": "https://github.com/nfse-nacional/nfse-php/tree/main"
             },
-            "time": "2026-10-28T20:47:50+00:00"
+            "time": "2026-10-28T22:41:46+00:00"
         },
         {
             "name": "paseto/nfse-nacional-pdf",
