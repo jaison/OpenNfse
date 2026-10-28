@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.22",
- "release_date": "2026-09-17",
+  "latest_version": "0.1.23",
+ "release_date": "2026-10-28",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Adicionada a opção de enfileirar manualmente faturas com status Unpaid, respeitando a configuração de permissão para emissões não pagas. Adicionado o envio automático de PDF e XML por e-mail após a fila confirmar o processamento da nota como DONE, com proteção contra duplicidade, registro de sucesso ou falha no histórico e manutenção do reenvio manual. Também foi ajustado o fluxo de indisponibilidade da API Nacional para repetir emissões transitórias com o mesmo id_dps."
+  "message": "Adequação à NT 009: o leiaute da DPS passa a ser trocado automaticamente em produção em 01/12/2026 e pode ser ajustado em Configurações > Ambiente. A SDK foi atualizada e agora verifica o certificado TLS nas chamadas à API Nacional; logo após atualizar, clique em \"Testar conexão\" e, se falhar com erro de certificado, atualize os certificados raiz (ca-certificates) do servidor. Também foram incluídas melhorias de segurança e a documentação foi revisada."
 }
