@@ -16,8 +16,8 @@ class InfEventoData extends Dto
     public ?int $numeroSequencialEvento = null;
     #[MapFrom('dhProc')]
     public ?string $dataHoraProcessamento = null;
-    #[MapFrom('nDFe')]
-    public ?string $numeroDfe = null;
+    #[MapFrom('nDFSe')]
+    public ?string $numeroDfse = null;
     #[MapFrom('pedRegEvento')]
     public ?\Nfse\Dto\Nfse\PedRegEventoData $pedRegEvento = null;
 }

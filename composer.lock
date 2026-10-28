@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "0f0b37f748b56a23109559d2d1730c88",
+    "content-hash": "af6e5d297fae84ffbaa300c2a842fc89",
     "packages": [
         {
             "name": "guzzlehttp/guzzle",
@@ -339,16 +339,16 @@
         },
         {
             "name": "nfse-nacional/nfse-php",
-            "version": "v1.20.0-beta",
+            "version": "dev-main",
             "source": {
                 "type": "git",
                 "url": "https://github.com/nfse-nacional/nfse-php.git",
-                "reference": "dcf699910352d6e73f01cf50a5b2c78ab6cd8481"
+                "reference": "b89bf93591e52671ddffb245c5d1e1100eea7198"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/nfse-nacional/nfse-php/zipball/dcf699910352d6e73f01cf50a5b2c78ab6cd8481",
-                "reference": "dcf699910352d6e73f01cf50a5b2c78ab6cd8481",
+                "url": "https://api.github.com/repos/nfse-nacional/nfse-php/zipball/b89bf93591e52671ddffb245c5d1e1100eea7198",
+                "reference": "b89bf93591e52671ddffb245c5d1e1100eea7198",
                 "shasum": ""
             },
             "require": {
@@ -373,6 +373,7 @@
             "suggest": {
                 "spatie/typescript-transformer": "Opcional (PHP >=8.2) para regenerar o arquivo types/generated.d.ts."
             },
+            "default-branch": true,
             "type": "library",
             "autoload": {
                 "psr-4": {
@@ -397,9 +398,9 @@
             ],
             "support": {
                 "issues": "https://github.com/nfse-nacional/nfse-php/issues",
-                "source": "https://github.com/nfse-nacional/nfse-php/tree/v1.20.0-beta"
+                "source": "https://github.com/nfse-nacional/nfse-php/tree/main"
             },
-            "time": "2026-05-27T11:00:29+00:00"
+            "time": "2026-10-28T20:47:50+00:00"
         },
         {
             "name": "paseto/nfse-nacional-pdf",
@@ -938,6 +939,54 @@
         }
     ],
     "packages-dev": [
+        {
+            "name": "cweagans/composer-patches",
+            "version": "1.7.3",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/cweagans/composer-patches.git",
+                "reference": "e190d4466fe2b103a55467dfa83fc2fecfcaf2db"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/cweagans/composer-patches/zipball/e190d4466fe2b103a55467dfa83fc2fecfcaf2db",
+                "reference": "e190d4466fe2b103a55467dfa83fc2fecfcaf2db",
+                "shasum": ""
+            },
+            "require": {
+                "composer-plugin-api": "^1.0 || ^2.0",
+                "php": ">=5.3.0"
+            },
+            "require-dev": {
+                "composer/composer": "~1.0 || ~2.0",
+                "phpunit/phpunit": "~4.6"
+            },
+            "type": "composer-plugin",
+            "extra": {
+                "class": "cweagans\\Composer\\Patches"
+            },
+            "autoload": {
+                "psr-4": {
+                    "cweagans\\Composer\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "BSD-3-Clause"
+            ],
+            "authors": [
+                {
+                    "name": "Cameron Eagans",
+                    "email": "me@cweagans.net"
+                }
+            ],
+            "description": "Provides a way to patch Composer packages.",
+            "support": {
+                "issues": "https://github.com/cweagans/composer-patches/issues",
+                "source": "https://github.com/cweagans/composer-patches/tree/1.7.3"
+            },
+            "time": "2022-12-20T22:53:13+00:00"
+        },
         {
             "name": "fidry/console",
             "version": "0.6.11",
@@ -4406,7 +4455,9 @@
     ],
     "aliases": [],
     "minimum-stability": "dev",
-    "stability-flags": {},
+    "stability-flags": {
+        "nfse-nacional/nfse-php": 20
+    },
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {

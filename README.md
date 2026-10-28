@@ -101,6 +101,8 @@ Este projeto utiliza bibliotecas de terceiros para integração com a NFS-e Naci
   SDK principal de integração com a API Nacional da NFS-e.
 - [`paseto/nfse-nacional-pdf`](https://github.com/paseto/nfse-nacional-pdf):
   biblioteca base para geração do DANFS-e em PDF.
+- [`cweagans/composer-patches`](https://github.com/cweagans/composer-patches):
+  plugin de build que aplica os patches de `patches/` na SDK antes de gerar o `vendor-scoped/`.
 - [`humbug/php-scoper`](https://github.com/humbug/php-scoper):
   utilizada no processo de build para gerar a pasta `vendor-scoped/` e reduzir conflitos de dependências com outros módulos do WHMCS.
 - [`phpunit/phpunit`](https://github.com/sebastianbergmann/phpunit):
@@ -129,6 +131,8 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
   migrations de banco do addon.
 - `docs/`:
   documentação complementar técnica e operacional.
+- `patches/`:
+  correções aplicadas sobre a SDK `nfse-nacional/nfse-php` durante o build.
 - `vendor-scoped/`:
   dependências prontas para uso no ambiente final.
 
@@ -159,6 +163,7 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 ## Configuração Inicial
 
 - Configure ambiente, certificado digital e dados do prestador.
+- Em **Leiaute da DPS**, mantenha **Automático**. Ele segue a NT 009: em homologação o leiaute novo já vale; em produção ele passa a valer em 01/12/2026 00:00 (horário de Brasília). A tela mostra o leiaute ativo. Só force **Pré-NT 009** ou **NT 009** se a SEFIN rejeitar a DPS com E1235 por leiaute; nesse caso a mensagem de erro da nota indica o ajuste.
 - Configure a série DPS conforme a operação desejada.
 - Revise as opções de fila/processamento automático.
 - Em **Automação de E-mail**, configure **Enviar PDF/XML automaticamente por e-mail?** como `Sim` para enviar os anexos após a fila concluir a nota como `DONE`; a opção vem desativada por padrão.
@@ -225,6 +230,31 @@ composer run scope
 
 Isso reconstrói a pasta `vendor-scoped/`.
 
+### Versão da SDK nfse-php
+
+A SDK está fixada no commit `b89bf93` da `main` (`dev-main#b89bf93591e52671ddffb245c5d1e1100eea7198`), que traz o `finNFSe` da NT 009 (PR #65) e ainda não tem release. Quando sair a tag que inclua o #65, volte o `composer.json` para a versão estável (ex.: `^1.24`), confira se os patches abaixo ainda se aplicam ou já foram incorporados e regere o `vendor-scoped/`.
+
+### Patches da SDK
+
+Os patches em `patches/` são aplicados automaticamente no `vendor/` pelo `cweagans/composer-patches` (1.7.3) durante o `composer install`/`composer update`, antes do `composer run scope`. A lista fica em `extra.patches` do `composer.json` e a ordem importa (cada patch parte do anterior). Com `composer-exit-on-patch-failure`, o Composer para se algum patch não aplicar.
+
+| Patch | Motivo |
+| --- | --- |
+| `nfse-php-01-vservmoeda-duas-casas.patch` | `vServMoeda` com duas casas (o XSD rejeita `99.9`). |
+| `nfse-php-02-tls-verificacao.patch` | Religa a verificação TLS nos clients SEFIN, ADN e CNC. O endpoint de Catanduva passa a usar o nome do certificado com o IP fixado via `CURLOPT_RESOLVE`. |
+| `nfse-php-03-connect-timeout.patch` | Connect timeout de 30s para 10s (o retry de GET multiplica a espera por 3). |
+| `nfse-php-04-nt009-ordem-campos.patch` | Leiaute da NT 009: `xDescServ` depois de `cNBS` e `finNFSe` depois de `cMotivoEmisTI`. |
+
+Para adicionar um patch:
+
+1. Gere o diff a partir da raiz da SDK, com caminhos `a/src/...` e `b/src/...` (ex.: `git diff` num clone do `nfse-nacional/nfse-php` no mesmo commit, com os patches anteriores aplicados).
+2. Salve em `patches/nfse-php-NN-descricao.patch`, com um cabeçalho curto explicando o motivo.
+3. Acrescente a entrada em `extra.patches."nfse-nacional/nfse-php"` no `composer.json`.
+4. Rode `composer reinstall nfse-nacional/nfse-php` (ou `composer install`), confira o `vendor/nfse-nacional/nfse-php/PATCHES.txt` e rode `composer test`.
+5. Rode `composer run scope` e confira se o diff de `vendor-scoped/` só traz o que o patch muda.
+
+O plugin fica fora do `vendor-scoped/` (excluído em `scoper.inc.php`), porque só é usado no build.
+
 ## Desenvolvimento Local
 
 - Instalar dependências:
@@ -258,6 +288,7 @@ composer cs:fix
 - O diretório `attachments/` deve ser gravável pelo PHP.
 - Certificados `.pfx` com criptografia antiga podem apresentar falhas de leitura ou compatibilidade no servidor.
 - Não publique logs, XMLs, PDFs gerados ou credenciais.
+- As chamadas à SEFIN, ao ADN e ao CNC verificam o certificado TLS do servidor. Se o teste de conexão falhar com erro de certificado (por exemplo `unable to get local issuer certificate`), atualize o pacote de CAs do servidor (`ca-certificates`) ou aponte `curl.cainfo` no `php.ini` para um bundle atualizado. A cadeia da SEFIN termina na raiz pública GlobalSign Root R46.
 
 ### Certificado PFX Moderno
 

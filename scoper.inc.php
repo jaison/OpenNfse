@@ -30,6 +30,8 @@ return [
                 'symfony/finder',
                 'symfony/console',
                 'symfony/filesystem',
+                // Plugin do Composer usado só para aplicar patches/ no vendor/.
+                'cweagans',
             ])
             ->in('vendor'),
     ],

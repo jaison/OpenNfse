@@ -19,7 +19,7 @@ try {
     $serie = '1';
     $numero = '100';
     $idDps = IdGenerator::generateDpsId(cpfCnpj: $cnpjPrestador, codIbge: $codigoMunicipio, serieDps: $serie, numDps: $numero);
-    $dps = new DpsData(['@attributes' => ['versao' => '1.00'], 'infDPS' => [
+    $dps = new DpsData(['@attributes' => ['versao' => '1.01'], 'infDPS' => [
         '@attributes' => ['Id' => $idDps],
         'tpAmb' => 2,
         // Homologação

@@ -13,6 +13,7 @@ use Nfse\Dto\Http\RegistroEventoResponse;
 use Nfse\Http\Contracts\SefinNacionalInterface;
 use Nfse\Http\Exceptions\NfseApiException;
 use Nfse\Http\NfseContext;
+use Nfse\Http\Retry;
 use Nfse\Support\SefinEndpointResolver;
 class SefinClient implements SefinNacionalInterface
 {
@@ -42,7 +43,20 @@ class SefinClient implements SefinNacionalInterface
     }
     private function createHttpClient(): Client
     {
-        return new Client(['base_uri' => rtrim($this->baseUrl, '/') . '/', 'curl' => [\CURLOPT_SSLCERTTYPE => 'P12', \CURLOPT_SSLCERT => $this->resolveCertificatePath(), \CURLOPT_SSLCERTPASSWD => $this->context->certificatePassword, \CURLOPT_IPRESOLVE => \CURL_IPRESOLVE_V4, \CURLOPT_CONNECTTIMEOUT => 30, \CURLOPT_TIMEOUT => 60, \CURLOPT_HTTP_VERSION => \CURL_HTTP_VERSION_1_1, \CURLOPT_SSL_VERIFYHOST => 0, \CURLOPT_SSL_VERIFYPEER => 0], RequestOptions::HEADERS => ['Content-Type' => 'application/json', 'Accept' => 'application/json']]);
+        return new Client(['base_uri' => rtrim($this->baseUrl, '/') . '/', 'handler' => Retry::stack(), 'curl' => [
+            \CURLOPT_SSLCERTTYPE => 'P12',
+            \CURLOPT_SSLCERT => $this->resolveCertificatePath(),
+            \CURLOPT_SSLCERTPASSWD => $this->context->certificatePassword,
+            \CURLOPT_IPRESOLVE => \CURL_IPRESOLVE_V4,
+            // Com o Retry (3 tentativas), um host inacessível segura a requisição
+            // por até 3x o connect timeout; 10s basta para o handshake.
+            \CURLOPT_CONNECTTIMEOUT => 10,
+            \CURLOPT_TIMEOUT => 60,
+            \CURLOPT_HTTP_VERSION => \CURL_HTTP_VERSION_1_1,
+            // Endpoints municipais publicados por IP: o nome do certificado é fixado
+            // no IP original para que a verificação de host funcione.
+            \CURLOPT_RESOLVE => SefinEndpointResolver::pinnedHosts(),
+        ], RequestOptions::HEADERS => ['Content-Type' => 'application/json', 'Accept' => 'application/json']]);
     }
     private function post(string $endpoint, array $data): array
     {

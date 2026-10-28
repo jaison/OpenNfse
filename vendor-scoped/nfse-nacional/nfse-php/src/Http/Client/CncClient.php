@@ -9,6 +9,7 @@ use Nfse\Dto\Http\MensagemProcessamentoDto;
 use Nfse\Enums\TipoAmbiente;
 use Nfse\Http\Exceptions\NfseApiException;
 use Nfse\Http\NfseContext;
+use Nfse\Http\Retry;
 class CncClient
 {
     private const URL_PRODUCTION = 'https://adn.nfse.gov.br/cnc';
@@ -37,7 +38,17 @@ class CncClient
     private function createHttpClient(): Client
     {
         $baseUrl = $this->context->ambiente === TipoAmbiente::Producao ? self::URL_PRODUCTION : self::URL_HOMOLOGATION;
-        return new Client(['base_uri' => $baseUrl, 'curl' => [\CURLOPT_SSLCERTTYPE => 'P12', \CURLOPT_SSLCERT => $this->resolveCertificatePath(), \CURLOPT_SSLCERTPASSWD => $this->context->certificatePassword, \CURLOPT_IPRESOLVE => \CURL_IPRESOLVE_V4, \CURLOPT_CONNECTTIMEOUT => 30, \CURLOPT_TIMEOUT => 60, \CURLOPT_HTTP_VERSION => \CURL_HTTP_VERSION_1_1, \CURLOPT_SSL_VERIFYHOST => 0, \CURLOPT_SSL_VERIFYPEER => 0], RequestOptions::HEADERS => ['Content-Type' => 'application/json', 'Accept' => 'application/json']]);
+        return new Client(['base_uri' => $baseUrl, 'handler' => Retry::stack(), 'curl' => [
+            \CURLOPT_SSLCERTTYPE => 'P12',
+            \CURLOPT_SSLCERT => $this->resolveCertificatePath(),
+            \CURLOPT_SSLCERTPASSWD => $this->context->certificatePassword,
+            \CURLOPT_IPRESOLVE => \CURL_IPRESOLVE_V4,
+            // Com o Retry (3 tentativas), um host inacessível segura a requisição
+            // por até 3x o connect timeout; 10s basta para o handshake.
+            \CURLOPT_CONNECTTIMEOUT => 10,
+            \CURLOPT_TIMEOUT => 60,
+            \CURLOPT_HTTP_VERSION => \CURL_HTTP_VERSION_1_1,
+        ], RequestOptions::HEADERS => ['Content-Type' => 'application/json', 'Accept' => 'application/json']]);
     }
     private function get(string $endpoint): array
     {

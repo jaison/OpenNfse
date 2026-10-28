@@ -283,28 +283,40 @@ final class DpsBuilderService
             $serv['comExt'] = $comExt;
         }
 
-        $dps = new \Nfse\Dto\Nfse\DpsData([
-            '@attributes' => ['versao' => '1.00'],
-            'infDPS' => [
-                '@attributes' => ['Id' => $idDps],
-                'tpAmb' => $tpAmb,
-                'dhEmi' => (new \DateTimeImmutable('now'))->format('Y-m-d\TH:i:sP'),
-                'verAplic' => 'whmcs-nfse/0.1.20',
-                'serie' => $serieDps,
-                'nDPS' => (string) $numeroDps,
-                'dCompet' => date('Y-m-d'),
-                'tpEmit' => $tpEmit,
-                'cLocEmi' => $codigoIbge,
-                'prest' => $prest,
-                'toma' => $toma,
-                'serv' => $serv,
-                'valores' => [
-                    'vServPrest' => [
-                        'vServ' => $total,
-                    ],
-                    'trib' => $trib,
+        $layoutService = new DpsLayoutService();
+        $layout = $layoutService->effectiveLayout($config);
+
+        $infDps = [
+            '@attributes' => ['Id' => $idDps],
+            'tpAmb' => $tpAmb,
+            'dhEmi' => (new \DateTimeImmutable('now'))->format('Y-m-d\TH:i:sP'),
+            'verAplic' => 'whmcs-nfse/0.1.20',
+            'serie' => $serieDps,
+            'nDPS' => (string) $numeroDps,
+            'dCompet' => date('Y-m-d'),
+            'tpEmit' => $tpEmit,
+        ];
+        // finNFSe só existe no leiaute da NT 009; a SDK também usa a presença
+        // dele para colocar xDescServ depois de cNBS.
+        if ($layout === DpsLayoutService::LAYOUT_NT009) {
+            $infDps['finNFSe'] = DpsLayoutService::FIN_NFSE_REGULAR;
+        }
+        $infDps += [
+            'cLocEmi' => $codigoIbge,
+            'prest' => $prest,
+            'toma' => $toma,
+            'serv' => $serv,
+            'valores' => [
+                'vServPrest' => [
+                    'vServ' => $total,
                 ],
+                'trib' => $trib,
             ],
+        ];
+
+        $dps = new \Nfse\Dto\Nfse\DpsData([
+            '@attributes' => ['versao' => $layoutService->versaoDps($layout)],
+            'infDPS' => $infDps,
         ]);
 
         return $dps;

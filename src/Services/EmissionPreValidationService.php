@@ -9,8 +9,23 @@ use OpenNfse\Repositories\WhmcsCustomerRepository;
 
 final class EmissionPreValidationService
 {
+    /**
+     * Regimes especiais que existiam no enum antigo da SDK e não fazem parte do
+     * TSRegEspTrib. A SDK atual omite o regEspTrib nesses casos e a SEFIN rejeita.
+     */
+    private const REG_ESP_TRIB_REMOVIDOS = ['7', '8', '10'];
+
     public function validate(array $config, array $invoice, array $items, array $client): void
     {
+        $regEspTrib = trim((string) ($config['prestador_reg_esp_trib'] ?? ''));
+        if (in_array($regEspTrib, self::REG_ESP_TRIB_REMOVIDOS, true)) {
+            throw new NfseValidationException(sprintf(
+                'Regime especial de tributação %s não é mais aceito pela SEFIN; ajuste em Configurações > '
+                . 'Tributação > Regime Especial (valores aceitos: 0 a 6 ou 9).',
+                $regEspTrib
+            ));
+        }
+
         $errors = [];
 
         $certificatePath = trim((string) ($config['certificate_path'] ?? ''));

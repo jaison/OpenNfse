@@ -1,0 +1,97 @@
+nfse-nacional/nfse-php — religa a verificação TLS
+
+Base: b89bf93 + patch 01. Remove CURLOPT_SSL_VERIFYPEER=0 e CURLOPT_SSL_VERIFYHOST=0 dos
+clients SEFIN, ADN e CNC (o Guzzle volta ao padrão: verifica cadeia e nome).
+
+Exceção tratada: o endpoint de produção de Catanduva (3511102) era um IP (164.152.60.237),
+que não consta no certificado. O certificado servido nesse IP é válido para
+cidadaoonline.catanduva.sp.gov.br (Let's Encrypt), nome cujo DNS aponta para o mesmo IP.
+A URL passa a usar o nome e o IP fica fixado por CURLOPT_RESOLVE nos clients SEFIN e ADN
+(mesmo destino de rede, verificação completa). Nada é desligado.
+
+diff --git a/src/Http/Client/AdnClient.php b/src/Http/Client/AdnClient.php
+index d931e82..0e4271f 100644
+--- a/src/Http/Client/AdnClient.php
++++ b/src/Http/Client/AdnClient.php
+@@ -71,8 +71,9 @@ class AdnClient implements AdnDanfseInterface
+                 CURLOPT_CONNECTTIMEOUT => 30,
+                 CURLOPT_TIMEOUT => 60,
+                 CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-                CURLOPT_SSL_VERIFYHOST => 0,
+-                CURLOPT_SSL_VERIFYPEER => 0,
++                // Endpoints municipais publicados por IP: o nome do certificado é fixado
++                // no IP original para que a verificação de host funcione.
++                CURLOPT_RESOLVE => SefinEndpointResolver::pinnedHosts(),
+             ],
+             RequestOptions::HEADERS => [
+                 'Content-Type' => 'application/json',
+diff --git a/src/Http/Client/CncClient.php b/src/Http/Client/CncClient.php
+index 4023ef1..15b9f76 100644
+--- a/src/Http/Client/CncClient.php
++++ b/src/Http/Client/CncClient.php
+@@ -62,8 +62,6 @@ class CncClient
+                 CURLOPT_CONNECTTIMEOUT => 30,
+                 CURLOPT_TIMEOUT => 60,
+                 CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-                CURLOPT_SSL_VERIFYHOST => 0,
+-                CURLOPT_SSL_VERIFYPEER => 0,
+             ],
+             RequestOptions::HEADERS => [
+                 'Content-Type' => 'application/json',
+diff --git a/src/Http/Client/SefinClient.php b/src/Http/Client/SefinClient.php
+index 0f74c25..e104830 100644
+--- a/src/Http/Client/SefinClient.php
++++ b/src/Http/Client/SefinClient.php
+@@ -63,8 +63,9 @@ class SefinClient implements SefinNacionalInterface
+                 CURLOPT_CONNECTTIMEOUT => 30,
+                 CURLOPT_TIMEOUT => 60,
+                 CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-                CURLOPT_SSL_VERIFYHOST => 0,
+-                CURLOPT_SSL_VERIFYPEER => 0,
++                // Endpoints municipais publicados por IP: o nome do certificado é fixado
++                // no IP original para que a verificação de host funcione.
++                CURLOPT_RESOLVE => SefinEndpointResolver::pinnedHosts(),
+             ],
+             RequestOptions::HEADERS => [
+                 'Content-Type' => 'application/json',
+diff --git a/src/Support/SefinEndpointResolver.php b/src/Support/SefinEndpointResolver.php
+index 807c47c..663e71c 100644
+--- a/src/Support/SefinEndpointResolver.php
++++ b/src/Support/SefinEndpointResolver.php
+@@ -16,11 +16,35 @@ class SefinEndpointResolver implements EndpointResolver
+ 
+     private const ENDPOINTS = [
+         '3511102' => [
+-            'production' => 'https://164.152.60.237/nota/nacional',
++            'production' => 'https://cidadaoonline.catanduva.sp.gov.br/nota/nacional',
+             'homologation' => 'https://catanduva.prefeitura.rlz.com.br/nota/nacional',
+         ],
+     ];
+ 
++    /**
++     * Hosts municipais que antes eram acessados pelo IP. O certificado TLS é
++     * emitido para o nome, então a URL usa o nome e o IP fica fixado via
++     * CURLOPT_RESOLVE (mesmo destino de rede, verificação de host ligada).
++     */
++    private const PINNED_HOSTS = [
++        'cidadaoonline.catanduva.sp.gov.br:443' => '164.152.60.237',
++    ];
++
++    /**
++     * Entradas no formato do CURLOPT_RESOLVE ("host:porta:ip").
++     *
++     * @return list<string>
++     */
++    public static function pinnedHosts(): array
++    {
++        $entries = [];
++        foreach (self::PINNED_HOSTS as $hostPort => $ip) {
++            $entries[] = $hostPort.':'.$ip;
++        }
++
++        return $entries;
++    }
++
+     public function resolve(NfseContext $context): string
+     {
+         // Padrão

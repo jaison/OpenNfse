@@ -9,7 +9,26 @@ use Nfse\Http\NfseContext;
 class SefinEndpointResolver implements EndpointResolver
 {
     private const DEFAULT = ['production' => 'https://sefin.nfse.gov.br/SefinNacional', 'homologation' => 'https://sefin.producaorestrita.nfse.gov.br/SefinNacional'];
-    private const ENDPOINTS = ['3511102' => ['production' => 'https://164.152.60.237/nota/nacional', 'homologation' => 'https://catanduva.prefeitura.rlz.com.br/nota/nacional']];
+    private const ENDPOINTS = ['3511102' => ['production' => 'https://cidadaoonline.catanduva.sp.gov.br/nota/nacional', 'homologation' => 'https://catanduva.prefeitura.rlz.com.br/nota/nacional']];
+    /**
+     * Hosts municipais que antes eram acessados pelo IP. O certificado TLS é
+     * emitido para o nome, então a URL usa o nome e o IP fica fixado via
+     * CURLOPT_RESOLVE (mesmo destino de rede, verificação de host ligada).
+     */
+    private const PINNED_HOSTS = ['cidadaoonline.catanduva.sp.gov.br:443' => '164.152.60.237'];
+    /**
+     * Entradas no formato do CURLOPT_RESOLVE ("host:porta:ip").
+     *
+     * @return list<string>
+     */
+    public static function pinnedHosts(): array
+    {
+        $entries = [];
+        foreach (self::PINNED_HOSTS as $hostPort => $ip) {
+            $entries[] = $hostPort . ':' . $ip;
+        }
+        return $entries;
+    }
     public function resolve(NfseContext $context): string
     {
         // Padrão
@@ -24,5 +43,16 @@ class SefinEndpointResolver implements EndpointResolver
             $endpoint = $context->endpoint;
         }
         return $context->ambiente === TipoAmbiente::Producao ? $endpoint->production : $endpoint->homologation;
+    }
+    /**
+     * URL do DANFSe no endpoint próprio do município, ou null quando o município
+     * não possui endpoint mapeado (nesse caso o download segue pelo ADN nacional).
+     */
+    public function resolveDanfse(NfseContext $context, string $chaveAcesso): ?string
+    {
+        if (!$context->codigoMunicipio || !isset(self::ENDPOINTS[$context->codigoMunicipio])) {
+            return null;
+        }
+        return rtrim($this->resolve($context), '/') . "/danfse/{$chaveAcesso}/pdf";
     }
 }

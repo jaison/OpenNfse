@@ -17,6 +17,8 @@ class NfseXmlParser
         $xml = iconv('UTF-8', 'UTF-8//IGNORE', $xml);
         // Remove escaped quotes if present (e.g. from JSON dumps)
         $xml = str_replace('\"', '"', $xml);
+        // Eventos no layout antigo usam nDFe; o layout 1.01 renomeou para nDFSe
+        $xml = str_replace(['<nDFe>', '</nDFe>'], ['<nDFSe>', '</nDFSe>'], $xml);
         // 2. Parse XML
         $useInternal = libxml_use_internal_errors(\true);
         $options = \LIBXML_NOCDATA | \LIBXML_NOBLANKS;

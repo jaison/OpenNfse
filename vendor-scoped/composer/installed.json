@@ -1,6 +1,57 @@
 {
     "packages": [
         {
+            "name": "cweagans\/composer-patches",
+            "version": "1.7.3",
+            "version_normalized": "1.7.3.0",
+            "source": {
+                "type": "git",
+                "url": "https:\/\/github.com\/cweagans\/composer-patches.git",
+                "reference": "e190d4466fe2b103a55467dfa83fc2fecfcaf2db"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https:\/\/api.github.com\/repos\/cweagans\/composer-patches\/zipball\/e190d4466fe2b103a55467dfa83fc2fecfcaf2db",
+                "reference": "e190d4466fe2b103a55467dfa83fc2fecfcaf2db",
+                "shasum": ""
+            },
+            "require": {
+                "composer-plugin-api": "^1.0 || ^2.0",
+                "php": ">=5.3.0"
+            },
+            "require-dev": {
+                "composer\/composer": "~1.0 || ~2.0",
+                "phpunit\/phpunit": "~4.6"
+            },
+            "time": "2022-12-20T22:53:13+00:00",
+            "type": "composer-plugin",
+            "extra": {
+                "class": "cweagans\\Composer\\Patches"
+            },
+            "installation-source": "dist",
+            "autoload": {
+                "psr-4": {
+                    "OpenNfseVendor\\cweagans\\Composer\\": "src"
+                }
+            },
+            "notification-url": "https:\/\/packagist.org\/downloads\/",
+            "license": [
+                "BSD-3-Clause"
+            ],
+            "authors": [
+                {
+                    "name": "Cameron Eagans",
+                    "email": "me@cweagans.net"
+                }
+            ],
+            "description": "Provides a way to patch Composer packages.",
+            "support": {
+                "issues": "https:\/\/github.com\/cweagans\/composer-patches\/issues",
+                "source": "https:\/\/github.com\/cweagans\/composer-patches\/tree\/1.7.3"
+            },
+            "install-path": "..\/cweagans\/composer-patches"
+        },
+        {
             "name": "fidry\/console",
             "version": "0.6.11",
             "version_normalized": "0.6.11.0",
@@ -700,17 +751,17 @@
         },
         {
             "name": "nfse-nacional\/nfse-php",
-            "version": "v1.20.0-beta",
-            "version_normalized": "1.20.0.0-beta",
+            "version": "dev-main",
+            "version_normalized": "dev-main",
             "source": {
                 "type": "git",
                 "url": "https:\/\/github.com\/nfse-nacional\/nfse-php.git",
-                "reference": "dcf699910352d6e73f01cf50a5b2c78ab6cd8481"
+                "reference": "b89bf93591e52671ddffb245c5d1e1100eea7198"
             },
             "dist": {
                 "type": "zip",
-                "url": "https:\/\/api.github.com\/repos\/nfse-nacional\/nfse-php\/zipball\/dcf699910352d6e73f01cf50a5b2c78ab6cd8481",
-                "reference": "dcf699910352d6e73f01cf50a5b2c78ab6cd8481",
+                "url": "https:\/\/api.github.com\/repos\/nfse-nacional\/nfse-php\/zipball\/b89bf93591e52671ddffb245c5d1e1100eea7198",
+                "reference": "b89bf93591e52671ddffb245c5d1e1100eea7198",
                 "shasum": ""
             },
             "require": {
@@ -735,8 +786,17 @@
             "suggest": {
                 "spatie\/typescript-transformer": "Opcional (PHP >=8.2) para regenerar o arquivo types\/generated.d.ts."
             },
-            "time": "2026-05-27T11:00:29+00:00",
+            "time": "2026-10-28T20:47:50+00:00",
+            "default-branch": true,
             "type": "library",
+            "extra": {
+                "patches_applied": {
+                    "01 vServMoeda com duas casas decimais (TSDec15V2)": "patches\/nfse-php-01-vservmoeda-duas-casas.patch",
+                    "02 Religa a verifica\u00e7\u00e3o TLS (Catanduva por nome + CURLOPT_RESOLVE)": "patches\/nfse-php-02-tls-verificacao.patch",
+                    "03 Connect timeout de 10s": "patches\/nfse-php-03-connect-timeout.patch",
+                    "04 Ordem de xDescServ e finNFSe no leiaute da NT 009": "patches\/nfse-php-04-nt009-ordem-campos.patch"
+                }
+            },
             "installation-source": "dist",
             "autoload": {
                 "psr-4": {
@@ -761,7 +821,7 @@
             ],
             "support": {
                 "issues": "https:\/\/github.com\/nfse-nacional\/nfse-php\/issues",
-                "source": "https:\/\/github.com\/nfse-nacional\/nfse-php\/tree\/v1.20.0-beta"
+                "source": "https:\/\/github.com\/nfse-nacional\/nfse-php\/tree\/main"
             },
             "install-path": "..\/nfse-nacional\/nfse-php"
         },
@@ -4584,6 +4644,7 @@
     ],
     "dev": true,
     "dev-package-names": [
+        "cweagans\/composer-patches",
         "fidry\/console",
         "fidry\/filesystem",
         "humbug\/php-scoper",
