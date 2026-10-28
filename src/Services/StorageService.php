@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace OpenNfse\Services;
 
 use OpenNfse\Exceptions\NfseModuleException;
+use OpenNfse\Helpers\NfseXmlExtractor;
 use OpenNfse\Repositories\NotaRepository;
 
 final class StorageService
 {
+    private const MAX_FALLBACK_XML_BYTES = 5 * 1024 * 1024;
+
     public function getWhmcsRootDir(): string
     {
         if (defined('ROOTDIR')) {
@@ -68,28 +71,49 @@ final class StorageService
         return array_values(array_unique($dirs));
     }
 
-    public function findLatestXmlAbsolutePath(int $invoiceId): ?string
+    /**
+     * Localiza o XML de emissão da própria fatura quando o xml_path salvo não resolve.
+     *
+     * Só considera arquivos cujo nome contém o ID da fatura e só retorna um arquivo
+     * cujo conteúdo (chave de acesso e/ou número da NFS-e) confere com a nota.
+     * Sem dados da nota para comparar, retorna null.
+     */
+    public function findLatestXmlAbsolutePath(int $invoiceId, ?array $nota = null): ?string
     {
         if ($invoiceId <= 0) {
             return null;
         }
 
-        $numeroNf = '';
-        try {
-            $nota = (new NotaRepository())->findByInvoiceId($invoiceId);
-            $numeroNf = trim((string) ($nota['numero_nf'] ?? ''));
-        } catch (\Throwable $e) {
-            $numeroNf = '';
+        if ($nota === null) {
+            try {
+                $nota = (new NotaRepository())->findByInvoiceId($invoiceId);
+            } catch (\Throwable $e) {
+                $nota = null;
+            }
+        }
+        if (!is_array($nota)) {
+            return null;
+        }
+        if (array_key_exists('invoiceid', $nota) && (int) $nota['invoiceid'] !== $invoiceId) {
+            return null;
         }
 
+        $numeroNf = trim((string) ($nota['numero_nf'] ?? ''));
+        $chaveAcesso = trim((string) ($nota['chave_acesso'] ?? ''));
+        if ($numeroNf === '' && $chaveAcesso === '') {
+            return null;
+        }
+
+        $id = preg_quote((string) $invoiceId, '/');
         $patterns = [];
         if ($numeroNf !== '') {
-            $patterns[] = '/^nfse_' . preg_quote($this->sanitizeFilenamePart($numeroNf), '/') . '_' . preg_quote((string) $invoiceId, '/') . '_[0-9]{6}\.xml$/';
-            $patterns[] = '/^nfse_' . preg_quote($this->sanitizeFilenamePart($numeroNf), '/') . '_fatura[A-Za-z0-9_-]+_[0-9]{6}\.xml$/';
+            $numero = preg_quote($this->sanitizeFilenamePart($numeroNf), '/');
+            $patterns[] = '/^nfse_' . $numero . '_' . $id . '_[0-9]{6}\.xml$/';
+            $patterns[] = '/^nfse_' . $numero . '_fatura' . $id . '_[0-9]{6}\.xml$/';
         }
-        $patterns[] = '/^nfse_[A-Za-z0-9_-]+_' . preg_quote((string) $invoiceId, '/') . '_[0-9]{6}\.xml$/';
-        $patterns[] = '/^nfse_[A-Za-z0-9_-]+_fatura[A-Za-z0-9_-]+_[0-9]{6}\.xml$/';
-        $patterns[] = '/^nfse_invoice_' . preg_quote((string) $invoiceId, '/') . '_.*\.xml$/';
+        $patterns[] = '/^nfse_[A-Za-z0-9_-]+_' . $id . '_[0-9]{6}\.xml$/';
+        $patterns[] = '/^nfse_[A-Za-z0-9_-]+_fatura' . $id . '_[0-9]{6}\.xml$/';
+        $patterns[] = '/^nfse_invoice_' . $id . '_[A-Za-z0-9_-]*\.xml$/';
 
         foreach ($this->getCandidateAttachmentsDirs() as $attachmentsDir) {
             $baseDir = $attachmentsDir . '/nfse/xml';
@@ -97,32 +121,78 @@ final class StorageService
                 continue;
             }
 
-            $best = null;
-            $bestMtime = null;
-
+            $candidates = [];
             foreach ($this->iterateXmlFiles($baseDir) as $path => $file) {
                 if (!$this->matchesAnyPattern($file, $patterns)) {
                     continue;
                 }
 
                 $mtime = filemtime($path);
-                if ($mtime === false) {
-                    $mtime = 0;
-                }
-
-                if ($best === null || $mtime > (int) $bestMtime) {
-                    $best = $path;
-                    $bestMtime = $mtime;
-                }
+                $candidates[$path] = $mtime !== false ? $mtime : 0;
             }
+            arsort($candidates);
 
-            if ($best !== null) {
-                $rp = realpath($best);
-                return $rp !== false ? $rp : $best;
+            foreach (array_keys($candidates) as $path) {
+                if (!$this->xmlMatchesNota((string) $path, $numeroNf, $chaveAcesso)) {
+                    continue;
+                }
+
+                $rp = realpath((string) $path);
+                return $rp !== false ? $rp : (string) $path;
             }
         }
 
         return null;
+    }
+
+    private function xmlMatchesNota(string $path, string $numeroNf, string $chaveAcesso): bool
+    {
+        $size = @filesize($path);
+        if (!is_int($size) || $size <= 0 || $size > self::MAX_FALLBACK_XML_BYTES) {
+            return false;
+        }
+
+        $xml = @file_get_contents($path);
+        if (!is_string($xml) || $xml === '') {
+            return false;
+        }
+
+        $compared = false;
+
+        if ($chaveAcesso !== '') {
+            $xmlChave = NfseXmlExtractor::extractChaveAcesso($xml)
+                ?? NfseXmlExtractor::extractChaveAcessoFromInfNfseId($xml);
+            if ($xmlChave !== null) {
+                if ($this->normalizeChave($xmlChave) !== $this->normalizeChave($chaveAcesso)) {
+                    return false;
+                }
+                $compared = true;
+            }
+        }
+
+        if ($numeroNf !== '') {
+            $xmlNumero = NfseXmlExtractor::extractNumeroNfse($xml);
+            if ($xmlNumero !== null) {
+                if ($this->normalizeNumero($xmlNumero) !== $this->normalizeNumero($numeroNf)) {
+                    return false;
+                }
+                $compared = true;
+            }
+        }
+
+        return $compared;
+    }
+
+    private function normalizeChave(string $value): string
+    {
+        return (string) preg_replace('/^NFS/i', '', trim($value));
+    }
+
+    private function normalizeNumero(string $value): string
+    {
+        $value = ltrim(trim($value), '0');
+
+        return $value === '' ? '0' : $value;
     }
 
     public function relativePathFromAbsolute(string $absPath): ?string

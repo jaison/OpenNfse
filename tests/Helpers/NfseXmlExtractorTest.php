@@ -86,6 +86,17 @@ XML;
         $this->assertNull(NfseXmlExtractor::extractEmitidaEm($xml));
     }
 
+    public function testExtractChaveAcessoFromInfNfseId(): void
+    {
+        $this->assertSame('123', NfseXmlExtractor::extractChaveAcessoFromInfNfseId(self::XML_NFSE));
+    }
+
+    public function testExtractChaveAcessoFromInfNfseIdReturnsNullWhenAbsent(): void
+    {
+        $this->assertNull(NfseXmlExtractor::extractChaveAcessoFromInfNfseId('<NFSe><infNFSe /></NFSe>'));
+        $this->assertNull(NfseXmlExtractor::extractChaveAcessoFromInfNfseId('<NFSe><infNFSe Id="NFS" /></NFSe>'));
+    }
+
     public function testReturnsNullForEmptyXml(): void
     {
         $this->assertNull(NfseXmlExtractor::extractNumeroNfse(''));
