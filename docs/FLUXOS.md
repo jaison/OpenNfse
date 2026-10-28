@@ -8,6 +8,7 @@ Todas ficam em `mod_opennfse_config` e são editadas em **Addons > OpenNfse > Co
 
 | Campo | Padrão | Efeito |
 |---|---|---|
+| `dps_leiaute` | `auto` | Leiaute da DPS (seção Ambiente): `auto` segue a NT 009 (homologação já no leiaute novo; produção a partir de 01/12/2026 00:00, horário de Brasília), `pre_nt009` e `nt009` forçam um leiaute. Ver [LEVANTAMENTO_API_NACIONAL.md](LEVANTAMENTO_API_NACIONAL.md#leiaute-da-dps-nt-009). |
 | `queue_enabled` | `0` | Liga a fila. Sem ela, a emissão manual é síncrona e o cron não processa nada além de limpeza e checagem de atualização. |
 | `auto_emit_on_payment` | `0` | Enfileira a emissão quando a fatura é paga (exige `queue_enabled`). |
 | `allow_manual_unpaid` | `0` | Permite enfileirar manualmente faturas `Unpaid` (exige `queue_enabled`). |
@@ -86,15 +87,15 @@ Botão **Emitir NFS-e** na fatura (`InvoiceHook` → action `emit` → `NotasCon
 
 ### `NfseService::emitir()`
 
-1. Revalida a elegibilidade (`EmissionEligibilityService`) e roda a validação preventiva (`EmissionPreValidationService`): certificado, CNPJ, código IBGE, série, código de serviço, IM, regime do Simples, total e itens da fatura, nome, e-mail, país e documento do tomador, e endereço do tomador no exterior. Os erros são reunidos numa mensagem única.
+1. Revalida a elegibilidade (`EmissionEligibilityService`) e roda a validação preventiva (`EmissionPreValidationService`): regime especial de tributação (`7`, `8` e `10` bloqueiam a emissão com mensagem própria), certificado, CNPJ, código IBGE, série, código de serviço, IM, regime do Simples, total e itens da fatura, nome, e-mail, país e documento do tomador, e endereço do tomador no exterior. Os erros são reunidos numa mensagem única.
 2. Lê o CPF/CNPJ do tomador brasileiro no custom field configurado.
 3. Obtém o número da DPS em `mod_opennfse_sequences` (transação com `lockForUpdate`, por ambiente, CNPJ e série). No reenvio da mesma DPS, o número é extraído do `id_dps` existente.
-4. Monta a DPS (`DpsBuilderService`) e grava a nota como `PROCESSANDO` com `id_dps`, limpando chave, XML e erro anteriores.
+4. Monta a DPS (`DpsBuilderService`) no leiaute ativo (`DpsLayoutService`) e grava a nota como `PROCESSANDO` com `id_dps`, limpando chave, XML e erro anteriores.
 5. Registra o log `EMISSAO_REQUEST` e envia pela SDK (`NfsePhpSdkAdapter::emitir()`).
 6. Resultado:
    - **Sucesso**: salva o XML, extrai número, competência e data de emissão, marca `EMITIDA`, grava o histórico fiscal, passa os itens `ERROR` da fatura para `RESOLVIDO` e anota na fatura.
    - **Indisponibilidade transitória** (503, timeout, falha de conexão; ver [503 e timeout](#indisponibilidade-da-api-503-e-timeout)): mantém `PROCESSANDO` com o erro em `erro_api`.
-   - **Erro da API**: `REJEITADA`.
+   - **Erro da API**: `REJEITADA`. Se for um E1235 por leiaute (erro de estrutura do schema com `cLocEmi` ou `finNFSe` fora do lugar), o `erro_api` começa com: "Rejeição de leiaute da DPS (E1235): foi enviado o leiaute X e a SEFIN espera o leiaute Y. Ajuste "Leiaute da DPS" em Configurações > Ambiente e reenvie a nota.", seguido do detalhe da API.
    - **Erro técnico**: `ERRO`.
 
 ### Reemissão
@@ -224,6 +225,23 @@ A origem recomendada é o cron do WHMCS, pelo hook `AfterCronJob`. `cron.php` co
 
 `InvoiceEmailService::sendToClient()` exige nota `EMITIDA` com XML. Gera o PDF do DANFS-e na hora, monta assunto e corpo (`EmailTemplateService`) e envia ao e-mail do cliente com o XML e o PDF anexados. O resultado vai para os logs (`EMAIL_NFSE_*`) e para as notas da fatura.
 
+Os anexos são montados pelo próprio `InvoiceEmailService`, a partir do XML salvo da nota e do PDF gerado:
+
+1. **`whmcs_provider`**: quando o WHMCS tem um módulo de e-mail configurado (`modules/mail/`), a mensagem é enviada por ele, com o XML e o PDF anexados em memória.
+2. **`sendmessage`**: se o provedor não estiver disponível, o envio usa o `sendmessage()` do WHMCS com o template próprio do módulo e os anexos nativos (o arquivo XML da nota e um arquivo temporário com o PDF).
+
+O transporte usado fica nos logs `EMAIL_NFSE_*`.
+
+### Localização do XML para PDF e e-mail
+
+O XML vem do `xml_path` da nota, resolvido por `StorageService::resolveAbsolutePath()` dentro de `attachments/nfse/`. Na geração do PDF (`DanfsePdfService`), se o `xml_path` salvo não resolver, `StorageService::findLatestXmlAbsolutePath()` procura o XML da própria fatura:
+
+- só considera arquivos cujo nome contém o ID exato da fatura;
+- só aceita o XML cujo conteúdo confere com a nota (chave de acesso e/ou número da NFS-e) e ignora os candidatos que não puderem ser conferidos;
+- sem chave nem número na nota, não há fallback.
+
+Quando encontra o arquivo, o `xml_path` da nota é regravado com o caminho correto.
+
 Pontos de disparo:
 
 - **Manual, pelo admin**: botão **Enviar por e-mail** na fatura (action `sendEmail`).
@@ -262,7 +280,7 @@ Em **Addons > OpenNfse > Relatórios** (`ReportsController`), por abas:
 - **Auditoria Emissão**: faturas pagas em gateways ativos que não geraram NFS-e nem entraram na fila.
 - **Auditoria XML**: compara a pasta mensal de XMLs com o `xml_path` das notas para achar órfãos e referências inconsistentes.
 - **Auditoria DPS > API**: confere na API as DPS da competência e procura lacunas na sequência (`DpsApiAuditService`, processada em lotes).
-- **Auditoria API**: sincroniza a distribuição de documentos por NSU (`ApiAuditService`). Não aparece no menu lateral; abre por `tab=auditoria_api`.
+- **Auditoria API** (distribuição por NSU, `ApiAuditService`): a tela existe no `ReportsController`, mas a aba `auditoria_api` não está na lista de abas do relatório, e uma URL com `tab=auditoria_api` abre **NFS-e Emitidas**.
 - **Histórico Fiscal**: emissões, cancelamentos e snapshots de cada fatura ao longo do tempo.
 - **Logs**: logs técnicos com visualização detalhada (`logView`).
 
