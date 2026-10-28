@@ -249,13 +249,26 @@ final class NotasController
                 return;
             }
             if ((string) ($config['queue_enabled'] ?? '0') === '1') {
+                if (!(new QueueService())->enqueueEmit($invoiceId, 'QUEUE_REEMITIR_ADMIN')) {
+                    // Outro pedido criou o item entre o hasActive() acima e o enfileiramento.
+                    $this->logAdminAction(
+                        $nota,
+                        $invoiceId,
+                        'ADMIN_REEMITIR_BLOCKED',
+                        ['origin' => $origin, 'reason' => 'active_queue']
+                    );
+                    if ($return === 'emitidas') {
+                        $this->redirectRelatorioEmitidas(['msg' => 'reemitir_error'], true);
+                    }
+                    $this->redirectInvoice($invoiceId, ['nfse_reemit' => 'queue_active']);
+                    return;
+                }
                 $this->logAdminAction(
                     $nota,
                     $invoiceId,
                     'ADMIN_REEMITIR_ENQUEUE',
                     ['origin' => $origin]
                 );
-                (new QueueService())->enqueueEmit($invoiceId, 'QUEUE_REEMITIR_ADMIN');
                 (new InvoiceHistoryService())->append(
                     $invoiceId,
                     'Reemissão manual enfileirada pelo administrador via ' . $this->describeAdminActionOrigin($origin) . '.'
@@ -333,7 +346,9 @@ if ($invoiceStatus !== 'paid' && !$allowUnpaid) {
                 if ($queueRepo->hasActive($invoiceId)) {
                     $this->redirectInvoice($invoiceId, ['nfse_emit' => 'already_queued']);
                 }
-                (new QueueService())->enqueueEmit($invoiceId, 'QUEUE_EMIT_MANUAL', $allowUnpaid);
+                if (!(new QueueService())->enqueueEmit($invoiceId, 'QUEUE_EMIT_MANUAL', $allowUnpaid)) {
+                    $this->redirectInvoice($invoiceId, ['nfse_emit' => 'already_queued']);
+                }
                 $this->redirectInvoice($invoiceId, ['nfse_emit' => 'enqueued']);
             }
 

@@ -27,6 +27,81 @@ final class NfseService
         $this->ensureMigrated();
         $correlationId = $correlationId ?: CorrelationIdGenerator::generate($invoiceId);
 
+        // Lock por fatura: impede duas emissões simultâneas (e dois nDPS) para a mesma fatura.
+        $lock = new InvoiceLockService();
+        if (!$lock->acquire($invoiceId)) {
+            (new LogRepository())->insert(
+                null,
+                'EMISSAO_LOCK_BUSY',
+                json_encode(['invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE),
+                InvoiceLockService::BUSY_MESSAGE,
+                $correlationId
+            );
+            throw new NfseModuleException(InvoiceLockService::BUSY_MESSAGE);
+        }
+
+        try {
+            // Revalida o status com o lock em mãos: outro processo pode ter emitido antes.
+            $notaAtual = (new NotaRepository())->findByInvoiceId($invoiceId);
+            $blockReason = $this->emissionBlockReason($notaAtual, trim((string) ($options['reuse_id_dps'] ?? '')));
+            if ($blockReason !== null) {
+                (new LogRepository())->insert(
+                    $notaAtual ? (int) ($notaAtual['id'] ?? 0) : null,
+                    'EMISSAO_BLOCKED_STATUS',
+                    json_encode(
+                        ['invoiceid' => $invoiceId, 'status' => $notaAtual['status'] ?? null],
+                        JSON_UNESCAPED_UNICODE
+                    ),
+                    $blockReason,
+                    $correlationId
+                );
+                throw new NfseModuleException($blockReason);
+            }
+
+            $this->emitirComLock($invoiceId, $correlationId, $options);
+        } finally {
+            $lock->release($invoiceId);
+        }
+    }
+
+    /**
+     * Decide, já com o lock da fatura, se a emissão pode seguir. Retorna o motivo do bloqueio ou null.
+     * As mensagens não usam termos de erro definitivo, para a fila tratar o bloqueio como transitório
+     * e reavaliar a nota no próximo ciclo.
+     */
+    private function emissionBlockReason(?array $nota, string $reuseIdDps): ?string
+    {
+        if (!$nota) {
+            return null;
+        }
+
+        $status = trim((string) ($nota['status'] ?? ''));
+        $idDps = trim((string) ($nota['id_dps'] ?? ''));
+
+        if ($status === 'EMITIDA') {
+            return 'A fatura já possui NFS-e emitida. Nova emissão bloqueada.';
+        }
+
+        if ($reuseIdDps !== '') {
+            if ($status !== 'PROCESSANDO' || $idDps !== $reuseIdDps) {
+                return 'A DPS desta fatura mudou durante o reenvio (esperada ' . $reuseIdDps
+                    . '). Reenvio cancelado; consulte o status da nota.';
+            }
+
+            return null;
+        }
+
+        if ($status === 'PROCESSANDO') {
+            return 'Já existe DPS em processamento para esta fatura'
+                . ($idDps !== '' ? ' (' . $idDps . ')' : '')
+                . '. Consulte o status em vez de emitir de novo.';
+        }
+
+        return null;
+    }
+
+    private function emitirComLock(int $invoiceId, string $correlationId, array $options): void
+    {
         $config = (new ConfigRepository())->get();
         if (empty($config)) {
             throw new NfseModuleException('Configuração do módulo não encontrada.');

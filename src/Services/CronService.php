@@ -15,6 +15,9 @@ final class CronService
     private const SOURCE_STANDALONE = 'standalone';
     private const SOURCE_WHMCS_CRON = 'whmcs_cron';
 
+    // Intervalo mínimo entre dois logs CRON_LOCK_BUSY, para não inundar a tabela de logs.
+    public const LOCK_BUSY_LOG_INTERVAL_SECONDS = 900;
+
     public function run(): void
     {
         $this->runInternal(self::SOURCE_STANDALONE);
@@ -53,7 +56,9 @@ final class CronService
         }
 
         $lock = new CronLockService();
-        if (!$lock->acquire('mod_opennfse_cron')) {
+        $lockName = $lock->cronLockName();
+        if (!$lock->acquire($lockName)) {
+            $this->registerLockBusy($configRepo, $config, $source, $lockName);
             return;
         }
 
@@ -75,7 +80,54 @@ final class CronService
             $this->logCronFailure($source, $e);
             throw $e;
         } finally {
-            $lock->release('mod_opennfse_cron');
+            $lock->release($lockName);
+        }
+    }
+
+    /**
+     * Grava um log CRON_LOCK_BUSY por ocorrência: enquanto o lock seguir ocupado,
+     * novos logs só saem depois de LOCK_BUSY_LOG_INTERVAL_SECONDS.
+     */
+    public static function shouldLogLockBusy(
+        ?string $lastLoggedAt,
+        int $now,
+        int $interval = self::LOCK_BUSY_LOG_INTERVAL_SECONDS
+    ): bool {
+        $lastLoggedAt = trim((string) $lastLoggedAt);
+        if ($lastLoggedAt === '') {
+            return true;
+        }
+
+        $last = strtotime($lastLoggedAt);
+        if ($last === false) {
+            return true;
+        }
+
+        return ($now - $last) >= $interval;
+    }
+
+    private function registerLockBusy(
+        ConfigRepository $configRepo,
+        array $config,
+        string $source,
+        string $lockName
+    ): void {
+        try {
+            if (!self::shouldLogLockBusy($config['cron_lock_busy_at'] ?? null, time())) {
+                return;
+            }
+
+            $configRepo->save(['cron_lock_busy_at' => date('Y-m-d H:i:s')]);
+            (new LogRepository())->insert(
+                null,
+                'CRON_LOCK_BUSY',
+                json_encode(
+                    ['source' => $source, 'lock' => $lockName],
+                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                ),
+                'Outro processamento do cron ainda está com o lock. Execução ignorada.'
+            );
+        } catch (\Throwable $e) {
         }
     }
 

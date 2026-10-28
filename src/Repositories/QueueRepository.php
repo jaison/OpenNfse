@@ -44,13 +44,17 @@ final class QueueRepository
         return $row !== null;
     }
 
-    public function enqueue(int $invoiceId, ?string $correlationId = null, ?bool $allowUnpaid = null): void
+    /**
+     * Cria o item PENDING se a fatura não tiver item ativo. Retorna false quando já existe um.
+     * O check-then-insert não é atômico: quem chama deve segurar o lock da fatura (InvoiceLockService).
+     */
+    public function enqueue(int $invoiceId, ?string $correlationId = null, ?bool $allowUnpaid = null): bool
     {
         if ($invoiceId <= 0) {
-            return;
+            return false;
         }
         if ($this->hasActive($invoiceId)) {
-            return;
+            return false;
         }
 
         $now = date('Y-m-d H:i:s');
@@ -71,6 +75,8 @@ final class QueueRepository
             $row['allow_unpaid'] = $allowUnpaid ? 1 : 0;
         }
         Capsule::table('mod_opennfse_queue')->insert($row);
+
+        return true;
     }
 
     public function claimNext(int $limit): array
@@ -200,14 +206,81 @@ final class QueueRepository
         ]);
     }
 
-    public function resetToPending(int $id): void
+    /**
+     * Reprocessar manual: volta para PENDING com as tentativas zeradas, sem agendamento
+     * pendente e sem erro. Só altera se o item ainda estiver no status esperado.
+     * Não mexe na nota (o contador de reemissão por E2404 é controle fiscal e fica como está).
+     */
+    public function resetToPending(int $id, string $expectedStatus): bool
     {
         $now = date('Y-m-d H:i:s');
-        Capsule::table('mod_opennfse_queue')->where('id', $id)->update([
-            'status' => 'PENDING',
+        $updated = Capsule::table('mod_opennfse_queue')
+            ->where('id', $id)
+            ->where('status', $expectedStatus)
+            ->update([
+                'status' => 'PENDING',
+                'tentativas' => 0,
+                'status_checks' => 0,
+                'next_check_at' => null,
+                'updated_at' => $now,
+                'last_error' => null,
+            ]);
+
+        return (bool) $updated;
+    }
+
+    public function hasActiveOtherThan(int $invoiceId, int $exceptId): bool
+    {
+        $row = Capsule::table('mod_opennfse_queue')
+            ->where('invoiceid', $invoiceId)
+            ->where('id', '<>', $exceptId)
+            ->whereIn('status', ['PENDING', 'RUNNING', 'WAIT_STATUS'])
+            ->first();
+
+        return $row !== null;
+    }
+
+    /**
+     * Itens em RUNNING desde antes de $cutoff (o claim grava ultima_tentativa).
+     */
+    public function findStaleRunning(string $cutoff, int $limit = 50): array
+    {
+        $rows = Capsule::table('mod_opennfse_queue')
+            ->where('status', 'RUNNING')
+            ->whereRaw('COALESCE(ultima_tentativa, updated_at, created_at) < ?', [$cutoff])
+            ->orderBy('created_at', 'asc')
+            ->limit(max(1, $limit))
+            ->get();
+
+        $result = [];
+        foreach ($rows as $row) {
+            $result[] = (array) $row;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Tira um item travado de RUNNING. Só altera se ele ainda estiver em RUNNING.
+     */
+    public function recoverStaleRunning(int $id, string $targetStatus, string $message): bool
+    {
+        $now = date('Y-m-d H:i:s');
+        $update = [
+            'status' => $targetStatus,
             'updated_at' => $now,
-            'last_error' => null,
-        ]);
+            'last_error' => $message,
+        ];
+        if ($targetStatus === 'WAIT_STATUS') {
+            $update['next_check_at'] = $now;
+        }
+
+        $updated = Capsule::table('mod_opennfse_queue')
+            ->where('id', $id)
+            ->where('status', 'RUNNING')
+            ->update($update);
+
+        return (bool) $updated;
     }
 
     public function markError(int $id, string $error): void

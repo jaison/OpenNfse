@@ -8,6 +8,7 @@ use OpenNfse\Exceptions\NfseModuleException;
 use OpenNfse\Module;
 use OpenNfse\Repositories\ConfigRepository;
 use OpenNfse\Repositories\GroupServiceCodeRepository;
+use OpenNfse\Repositories\LogRepository;
 use OpenNfse\Repositories\NotaRepository;
 use OpenNfse\Repositories\PaymentGatewaySettingsRepository;
 use OpenNfse\Repositories\QueueRepository;
@@ -15,11 +16,14 @@ use OpenNfse\Repositories\ReportRepository;
 use OpenNfse\Repositories\ServiceNbsCatalogRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
 use OpenNfse\Repositories\WhmcsPaymentGatewayRepository;
+use OpenNfse\Services\CronLockService;
 use OpenNfse\Services\CryptoService;
 use OpenNfse\Services\InvoiceEmailService;
+use OpenNfse\Services\InvoiceLockService;
 use OpenNfse\Services\NfseService;
 use OpenNfse\Services\QueueErrorClassifierService;
 use OpenNfse\Services\QueueService;
+use OpenNfse\Services\QueueStatePolicy;
 use OpenNfse\Services\StorageService;
 use OpenNfse\Services\TokenService;
 use WHMCS\Database\Capsule;
@@ -45,6 +49,9 @@ final class QueueController
             echo '<div class="successbox">Processamento manual da fila executado.</div>';
         } elseif ($msg === 'process_error') {
             echo '<div class="errorbox">Erro ao processar a fila manualmente. Verifique os logs do módulo.</div>';
+        } elseif ($msg === 'process_busy') {
+            echo '<div class="errorbox">Processamento já em andamento (cron ou outro administrador). '
+                . 'Aguarde alguns instantes e atualize a tela.</div>';
         }
 
         $statusFilter = trim((string) ($_REQUEST['status'] ?? ''));
@@ -438,7 +445,8 @@ final class QueueController
             }
             echo '</div>';
             echo '</td>';
-            echo '<td data-col="tentativas" style="text-align:center;vertical-align:top;">' . htmlspecialchars($tentativas, ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td data-col="tentativas" style="text-align:center;vertical-align:top;">'
+                . htmlspecialchars(QueueStatePolicy::attemptsLabel((int) $tentativas), ENT_QUOTES, 'UTF-8') . '</td>';
             echo '<td data-col="ultima" style="vertical-align:top;">' . $renderDateCell($ultima) . '</td>';
             echo '<td data-col="checks" style="text-align:center;vertical-align:top;">' . htmlspecialchars($checks, ENT_QUOTES, 'UTF-8') . '</td>';
             echo '<td data-col="proxima" style="vertical-align:top;">' . $renderDateCell($nextCheckAt, $nextMeta) . '</td>';
@@ -474,11 +482,14 @@ final class QueueController
                 echo '<input type="hidden" name="return_updated_to" value="' . htmlspecialchars($updatedTo, ENT_QUOTES, 'UTF-8') . '" />';
                 echo '<input type="hidden" name="return_page" value="' . $page . '" />';
                 echo '<input type="hidden" name="return_per_page" value="' . $perPage . '" />';
-                echo '<button type="submit" class="btn btn-xs btn-default">Consultar</button>';
+                echo '<button type="submit" class="btn btn-xs btn-default">Consultar agora</button>';
                 echo '</form>';
             }
-            if (in_array($status, ['ERROR', 'WAIT_STATUS'], true)) {
-                echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=filaRetry" style="display:inline-block;margin:0;">';
+            $canRetry = QueueStatePolicy::manualRetryBlockReason((array) $r, time()) === null;
+            if ($canRetry) {
+                echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=filaRetry"'
+                    . ' style="display:inline-block;margin:0;"'
+                    . ' onsubmit="return confirm(\'Reiniciar as tentativas automáticas deste item?\');">';
                 if ($token !== '') {
                     echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
                 }
@@ -607,6 +618,10 @@ final class QueueController
             $chave = trim((string) ($nota['chave_acesso'] ?? ''));
             if ($status === 'EMITIDA' && $chave !== '') {
                 $queueRepo->markDone($queueId);
+                (new QueueService())->sendAutomaticEmailForDoneItem(
+                    $invoiceId,
+                    (string) ($row['correlation_id'] ?? '')
+                );
             } elseif ($status === 'PROCESSANDO' || ($status === 'EMITIDA' && $chave === '')) {
                 $queueRepo->touchWaitStatus($queueId, $nextInterval);
             } else {
@@ -634,22 +649,122 @@ final class QueueController
             Module::ui()->renderError('Item da fila não encontrado.');
             return;
         }
-        if (in_array((string) ($row['status'] ?? ''), ['DONE', 'RESOLVIDO'], true)) {
-            Module::ui()->renderError('Este item está em status terminal (DONE/RESOLVIDO). Reprocessar está bloqueado para evitar inconsistências e duplicidade.');
+        $blockReason = QueueStatePolicy::manualRetryBlockReason($row, time());
+        if ($blockReason !== null) {
+            Module::ui()->renderError($blockReason);
             return;
         }
-        $queueRepo->resetToPending($queueId);
-        Module::ui()->renderSuccess('Item da fila marcado como PENDING.');
-        return;
+
+        $status = (string) ($row['status'] ?? '');
+        $invoiceId = (int) ($row['invoiceid'] ?? 0);
+
+        // RUNNING travado: só reprocessa se nenhum lote estiver vivo (lock do cron livre), para não
+        // mexer num item que ainda está na vez de um lote lento. Ordem cron -> fatura, como no lote.
+        $cronLock = null;
+        $cronLockName = '';
+        if ($status === 'RUNNING') {
+            $cronLock = new CronLockService();
+            $cronLockName = $cronLock->cronLockName();
+            if (!$cronLock->acquire($cronLockName)) {
+                Module::ui()->renderError('Processamento da fila em andamento. Tente novamente em instantes.');
+                return;
+            }
+        }
+
+        try {
+            $this->resetItemForManualRetry($queueRepo, $row, $queueId, $status, $invoiceId);
+        } finally {
+            if ($cronLock !== null) {
+                $cronLock->release($cronLockName);
+            }
+        }
+    }
+
+    private function resetItemForManualRetry(
+        QueueRepository $queueRepo,
+        array $row,
+        int $queueId,
+        string $status,
+        int $invoiceId
+    ): void {
+        $lock = new InvoiceLockService();
+        if (!$lock->acquire($invoiceId)) {
+            Module::ui()->renderError(InvoiceLockService::BUSY_MESSAGE);
+            return;
+        }
+
+        try {
+            // Uma fatura só pode ter um item ativo: um ERROR não volta se já houver outro em andamento.
+            if ($status === 'ERROR' && $queueRepo->hasActiveOtherThan($invoiceId, $queueId)) {
+                Module::ui()->renderError(
+                    'Já existe outro item ativo na fila para esta fatura. Reprocessar este item criaria duplicidade.'
+                );
+                return;
+            }
+
+            $adminId = (int) ($_SESSION['adminid'] ?? 0);
+            $correlationId = trim((string) ($row['correlation_id'] ?? ''));
+            $logRepo = new LogRepository();
+            $logRepo->insert(
+                null,
+                'QUEUE_MANUAL_RETRY',
+                json_encode([
+                    'queue_id' => $queueId,
+                    'invoiceid' => $invoiceId,
+                    'status_anterior' => $status,
+                    'tentativas_anteriores' => (int) ($row['tentativas'] ?? 0),
+                    'last_error_anterior' => $row['last_error'] ?? null,
+                    'admin_id' => $adminId > 0 ? $adminId : null,
+                ], JSON_UNESCAPED_UNICODE),
+                null,
+                $correlationId !== '' ? $correlationId : null
+            );
+
+            if (!$queueRepo->resetToPending($queueId, $status)) {
+                $logRepo->insert(
+                    null,
+                    'QUEUE_MANUAL_RETRY_CONFLICT',
+                    json_encode(
+                        ['queue_id' => $queueId, 'invoiceid' => $invoiceId, 'status_anterior' => $status],
+                        JSON_UNESCAPED_UNICODE
+                    ),
+                    'O status do item mudou antes do reprocessar.',
+                    $correlationId !== '' ? $correlationId : null
+                );
+                Module::ui()->renderError(
+                    'O status do item mudou durante a operação. Atualize a tela da fila e tente de novo.'
+                );
+                return;
+            }
+        } finally {
+            $lock->release($invoiceId);
+        }
+
+        Module::ui()->renderSuccess(
+            'Tentativas automáticas reiniciadas: o item voltou para PENDING e será processado no próximo ciclo da fila.'
+        );
     }
 
     public function filaProcessNow(): void
     {
+        // Mesmo lock do cron: nunca dois processamentos da fila ao mesmo tempo.
+        $lock = new CronLockService();
+        $lockName = $lock->cronLockName();
+        if (!$lock->acquire($lockName)) {
+            $this->redirectFila(['msg' => 'process_busy'], true);
+            return;
+        }
+
+        $ok = true;
         try {
             (new QueueService())->processBatch();
-            $this->redirectFila(['msg' => 'process_done'], true);
         } catch (\Throwable $e) {
-            $this->redirectFila(['msg' => 'process_error'], true);
+            $ok = false;
+        } finally {
+            $lock->release($lockName);
         }
+
+        // O redirect encerra o script (exit), por isso fica fora do try/finally.
+        $this->redirectFila(['msg' => $ok ? 'process_done' : 'process_error'], true);
     }
 }

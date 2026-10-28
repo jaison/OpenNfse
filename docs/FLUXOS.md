@@ -58,8 +58,11 @@ stateDiagram-v2
     RUNNING --> WAIT_STATUS: nota ainda em processamento
     RUNNING --> PENDING: erro transitório (até 5 novas tentativas)
     RUNNING --> ERROR: erro definitivo ou tentativas esgotadas
+    RUNNING --> WAIT_STATUS: travado há mais de 15 min, com DPS enviada
+    RUNNING --> PENDING: travado há mais de 15 min, sem DPS (ou reprocessar)
     WAIT_STATUS --> RUNNING: next_check_at vencido ou "consultar agora"
     ERROR --> PENDING: reprocessar (admin)
+    PENDING --> PENDING: reprocessar (admin)
     ERROR --> RESOLVIDO: nota da fatura emitida depois
     DONE --> [*]
     RESOLVIDO --> [*]
@@ -72,7 +75,15 @@ stateDiagram-v2
 - `ERROR`: falha definitiva. A mensagem fica em `last_error`.
 - `RESOLVIDO`: item `ERROR` de uma fatura cuja nota foi emitida depois, por outro caminho. A troca é feita na emissão bem-sucedida e no início de cada lote da fila.
 
-Uma fatura só tem um item ativo (`PENDING`, `RUNNING` ou `WAIT_STATUS`) por vez: `QueueRepository::enqueue()` ignora o pedido se já houver um.
+Uma fatura só tem um item ativo (`PENDING`, `RUNNING` ou `WAIT_STATUS`) por vez: `QueueRepository::enqueue()` ignora o pedido se já houver um (log `QUEUE_ENQUEUE_SKIP_ACTIVE`). `QueueService::enqueueEmit()` faz essa checagem e a inclusão sob o lock da fatura (ver [Locks](#locks)).
+
+### Item preso em `RUNNING`
+
+No início de cada processamento da fila (`processBatch`, sempre sob o lock do cron), os itens em `RUNNING` há mais de 15 minutos, medidos pela `ultima_tentativa` gravada no claim, são devolvidos (log `QUEUE_RUNNING_RECOVERED`, regras em `QueueStatePolicy`):
+
+- `WAIT_STATUS`, se a nota já está `PROCESSANDO` com `id_dps` (ou `EMITIDA` sem chave). A consulta resolve, sem gerar nova DPS, e o item continua contando como em voo para o processamento sequencial. Depois de 3 recuperações do mesmo item (contadas pelos logs `QUEUE_RUNNING_RECOVERED` do seu `correlation_id`, desde o último **Reprocessar**), ele vai para `ERROR`, com o motivo em `last_error`: a consulta derruba o processo sempre (erro fatal, `memory_limit` ou `max_execution_time`) e não pode travar a fila;
+- `ERROR`, se as tentativas automáticas já se esgotaram;
+- `PENDING`, nos demais casos. O claim seguinte reavalia a nota antes de emitir.
 
 ## Emissão
 
@@ -87,6 +98,7 @@ Botão **Emitir NFS-e** na fatura (`InvoiceHook` → action `emit` → `NotasCon
 
 ### `NfseService::emitir()`
 
+0. Obtém o lock da fatura (espera até 5 s; sem ele, aborta com "emissão desta fatura já em andamento", log `EMISSAO_LOCK_BUSY`) e, com o lock, relê a nota: bloqueia se ela já está `EMITIDA`, se há outra DPS em `PROCESSANDO` ou, no reenvio da mesma DPS, se o `id_dps` mudou (log `EMISSAO_BLOCKED_STATUS`). O lock é liberado no fim da emissão.
 1. Revalida a elegibilidade (`EmissionEligibilityService`) e roda a validação preventiva (`EmissionPreValidationService`): regime especial de tributação (`7`, `8` e `10` bloqueiam a emissão com mensagem própria), certificado, CNPJ, código IBGE, série, código de serviço, IM, regime do Simples, total e itens da fatura, nome, e-mail, país e documento do tomador, e endereço do tomador no exterior. Os erros são reunidos numa mensagem única.
 2. Lê o CPF/CNPJ do tomador brasileiro no custom field configurado.
 3. Obtém o número da DPS em `mod_opennfse_sequences` (transação com `lockForUpdate`, por ambiente, CNPJ e série). No reenvio da mesma DPS, o número é extraído do `id_dps` existente.
@@ -150,9 +162,11 @@ Para cada item `PENDING`, do mais antigo para o mais novo:
 
 ### Ações manuais na tela da fila
 
-- **Consultar agora** (`filaCheckNow`): só para itens `WAIT_STATUS`. Faz a consulta na hora e aplica as mesmas regras de `DONE`/`WAIT_STATUS`/`ERROR`.
-- **Reprocessar** (`filaRetry`): volta o item para `PENDING`. Bloqueado para `DONE` e `RESOLVIDO`.
-- **Processar agora** (`filaProcessNow`): roda `processBatch()`.
+- **Consultar agora** (`filaCheckNow`): só para itens `WAIT_STATUS`. Faz a consulta na hora e aplica as mesmas regras de `DONE`/`WAIT_STATUS`/`ERROR`. Ao concluir como `DONE`, dispara o envio automático de e-mail, como no lote.
+- **Reprocessar** (`filaRetry`, com confirmação): volta o item para `PENDING` com as tentativas zeradas e sem `last_error`, e ele roda no próximo ciclo com todas as tentativas automáticas de novo. Antes, grava o log `QUEUE_MANUAL_RETRY` com as tentativas e o erro anteriores e o admin. O contador de reemissão por E2404 da nota não é zerado. Permitido para `ERROR`, `PENDING` e `RUNNING` travado há mais de 15 minutos. No `RUNNING`, só com o lock do cron livre: se um lote estiver em andamento, responde "processamento em andamento, tente novamente em instantes". Em `WAIT_STATUS`, use **Consultar agora**. Bloqueado para `DONE` e `RESOLVIDO`, e para um `ERROR` cuja fatura já tem outro item ativo.
+- **Processar agora** (`filaProcessNow`): roda `processBatch()` com o mesmo lock do cron. Se o cron estiver rodando, responde "processamento já em andamento".
+
+A coluna de tentativas mostra "Tentativa X de 6": a primeira tentativa mais as 5 novas tentativas automáticas.
 
 ## Consulta de status
 
@@ -200,7 +214,7 @@ O E2404 ("não foi gerada uma NFS-e com o identificador de DPS informado") apare
 flowchart LR
     W[cron do WHMCS] -- AfterCronJob --> R[CronService::runFromWhmcsCron]
     C[php cron.php] --> S[CronService::run]
-    R --> L{GET_LOCK<br/>mod_opennfse_cron}
+    R --> L{GET_LOCK<br/>banco.mod_opennfse_cron}
     S --> L
     L -- ocupado --> X[sai]
     L -- ok --> M{mesmo minuto da<br/>última execução?}
@@ -211,7 +225,7 @@ flowchart LR
 A origem recomendada é o cron do WHMCS, pelo hook `AfterCronJob`. `cron.php` continua disponível para execução manual pela CLI. As duas origens passam pelos mesmos controles:
 
 1. Roda as migrations pendentes e sai se não houver configuração salva.
-2. Tenta o lock MySQL `mod_opennfse_cron` sem esperar (`CronLockService`). Se outro processo está com o lock, sai.
+2. Tenta o lock MySQL `<banco>.mod_opennfse_cron` sem esperar (`CronLockService`). Se outro processo está com o lock, sai e grava o log `CRON_LOCK_BUSY`, no máximo um a cada 15 minutos (`cron_lock_busy_at` na configuração).
 3. **Proteção por minuto**: compara `cron_last_minute_key` (formato `YmdHi`) com o minuto atual e sai se o cron já rodou neste minuto. Depois grava `cron_last_run_at`, `cron_last_source` (`whmcs_cron` ou `standalone`) e a chave do minuto.
 4. Com `queue_enabled = 1`:
    - processa a fila (`processBatch(20)`);
@@ -220,6 +234,17 @@ A origem recomendada é o cron do WHMCS, pelo hook `AfterCronJob`. `cron.php` co
 5. Verifica atualização do módulo se a última checagem tiver mais de 24 h (`UpdateCheckService`).
 6. Limpa logs e itens `DONE`/`RESOLVIDO` da fila conforme a retenção configurada.
 7. Libera o lock. Falhas são registradas como `CRON_ERROR` (ou `CRON_HOOK_ERROR`, quando vêm do hook).
+
+### Locks
+
+Todos são `GET_LOCK` do MySQL com o nome prefixado pelo banco atual (`DATABASE()`), para que duas instalações no mesmo servidor não disputem o mesmo lock. Se o nome passar de 64 caracteres, o banco é trocado por um hash curto.
+
+| Lock | Quem usa | Espera |
+|---|---|---|
+| `<banco>.mod_opennfse_cron` | cron (`CronService`) e **Processar agora** | não espera |
+| `<banco>.opennfse_inv_<fatura>` | `NfseService::emitir()`, `QueueService::enqueueEmit()` e **Reprocessar** | até 5 s |
+
+O cron segura o lock do cron e, dentro do lote, cada emissão pega também o lock da fatura. Isso exige MySQL 5.7.5+ ou MariaDB 10.0.2+, que aceitam vários locks por sessão (`CronLockService::supportsMultipleLocks()`, pela `VERSION()`, lida uma vez por request). Em versões anteriores, um `GET_LOCK` novo soltaria o lock do cron. Por isso, quando o processo já tem um lock, o lock da fatura não é pedido, e o lock do cron segue garantindo a exclusão do lote.
 
 ## Envio de XML e PDF por e-mail
 
@@ -246,7 +271,7 @@ Pontos de disparo:
 
 - **Manual, pelo admin**: botão **Enviar por e-mail** na fatura (action `sendEmail`).
 - **Manual, pelo cliente**: botão na fatura e na lista da área do cliente.
-- **Automático após `DONE`**: com `auto_send_nfse_email = 1`, a fila envia o e-mail sempre que marca um item como `DONE` com a nota emitida, na emissão ou na consulta `WAIT_STATUS` do processamento em lote.
+- **Automático após `DONE`**: com `auto_send_nfse_email = 1`, a fila envia o e-mail sempre que marca um item como `DONE` com a nota emitida, na emissão, na consulta `WAIT_STATUS` do processamento em lote ou no **Consultar agora**.
 
 Proteção contra duplicidade no envio automático (`NotaRepository::claimAutomaticEmail()`): antes de enviar, o módulo preenche `email_automatico_processado_at` com um `UPDATE ... WHERE email_automatico_processado_at IS NULL`. Só o processo que conseguir essa atualização envia. O resultado fica em `email_automatico_status` (`PROCESSANDO`, `ENVIADO` ou `FALHOU`). Uma falha é registrada em `EMAIL_NFSE_AUTO_ERROR` e nas notas da fatura, e não há nova tentativa automática. O reenvio manual continua disponível.
 

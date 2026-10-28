@@ -6,6 +6,7 @@ namespace OpenNfse\Tests\Services;
 
 use OpenNfse\Services\QueueService;
 use PHPUnit\Framework\TestCase;
+use WHMCS\Database\Capsule;
 
 final class QueueServiceTest extends TestCase
 {
@@ -52,5 +53,21 @@ final class QueueServiceTest extends TestCase
         ]);
 
         $this->assertTrue($result);
+    }
+
+    public function testAutomaticEmailForDoneItemNeverThrows(): void
+    {
+        // O stub do Capsule não tem orderBy(): a leitura da configuração falha e o erro precisa ser contido,
+        // porque o item já foi marcado DONE pelo "Consultar agora".
+        Capsule::$rows['mod_opennfse_notas'] = [
+            (object) ['id' => 1, 'invoiceid' => 10, 'status' => 'EMITIDA', 'chave_acesso' => 'CHAVE'],
+        ];
+
+        try {
+            (new QueueService())->sendAutomaticEmailForDoneItem(10, 'corr');
+            $this->addToAssertionCount(1);
+        } finally {
+            Capsule::reset();
+        }
     }
 }
