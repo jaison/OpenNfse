@@ -10,6 +10,7 @@ use Nfse\Dto\Nfse\IbscbsNfseData;
 use Nfse\Dto\Nfse\InfNfseData;
 use Nfse\Dto\Nfse\NfseData;
 use Nfse\Dto\Nfse\ValoresNfseData;
+use Nfse\Support\SchemaText;
 class NfseXmlBuilder
 {
     private DOMDocument $dom;
@@ -196,8 +197,12 @@ class NfseXmlBuilder
             $value = $value->value;
         }
         if ($value !== null && $value !== '') {
+            $text = SchemaText::forSchema((string) $value);
+            if ($text === null || $text === '') {
+                return;
+            }
             $element = $this->dom->createElement($name);
-            $element->appendChild($this->dom->createTextNode((string) $value));
+            $element->appendChild($this->dom->createTextNode($text));
             $parent->appendChild($element);
         }
     }

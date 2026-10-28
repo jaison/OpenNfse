@@ -1,0 +1,60 @@
+nfse-nacional/nfse-php — ordem de campos do leiaute da NT 009
+
+Base: b89bf93 + patches 01-03. Conferido com o XSD oficial da produção restrita
+(esquemas_prod_restrita_20261020.zip, TCInfDPS e TCCServ):
+- cServ: xDescServ passou para depois de cNBS/cIntContrib. A ordem antiga continua
+  valendo no XSD de produção (pacote 20260209). Como finNFSe é obrigatório na NT 009 e
+  não existe no leiaute anterior, a presença de finNFSe escolhe a ordem.
+- infDPS: finNFSe vem depois de cMotivoEmisTI (o #65 o colocou antes).
+
+diff --git a/src/Xml/DpsXmlBuilder.php b/src/Xml/DpsXmlBuilder.php
+index c23bd5c..847d710 100644
+--- a/src/Xml/DpsXmlBuilder.php
++++ b/src/Xml/DpsXmlBuilder.php
+@@ -50,8 +50,8 @@ class DpsXmlBuilder
+         $this->appendElement($parent, 'nDPS', $data->numeroDps);
+         $this->appendElement($parent, 'dCompet', $data->dataCompetencia);
+         $this->appendElement($parent, 'tpEmit', $data->tipoEmitente);
+-        $this->appendElement($parent, 'finNFSe', $data->finalidadeNfse);
+         $this->appendElement($parent, 'cMotivoEmisTI', $data->motivoEmissaoTomadorIntermediario);
++        $this->appendElement($parent, 'finNFSe', $data->finalidadeNfse);
+         $this->appendElement($parent, 'chNFSeRej', $data->chaveNfseRejeitada);
+         $this->appendElement($parent, 'cLocEmi', $data->codigoLocalEmissao);
+ 
+@@ -91,7 +91,9 @@ class DpsXmlBuilder
+         }
+ 
+         if ($data->servico) {
+-            $this->buildServico($parent, $data->servico);
++            // finNFSe é obrigatório no leiaute da NT 009 e não existe no anterior,
++            // então indica qual ordem de campos usar em cServ.
++            $this->buildServico($parent, $data->servico, $data->finalidadeNfse !== null);
+         }
+ 
+         if ($data->valores) {
+@@ -190,7 +192,7 @@ class DpsXmlBuilder
+         $parent->appendChild($end);
+     }
+ 
+-    private function buildServico(DOMElement $parent, ServicoData $data): void
++    private function buildServico(DOMElement $parent, ServicoData $data, bool $leiauteNt009 = false): void
+     {
+         $serv = $this->dom->createElement('serv');
+ 
+@@ -208,9 +210,15 @@ class DpsXmlBuilder
+             $cServ = $this->dom->createElement('cServ');
+             $this->appendElement($cServ, 'cTribNac', $data->codigoServico->codigoTributacaoNacional);
+             $this->appendElement($cServ, 'cTribMun', $data->codigoServico->codigoTributacaoMunicipal);
+-            $this->appendElement($cServ, 'xDescServ', $data->codigoServico->descricaoServico);
++            // A NT 009 moveu xDescServ para depois de cNBS/cIntContrib.
++            if (! $leiauteNt009) {
++                $this->appendElement($cServ, 'xDescServ', $data->codigoServico->descricaoServico);
++            }
+             $this->appendElement($cServ, 'cNBS', $data->codigoServico->codigoNbs);
+             $this->appendElement($cServ, 'cIntContrib', $data->codigoServico->codigoInternoContribuinte);
++            if ($leiauteNt009) {
++                $this->appendElement($cServ, 'xDescServ', $data->codigoServico->descricaoServico);
++            }
+             $serv->appendChild($cServ);
+         }
+ 

@@ -1,0 +1,26 @@
+nfse-nacional/nfse-php — vServMoeda com duas casas decimais
+
+Base: b89bf93 (main). Desde a v1.23 o DpsXmlBuilder grava vServMoeda com (string)float,
+então 99.90 vira "99.9", que o tipo TSDec15V2 do XSD rejeita (exige duas casas
+quando há parte decimal). Restaura o number_format(..., 2, '.', '').
+
+diff --git a/src/Xml/DpsXmlBuilder.php b/src/Xml/DpsXmlBuilder.php
+index d63e977..c23bd5c 100644
+--- a/src/Xml/DpsXmlBuilder.php
++++ b/src/Xml/DpsXmlBuilder.php
+@@ -219,7 +219,14 @@ class DpsXmlBuilder
+             $this->appendElement($comExt, 'mdPrestacao', $data->comercioExterior->modoPrestacao);
+             $this->appendElement($comExt, 'vincPrest', $data->comercioExterior->vinculoPrestacao);
+             $this->appendElement($comExt, 'tpMoeda', $data->comercioExterior->tipoMoeda);
+-            $this->appendElement($comExt, 'vServMoeda', $data->comercioExterior->valorServicoMoeda);
++            // TSDec15V2 exige duas casas quando há parte decimal (99.9 é rejeitado, 99.90 não)
++            $this->appendElement(
++                $comExt,
++                'vServMoeda',
++                $data->comercioExterior->valorServicoMoeda !== null
++                    ? number_format($data->comercioExterior->valorServicoMoeda, 2, '.', '')
++                    : null
++            );
+             $this->appendElement($comExt, 'mecAFComexP', $data->comercioExterior->mecanismoApoioComexPrestador);
+             $this->appendElement($comExt, 'mecAFComexT', $data->comercioExterior->mecanismoApoioComexTomador);
+             $this->appendElement($comExt, 'movTempBens', $data->comercioExterior->movimentacaoTemporariaBens);

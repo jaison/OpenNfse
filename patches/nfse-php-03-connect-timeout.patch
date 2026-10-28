@@ -1,0 +1,53 @@
+nfse-nacional/nfse-php — connect timeout de 10s
+
+Base: b89bf93 + patches 01-02. Os clients já usam CURLOPT_CONNECTTIMEOUT=30 e CURLOPT_TIMEOUT=60.
+Com o Retry (GET/HEAD, 3 tentativas, espera de 1s e 2s), um host inacessível segura cada
+consulta por até 3x30+3 = 93s. Com 10s de connect o pior caso cai para 33s. O handshake
+TCP+TLS com a SEFIN leva menos de 1s; 10s é folga ampla. CURLOPT_TIMEOUT=60 é mantido para
+não cortar um POST de emissão que ainda está sendo processado.
+
+diff --git a/src/Http/Client/AdnClient.php b/src/Http/Client/AdnClient.php
+index 0e4271f..9a9d4aa 100644
+--- a/src/Http/Client/AdnClient.php
++++ b/src/Http/Client/AdnClient.php
+@@ -68,7 +68,9 @@ class AdnClient implements AdnDanfseInterface
+                 CURLOPT_SSLCERT => $this->resolveCertificatePath(),
+                 CURLOPT_SSLCERTPASSWD => $this->context->certificatePassword,
+                 CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+-                CURLOPT_CONNECTTIMEOUT => 30,
++                // Com o Retry (3 tentativas), um host inacessível segura a requisição
++                // por até 3x o connect timeout; 10s basta para o handshake.
++                CURLOPT_CONNECTTIMEOUT => 10,
+                 CURLOPT_TIMEOUT => 60,
+                 CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                 // Endpoints municipais publicados por IP: o nome do certificado é fixado
+diff --git a/src/Http/Client/CncClient.php b/src/Http/Client/CncClient.php
+index 15b9f76..786605d 100644
+--- a/src/Http/Client/CncClient.php
++++ b/src/Http/Client/CncClient.php
+@@ -59,7 +59,9 @@ class CncClient
+                 CURLOPT_SSLCERT => $this->resolveCertificatePath(),
+                 CURLOPT_SSLCERTPASSWD => $this->context->certificatePassword,
+                 CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+-                CURLOPT_CONNECTTIMEOUT => 30,
++                // Com o Retry (3 tentativas), um host inacessível segura a requisição
++                // por até 3x o connect timeout; 10s basta para o handshake.
++                CURLOPT_CONNECTTIMEOUT => 10,
+                 CURLOPT_TIMEOUT => 60,
+                 CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+             ],
+diff --git a/src/Http/Client/SefinClient.php b/src/Http/Client/SefinClient.php
+index e104830..4746ef2 100644
+--- a/src/Http/Client/SefinClient.php
++++ b/src/Http/Client/SefinClient.php
+@@ -60,7 +60,9 @@ class SefinClient implements SefinNacionalInterface
+                 CURLOPT_SSLCERT => $this->resolveCertificatePath(),
+                 CURLOPT_SSLCERTPASSWD => $this->context->certificatePassword,
+                 CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+-                CURLOPT_CONNECTTIMEOUT => 30,
++                // Com o Retry (3 tentativas), um host inacessível segura a requisição
++                // por até 3x o connect timeout; 10s basta para o handshake.
++                CURLOPT_CONNECTTIMEOUT => 10,
+                 CURLOPT_TIMEOUT => 60,
+                 CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                 // Endpoints municipais publicados por IP: o nome do certificado é fixado
