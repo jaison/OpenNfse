@@ -20,9 +20,11 @@ final class DpsLayoutService
     public const LAYOUT_PRE_NT009 = 'pre_nt009';
     public const LAYOUT_NT009 = 'nt009';
 
-    /** Início da NT 009 em produção, no fuso abaixo. */
-    public const NT009_PRODUCAO_INICIO = '2026-12-01 00:00:00';
-    public const TIMEZONE = 'America/Sao_Paulo';
+    /**
+     * Início da NT 009 em produção: 01/12/2026 00:00 em Brasília. O offset é
+     * fixo para não depender do tzdata (ex.: se o horário de verão voltar).
+     */
+    public const NT009_PRODUCAO_INICIO = '2026-12-01T00:00:00-03:00';
 
     /** finNFSe = 0: NFS-e regular (único valor do TSRTCFinNFSe). */
     public const FIN_NFSE_REGULAR = '0';
@@ -65,7 +67,7 @@ final class DpsLayoutService
 
     public static function productionStart(): \DateTimeImmutable
     {
-        return new \DateTimeImmutable(self::NT009_PRODUCAO_INICIO, new \DateTimeZone(self::TIMEZONE));
+        return new \DateTimeImmutable(self::NT009_PRODUCAO_INICIO);
     }
 
     public function resolve(string $mode, string $environment, \DateTimeInterface $now): string
@@ -134,7 +136,7 @@ final class DpsLayoutService
         if (stripos($errorMessage, 'E1235') === false) {
             return null;
         }
-        if (stripos($errorMessage, 'finNFSe') === false && stripos($errorMessage, 'cLocEmi') === false) {
+        if (!self::isLayoutStructureError($errorMessage)) {
             return null;
         }
 
@@ -146,5 +148,24 @@ final class DpsLayoutService
             self::layoutLabel($layoutEnviado),
             self::layoutLabel($sugerido)
         );
+    }
+
+    /**
+     * Erro de ESTRUTURA do schema causado pelo leiaute: elemento cLocEmi ou
+     * finNFSe fora do lugar, ou lista de esperados que pede finNFSe. Erros de
+     * VALOR (ex.: cLocEmi com código IBGE inválido) ficam de fora.
+     */
+    private static function isLayoutStructureError(string $errorMessage): bool
+    {
+        $elemento = "'(?:[^']*:)?(?:cLocEmi|finNFSe)'";
+        if (preg_match('/has invalid child element ' . $elemento . '/i', $errorMessage) === 1) {
+            return true;
+        }
+        if (preg_match('/Element ' . $elemento . ': This element is not expected/i', $errorMessage) === 1) {
+            return true;
+        }
+
+        return stripos($errorMessage, 'has invalid child element') !== false
+            && preg_match('/expected:?[^.]*finNFSe/i', $errorMessage) === 1;
     }
 }

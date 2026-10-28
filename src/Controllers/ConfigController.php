@@ -823,10 +823,10 @@ $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '
         if ($prestadorOpSimpNac !== '3') {
             $prestadorRegApTribSn = '';
         }
+        $prestadorRegEspTrib = trim($prestadorRegEspTrib);
         if ($prestadorRegEspTrib === '') {
             $prestadorRegEspTrib = '0';
         }
-        $prestadorRegEspTrib = trim($prestadorRegEspTrib);
         if (!in_array($prestadorRegEspTrib, self::REG_ESP_TRIB_VALIDOS, true)) {
             $errors[] = 'Regime especial inválido: use 0 (Nenhum), 1 (Ato Cooperado), 2 (Estimativa), '
                 . '3 (Microempresa Municipal), 4 (Notário ou Registrador), 5 (Profissional Autônomo), '
