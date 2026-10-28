@@ -15,6 +15,7 @@ use OpenNfse\Repositories\ReportRepository;
 use OpenNfse\Repositories\ServiceNbsCatalogRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
 use OpenNfse\Repositories\WhmcsPaymentGatewayRepository;
+use OpenNfse\Services\CronLockService;
 use OpenNfse\Services\CryptoService;
 use OpenNfse\Services\InvoiceEmailService;
 use OpenNfse\Services\NfseService;
@@ -45,6 +46,9 @@ final class QueueController
             echo '<div class="successbox">Processamento manual da fila executado.</div>';
         } elseif ($msg === 'process_error') {
             echo '<div class="errorbox">Erro ao processar a fila manualmente. Verifique os logs do módulo.</div>';
+        } elseif ($msg === 'process_busy') {
+            echo '<div class="errorbox">Processamento já em andamento (cron ou outro administrador). '
+                . 'Aguarde alguns instantes e atualize a tela.</div>';
         }
 
         $statusFilter = trim((string) ($_REQUEST['status'] ?? ''));
@@ -645,11 +649,24 @@ final class QueueController
 
     public function filaProcessNow(): void
     {
+        // Mesmo lock do cron: nunca dois processamentos da fila ao mesmo tempo.
+        $lock = new CronLockService();
+        $lockName = $lock->cronLockName();
+        if (!$lock->acquire($lockName)) {
+            $this->redirectFila(['msg' => 'process_busy'], true);
+            return;
+        }
+
+        $ok = true;
         try {
             (new QueueService())->processBatch();
-            $this->redirectFila(['msg' => 'process_done'], true);
         } catch (\Throwable $e) {
-            $this->redirectFila(['msg' => 'process_error'], true);
+            $ok = false;
+        } finally {
+            $lock->release($lockName);
         }
+
+        // O redirect encerra o script (exit), por isso fica fora do try/finally.
+        $this->redirectFila(['msg' => $ok ? 'process_done' : 'process_error'], true);
     }
 }

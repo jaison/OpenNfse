@@ -44,13 +44,17 @@ final class QueueRepository
         return $row !== null;
     }
 
-    public function enqueue(int $invoiceId, ?string $correlationId = null, ?bool $allowUnpaid = null): void
+    /**
+     * Cria o item PENDING se a fatura não tiver item ativo. Retorna false quando já existe um.
+     * O check-then-insert não é atômico: quem chama deve segurar o lock da fatura (InvoiceLockService).
+     */
+    public function enqueue(int $invoiceId, ?string $correlationId = null, ?bool $allowUnpaid = null): bool
     {
         if ($invoiceId <= 0) {
-            return;
+            return false;
         }
         if ($this->hasActive($invoiceId)) {
-            return;
+            return false;
         }
 
         $now = date('Y-m-d H:i:s');
@@ -67,6 +71,8 @@ final class QueueRepository
             'next_check_at' => null,
             'allow_unpaid' => $allowUnpaid === null ? null : ($allowUnpaid ? 1 : 0),
 ]);
+
+        return true;
     }
 
     public function claimNext(int $limit): array

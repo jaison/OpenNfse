@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenNfse\Services;
 
+use OpenNfse\Exceptions\NfseModuleException;
 use OpenNfse\Helpers\CorrelationIdGenerator;
 use OpenNfse\Migrations\Migrator;
 use OpenNfse\Repositories\ConfigRepository;
@@ -16,13 +17,37 @@ final class QueueService
 {
     private const MAX_TENTATIVAS = 5;
 
-    public function enqueueEmit(int $invoiceId, string $tipoLog, ?bool $allowUnpaid = null): void
+    public function enqueueEmit(int $invoiceId, string $tipoLog, ?bool $allowUnpaid = null): bool
     {
         (new Migrator())->up();
         $correlationId = CorrelationIdGenerator::generate($invoiceId);
         $repo = new QueueRepository();
-        $repo->enqueue($invoiceId, $correlationId, $allowUnpaid);
-        (new LogRepository())->insert(null, $tipoLog, json_encode(['invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
+
+        // Mesmo lock da emissão: evita dois itens ativos para a fatura em pedidos simultâneos.
+        $lock = new InvoiceLockService();
+        if (!$lock->acquire($invoiceId)) {
+            throw new NfseModuleException(InvoiceLockService::BUSY_MESSAGE);
+        }
+        try {
+            $created = $repo->enqueue($invoiceId, $correlationId, $allowUnpaid);
+        } finally {
+            $lock->release($invoiceId);
+        }
+
+        $logRepo = new LogRepository();
+        if (!$created) {
+            $logRepo->insert(
+                null,
+                'QUEUE_ENQUEUE_SKIP_ACTIVE',
+                json_encode(['invoiceid' => $invoiceId, 'origem' => $tipoLog], JSON_UNESCAPED_UNICODE),
+                null,
+                $correlationId
+            );
+            return false;
+        }
+
+        $logRepo->insert(null, $tipoLog, json_encode(['invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
+        return true;
     }
 
     public function processBatch(int $limit = 10): void
