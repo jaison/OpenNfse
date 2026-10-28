@@ -25,4 +25,15 @@ class SefinEndpointResolver implements EndpointResolver
         }
         return $context->ambiente === TipoAmbiente::Producao ? $endpoint->production : $endpoint->homologation;
     }
+    /**
+     * URL do DANFSe no endpoint próprio do município, ou null quando o município
+     * não possui endpoint mapeado (nesse caso o download segue pelo ADN nacional).
+     */
+    public function resolveDanfse(NfseContext $context, string $chaveAcesso): ?string
+    {
+        if (!$context->codigoMunicipio || !isset(self::ENDPOINTS[$context->codigoMunicipio])) {
+            return null;
+        }
+        return rtrim($this->resolve($context), '/') . "/danfse/{$chaveAcesso}/pdf";
+    }
 }

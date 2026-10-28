@@ -67,11 +67,4 @@ class InfPedRegData extends Dto
     public ?\Nfse\Dto\Nfse\BloqueioPorOficioData $e305102 = null;
     #[MapFrom('e305103')]
     public ?\Nfse\Dto\Nfse\DesbloqueioPorOficioData $e305103 = null;
-    /**
-     * === RESERVADOS PELO SCHEMA ===
-     */
-    #[MapFrom('e907202')]
-    public mixed $e907202 = null;
-    #[MapFrom('e967203')]
-    public mixed $e967203 = null;
 }

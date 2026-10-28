@@ -116,4 +116,9 @@ class InfNfseData extends Dto
      */
     #[MapFrom('valores')]
     public ?\Nfse\Dto\Nfse\ValoresNfseData $valores = null;
+    /**
+     * Grupo de informações geradas pelo sistema referentes ao IBS e à CBS.
+     */
+    #[MapFrom('IBSCBS')]
+    public ?\Nfse\Dto\Nfse\IbscbsNfseData $ibscbs = null;
 }

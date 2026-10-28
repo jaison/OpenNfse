@@ -700,17 +700,17 @@
         },
         {
             "name": "nfse-nacional\/nfse-php",
-            "version": "v1.20.0-beta",
-            "version_normalized": "1.20.0.0-beta",
+            "version": "v1.23.0-beta",
+            "version_normalized": "1.23.0.0-beta",
             "source": {
                 "type": "git",
                 "url": "https:\/\/github.com\/nfse-nacional\/nfse-php.git",
-                "reference": "dcf699910352d6e73f01cf50a5b2c78ab6cd8481"
+                "reference": "5794ecdae48515105e4d29717e8e22d61b13585e"
             },
             "dist": {
                 "type": "zip",
-                "url": "https:\/\/api.github.com\/repos\/nfse-nacional\/nfse-php\/zipball\/dcf699910352d6e73f01cf50a5b2c78ab6cd8481",
-                "reference": "dcf699910352d6e73f01cf50a5b2c78ab6cd8481",
+                "url": "https:\/\/api.github.com\/repos\/nfse-nacional\/nfse-php\/zipball\/5794ecdae48515105e4d29717e8e22d61b13585e",
+                "reference": "5794ecdae48515105e4d29717e8e22d61b13585e",
                 "shasum": ""
             },
             "require": {
@@ -735,7 +735,7 @@
             "suggest": {
                 "spatie\/typescript-transformer": "Opcional (PHP >=8.2) para regenerar o arquivo types\/generated.d.ts."
             },
-            "time": "2026-05-27T11:00:29+00:00",
+            "time": "2026-08-26T09:54:02+00:00",
             "type": "library",
             "installation-source": "dist",
             "autoload": {
@@ -761,7 +761,7 @@
             ],
             "support": {
                 "issues": "https:\/\/github.com\/nfse-nacional\/nfse-php\/issues",
-                "source": "https:\/\/github.com\/nfse-nacional\/nfse-php\/tree\/v1.20.0-beta"
+                "source": "https:\/\/github.com\/nfse-nacional\/nfse-php\/tree\/v1.23.0-beta"
             },
             "install-path": "..\/nfse-nacional\/nfse-php"
         },

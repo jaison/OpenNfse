@@ -17,6 +17,8 @@ use Nfse\Enums\TipoNsu;
 use Nfse\Http\Contracts\AdnDanfseInterface;
 use Nfse\Http\Exceptions\NfseApiException;
 use Nfse\Http\NfseContext;
+use Nfse\Http\Retry;
+use Nfse\Support\SefinEndpointResolver;
 class AdnClient implements AdnDanfseInterface
 {
     private const URL_PRODUCTION = 'https://adn.nfse.gov.br';
@@ -45,7 +47,7 @@ class AdnClient implements AdnDanfseInterface
     private function createHttpClient(): Client
     {
         $baseUrl = $this->context->ambiente === TipoAmbiente::Producao ? self::URL_PRODUCTION : self::URL_HOMOLOGATION;
-        return new Client(['base_uri' => $baseUrl, 'curl' => [\CURLOPT_SSLCERTTYPE => 'P12', \CURLOPT_SSLCERT => $this->resolveCertificatePath(), \CURLOPT_SSLCERTPASSWD => $this->context->certificatePassword, \CURLOPT_IPRESOLVE => \CURL_IPRESOLVE_V4, \CURLOPT_CONNECTTIMEOUT => 30, \CURLOPT_TIMEOUT => 60, \CURLOPT_HTTP_VERSION => \CURL_HTTP_VERSION_1_1, \CURLOPT_SSL_VERIFYHOST => 0, \CURLOPT_SSL_VERIFYPEER => 0], RequestOptions::HEADERS => ['Content-Type' => 'application/json', 'Accept' => 'application/json']]);
+        return new Client(['base_uri' => $baseUrl, 'handler' => Retry::stack(), 'curl' => [\CURLOPT_SSLCERTTYPE => 'P12', \CURLOPT_SSLCERT => $this->resolveCertificatePath(), \CURLOPT_SSLCERTPASSWD => $this->context->certificatePassword, \CURLOPT_IPRESOLVE => \CURL_IPRESOLVE_V4, \CURLOPT_CONNECTTIMEOUT => 30, \CURLOPT_TIMEOUT => 60, \CURLOPT_HTTP_VERSION => \CURL_HTTP_VERSION_1_1, \CURLOPT_SSL_VERIFYHOST => 0, \CURLOPT_SSL_VERIFYPEER => 0], RequestOptions::HEADERS => ['Content-Type' => 'application/json', 'Accept' => 'application/json']]);
     }
     private function get(string $endpoint): array
     {
@@ -159,8 +161,11 @@ class AdnClient implements AdnDanfseInterface
      */
     public function obterDanfse(string $chaveAcesso): string
     {
+        // Municípios com endpoint próprio servem o PDF na mesma base do envio.
+        // URI absoluta faz o Guzzle ignorar o base_uri nacional.
+        $url = (new SefinEndpointResolver())->resolveDanfse($this->context, $chaveAcesso) ?? "/danfse/{$chaveAcesso}";
         try {
-            $response = $this->httpClient->get("/danfse/{$chaveAcesso}");
+            $response = $this->httpClient->get($url);
             return $response->getBody()->getContents();
         } catch (\OpenNfseVendor\GuzzleHttp\Exception\RequestException $e) {
             $this->handleException($e);
