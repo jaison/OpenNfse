@@ -1,122 +1,110 @@
-# Plano de desenvolvimento por etapas (WHMCS Addon NFS-e)
+# Plano de desenvolvimento do OpenNfse
 
-Este documento consolida um plano por etapas para evolução do módulo, mantendo os princípios do projeto: uso obrigatório da SDK oficial `nfse-nacional/nfse-php`, desacoplamento via Adapter e operações seguras em ambiente de homologação.
+Registro das etapas de evolução do addon e do que já foi entregue. Os princípios continuam os mesmos: uso obrigatório da SDK oficial `nfse-nacional/nfse-php`, desacoplamento por adapter e validação em homologação antes de produção.
 
-## Princípios e guardrails
+## Princípios
 
-- Hook/UI nunca chama SDK diretamente; sempre via Service → Adapter → SDK.
-- Persistir sempre os artefatos necessários para auditoria:
-  - NFS-e XML
-  - logs request/response e erros
-  - status interno e dados de rastreio (DPS/Chave/Eventos)
-- Evitar impacto em produção:
-  - ambiente e endpoints controlados por configuração
-  - separar storage em `attachments` (fora do webroot quando configurado no WHMCS)
+- Hooks e telas nunca chamam a SDK diretamente: sempre Controller → Service → Adapter → SDK.
+- Todo artefato necessário para auditoria é persistido: XML da NFS-e e do cancelamento, logs de request/response com `correlation_id`, status interno e histórico fiscal.
+- Ambiente e endpoints são definidos pela configuração. Os arquivos ficam em `attachments`, separados por ambiente e série.
 
-## Etapa 0 — Setup e validação de ambiente
+## Resumo
 
-- Instalar dependências via composer no módulo e garantir `vendor/` no servidor.
-- Validar permissões do diretório de attachments.
-- Rodar smoke check para validar tabelas, SDK e escrita em disco:
-  - [smoke_check.php](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/scripts/smoke_check.php)
+| Etapa | Tema | Status |
+|---|---|---|
+| 0 | Setup e ambiente | Implementado |
+| 1 | Emissão manual, consulta e armazenamento | Implementado |
+| 2 | Fila e cron | Implementado |
+| 3 | Emissão automática pós-pagamento | Implementado |
+| 4 | Cancelamento | Implementado |
+| 5 | Área do cliente | Implementado |
+| 6 | PDF / DANFS-e | Implementado |
+| 7 | Relatórios e auditorias | Implementado |
+| 8 | Hardening | Em andamento |
 
-## Etapa 1 — MVP 0.1 (emissão manual + consulta + armazenamento)
+## Etapa 0 — Setup e ambiente
 
-Entregas:
-- Admin: configurar emissor, emitir manualmente por invoice, consultar status, baixar XML.
-- Persistência: `mod_opennfse_notas`, `mod_opennfse_logs`, `mod_opennfse_config`.
-- Storage: `attachments/nfse/xml`.
-- Documentação mínima de arquitetura e fluxos.
+- Dependências empacotadas em `vendor-scoped/` (`composer run scope`), carregadas pelo `bootstrap.php`.
+- Migrations aplicadas na ativação e automaticamente em cada ciclo, sem reativar o addon.
+- Instruções em [INSTALACAO.md](INSTALACAO.md).
 
-Status: implementado.
+## Etapa 1 — Emissão manual, consulta e armazenamento
 
-Referências:
-- [ARQUITETURA.md](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/docs/ARQUITETURA.md)
-- [FLUXOS.md](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/docs/FLUXOS.md)
+- Configuração do emissor, emissão manual pela fatura, consulta de status e download de XML.
+- Persistência em `mod_opennfse_notas`, `mod_opennfse_logs` e `mod_opennfse_config`.
+- XML em `attachments/nfse/xml/{ambiente}/{serie}/{ano}/{mes}/`.
+- Referências: [ARQUITETURA.md](ARQUITETURA.md) e [FLUXOS.md](FLUXOS.md).
 
-## Etapa 2 — Estrutura de fila e cron (preparação e operação contínua)
+## Etapa 2 — Fila e cron
 
-Entregas:
-- Tabela e repositório de fila (`mod_opennfse_queue`) com estados e backoff.
-- Cron do módulo para:
-  - consultar notas pendentes (`PROCESSANDO`)
-  - reprocessar temporários
-  - efetuar limpezas por retenção
-- Tela admin de fila e ações (retry / consultar agora).
-
-Status: implementado.
-
-Entrypoint:
-- [cron.php](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/cron.php)
+- Fila `mod_opennfse_queue` com estados `PENDING`, `RUNNING`, `WAIT_STATUS`, `DONE`, `ERROR` e `RESOLVIDO`, backoff nas consultas e processamento sequencial de DPS.
+- Cron integrado ao WHMCS pelo hook `AfterCronJob`, com lock MySQL e proteção por minuto. [`cron.php`](../cron.php) continua disponível para execução manual pela CLI.
+- Consulta de notas `PROCESSANDO`, recuperação de chave de notas emitidas sem chave e limpeza por retenção.
+- Tela da fila com **Consultar agora**, **Reprocessar** e **Processar agora**.
+- Reenvio da mesma DPS após indisponibilidade da API (503/timeout) e reemissão controlada após E2404.
 
 ## Etapa 3 — Emissão automática pós-pagamento
 
-Entregas:
-- Hook `InvoicePaid` para enfileirar/emitir conforme configuração.
-- Controles para evitar duplicidade e corrida (lock).
-
-Status: implementado.
+- Hook `InvoicePaid` enfileira a emissão quando a fila e a emissão automática estão ligadas.
+- Habilitação por gateway de pagamento e bloqueio de faturas pagas só com crédito.
+- Um único item ativo por fatura na fila, evitando duplicidade.
+- Enfileiramento manual de faturas `Unpaid`, quando permitido na configuração.
+- Envio automático de XML/PDF por e-mail após `DONE`, com proteção contra envio duplicado.
 
 ## Etapa 4 — Cancelamento
 
-Entregas:
-- UI/admin para solicitar cancelamento com motivo e descrição.
-- Validações conforme schema do evento 101101.
-- Registro de evento e persistência do resultado.
+- Formulário no admin com código, motivo e descrição.
+- Validações do evento 101101 (`cMotivo` 1, 2 ou 9; `xMotivo` de 15 a 255 caracteres).
+- XML do evento salvo em disco e cancelamento registrado no histórico fiscal.
+- Cancelamento de NFS-e órfã a partir do XML, pela Auditoria XML.
 
-Status: implementado.
+## Etapa 5 — Área do cliente
 
-## Etapa 5 — Área do cliente (Fase 2 do prompt)
+- Página **Notas Fiscais** no menu Billing com as notas `EMITIDA` do cliente e aviso configurável.
+- Resumo da NFS-e na fatura (`viewinvoice`).
+- Download de XML e PDF e envio por e-mail, só por `POST` com token e conferência de posse da fatura.
 
-Entregas:
-- Página do addon no client area listando apenas NFS-e `EMITIDA` com XML.
-- Link no menu “Billing” e no `viewinvoice`.
-- Download de XML no client area com validação de ownership da invoice.
+## Etapa 6 — PDF / DANFS-e
 
-Status: implementado.
+- Geração local do DANFS-e a partir do XML salvo (`DanfsePdfService` e `LocalNfsePdfGenerator`), sem depender do endpoint DANFS-e da API.
+- PDF gerado sob demanda a cada download ou envio, sem cópia em disco.
+- Personalização do cabeçalho (logo SVG sanitizado, município, secretaria, telefone e e-mail) e aviso de homologação.
 
-## Etapa 6 — PDF / DANFSe (versão vigente 1.0)
+Pendência opcional: ajuste fino de espaçamento e fontes para aproximar ainda mais o PDF do layout do portal nacional.
 
-Entregas:
-- Download de PDF no admin e client area.
-- Geração local de PDF sem depender do endpoint DANFSe (descontinuação).
-- Cache em `attachments/nfse/pdf` com regeneração automática se arquivo apagado/0 bytes.
-- Ajustes de parsing dos dados do tomador e município.
-- Ajustes de layout específicos (brasão local e cabeçalho de Itajaí).
+## Etapa 7 — Relatórios e auditorias
 
-Status: implementado.
+Entregue em **Addons > OpenNfse > Relatórios** (`ReportsController`):
 
-Pendências opcionais (tuning visual):
-- Ajuste fino de espaçamento e tamanhos de fonte para ficar o mais idêntico possível ao PDF do portal nacional (mantendo DANFSe 1.0).
+- Dashboard com métricas do período, últimas emissões, cancelamentos e erros.
+- NFS-e Emitidas (com totais e ações por nota), Falhas e Cancelamentos.
+- Auditoria Emissão: faturas pagas sem NFS-e e fora da fila.
+- Auditoria XML: XMLs órfãos e referências inconsistentes, com cancelamento de órfãos.
+- Auditoria DPS > API e Auditoria API (distribuição por NSU).
+- Histórico Fiscal da fatura.
+- Logs com visualização detalhada.
+- Exportação CSV (Emitidas, Falhas, Cancelamentos, Auditoria Emissão e Logs) e ZIP de XMLs, inclusive por competência, separado em `Emitidas/`, `Canceladas/` e `Emitidas para Estrangeiros/`.
 
-## Etapa 7 — Relatórios (ainda não implementado)
+Detalhes em [FLUXOS.md](FLUXOS.md#relatórios).
 
-Sugestão de entregas:
-- Relatório admin por período/cliente/status:
-  - total de notas emitidas, rejeitadas, canceladas
-  - valores totais por competência
-  - exportação CSV
-- Guardrails:
-  - consultas paginadas
-  - filtros indexados (por invoiceid, userid, status, competência, emitida_em)
+## Etapa 8 — Hardening
 
-Status: pendente.
+Já entregue:
 
-## Etapa 8 — Hardening (qualidade, segurança, operabilidade)
+- Testes automatizados (`composer test`) para `NfseService`, `QueueService`, `QueueErrorClassifierService`, `EmissionEligibilityService`, `InvoiceFinancialsService`, `StorageService` e `NfseXmlExtractor`.
+- Checagem PSR-12 com `composer cs:check`.
+- `correlation_id` ligando fila e logs, além de retenção configurável de logs e da fila.
+- Validação preventiva antes do envio, com mensagens agrupadas.
+- Controles de segurança descritos em [SEGURANCA.md](SEGURANCA.md), incluindo os `.htaccess` do addon.
 
-Sugestões:
-- Padronizar códigos de erro e mensagens por tipo (validação x API x técnica).
-- Incluir testes automatizados para:
-  - builder de DPS
-  - parser de XML (extração de competência, emissão etc.)
-  - storage (resolveAbsolutePath, cache inválido)
-- Adicionar checagens de estilo (PSR-12) no pipeline local/CI (opcional).
-- Melhorar observabilidade:
-  - correlação por invoiceid / chave / id_dps nos logs
-  - níveis e retenção configurável (já existe retenção de logs e fila DONE)
+Próximos passos:
+
+- Unificar ou remover telas de auditoria que deixaram de ser necessárias.
+- Ajustes visuais nas telas do admin.
+- Ampliar a cobertura de testes para o `DpsBuilderService` e para os controllers.
 
 ## Referências
 
-- Levantamento SDK: [LEVANTAMENTO_SDK.md](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/docs/LEVANTAMENTO_SDK.md)
-- Levantamento API Nacional: [LEVANTAMENTO_API_NACIONAL.md](file:///Users/jaison/Playground/nfse-nacional/modules/addons/Nfse/docs/LEVANTAMENTO_API_NACIONAL.md)
-
+- [LEVANTAMENTO_SDK.md](LEVANTAMENTO_SDK.md)
+- [LEVANTAMENTO_API_NACIONAL.md](LEVANTAMENTO_API_NACIONAL.md)
+- [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_WHMCS.md)
