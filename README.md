@@ -254,6 +254,7 @@ composer cs:fix
 ## Segurança
 
 - O certificado A1 deve ficar fora do webroot do WHMCS.
+- O addon traz `.htaccess` que bloqueiam o acesso web direto aos seus arquivos, liberando só CSS e imagens de `assets/`. Em nginx, IIS ou OpenLiteSpeed é preciso configuração extra; veja [docs/SEGURANCA.md](docs/SEGURANCA.md#5-acesso-web-direto-ao-diretório-do-addon).
 - O diretório `attachments/` deve ser gravável pelo PHP.
 - Certificados `.pfx` com criptografia antiga podem apresentar falhas de leitura ou compatibilidade no servidor.
 - Não publique logs, XMLs, PDFs gerados ou credenciais.
