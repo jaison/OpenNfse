@@ -47,7 +47,9 @@ final class DanfsePdfService
         try {
             $xmlAbsPath = $storage->resolveAbsolutePath($xmlPath);
         } catch (\Throwable $e) {
-            $fallback = $storage->findLatestXmlAbsolutePath($invoiceId);
+            // O fallback só retorna XML da própria fatura cujo conteúdo confere com a nota;
+            // por isso o caminho pode ser regravado para corrigir o registro.
+            $fallback = $storage->findLatestXmlAbsolutePath($invoiceId, $nota);
             if (!$fallback) {
                 throw $e;
             }

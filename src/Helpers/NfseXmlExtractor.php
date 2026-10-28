@@ -105,6 +105,25 @@ final class NfseXmlExtractor
         });
     }
 
+    /**
+     * Chave de acesso a partir do atributo Id de infNFSe (formato "NFS" + chave).
+     */
+    public static function extractChaveAcessoFromInfNfseId(string $xml): ?string
+    {
+        return self::withDocument($xml, static function (\DOMXPath $xp): ?string {
+            $nodes = $xp->query('//*[local-name()="infNFSe"]/@Id');
+            if ($nodes && $nodes->length > 0) {
+                $value = trim((string) $nodes->item(0)?->textContent);
+                $value = (string) preg_replace('/^NFS/i', '', $value);
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+
+            return null;
+        });
+    }
+
     public static function extractIdDps(string $xml): ?string
     {
         return self::withDocument($xml, static function (\DOMXPath $xp): ?string {
