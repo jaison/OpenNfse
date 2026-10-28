@@ -52,6 +52,7 @@ Emissão e fila:
 
 - `NfseService`: orquestra emissão, consulta de status e cancelamento (inclusive de XML órfão). Também reenvia a DPS após indisponibilidade da API e faz a reemissão controlada após E2404.
 - `DpsBuilderService`: monta o `DpsData` da SDK a partir da fatura, do cliente e da configuração.
+- `DpsLayoutService`: escolhe o leiaute da DPS (Pré-NT 009 ou NT 009) conforme a configuração **Leiaute da DPS**, o ambiente e a data, e gera a orientação para a rejeição E1235 por leiaute.
 - `QueueService`: enfileira e processa a fila (emissão sequencial e consultas `WAIT_STATUS`) e dispara o envio automático de e-mail após `DONE`.
 - `QueueErrorClassifierService`: identifica indisponibilidade transitória da API e decide se um erro admite nova tentativa.
 - `EmissionEligibilityService`: elegibilidade da fatura (status `Paid`, pagamento só com crédito, gateway habilitado).
@@ -62,16 +63,16 @@ Emissão e fila:
 
 Arquivos, PDF e e-mail:
 
-- `StorageService`: grava e localiza XMLs em `attachments/nfse/xml/...` e valida caminhos antes de servir arquivos.
+- `StorageService`: grava e localiza XMLs em `attachments/nfse/xml/...`, valida caminhos antes de servir arquivos e, quando o `xml_path` salvo não resolve, localiza o XML da própria fatura conferindo o conteúdo com a nota.
 - `DanfsePdfService`: gera o PDF do DANFS-e sob demanda a partir do XML salvo, com a personalização configurada.
 - `LocalNfsePdfGenerator`: desenha o layout do DANFS-e (TCPDF).
-- `InvoiceEmailService`: envia ao cliente o e-mail com XML e PDF anexados.
+- `InvoiceEmailService`: monta os anexos (XML salvo e PDF gerado) e envia ao cliente pelo módulo de e-mail do WHMCS (`whmcs_provider`) ou, sem ele, pelo `sendmessage()`.
 - `EmailTemplateService`: monta assunto e corpo do e-mail da NFS-e.
 - `InvoiceHistoryService`: registra eventos da NFS-e nas notas da fatura (`tblinvoices.notes`).
 
 Auditoria e apoio:
 
-- `ApiAuditService`: sincroniza a distribuição de documentos da API por NSU (aba `auditoria_api` dos relatórios, sem link no menu).
+- `ApiAuditService`: sincroniza a distribuição de documentos da API por NSU (tela `auditoria_api` do `ReportsController`, que hoje não está na lista de abas do relatório).
 - `DpsApiAuditService`: confere as DPS de uma competência diretamente na API e procura lacunas na sequência (relatório "Auditoria DPS > API").
 - `IbgeService`: catálogo local de municípios IBGE (sincronização a partir da fonte primária, com aprovação de hash) e resolução do código IBGE por nome/UF, com ViaCEP como apoio pelo CEP.
 - `UpdateCheckService`: lê o manifesto `update.json` do repositório e informa se há versão nova. A checagem é manual ou automática, pelo cron, a cada 24 h.
@@ -136,6 +137,7 @@ Status da fila (`mod_opennfse_queue.status`): `PENDING`, `RUNNING`, `WAIT_STATUS
 
 - XML de emissão e de cancelamento: `attachments/nfse/xml/{ambiente}/{serie}/{ano}/{mes}/`, com nomes `nfse_{numero}_{invoiceid}_{mmyyyy}.xml` e `cancelamento_nfse_{numero}_{invoiceid}_{yyyymmdd_hhmmss}.xml`. Os caminhos relativos ficam em `mod_opennfse_notas.xml_path` e `cancel_xml_path`.
 - `attachments` é o diretório configurado no WHMCS (`$attachments_dir`) ou, sem essa configuração, `<whmcs>/attachments`.
+- Fallback do XML: se o `xml_path` salvo não resolver na geração do PDF, `StorageService::findLatestXmlAbsolutePath()` só considera arquivos cujo nome contém o ID exato da fatura e só aceita o XML cuja chave de acesso e/ou número da NFS-e confere com a nota. Encontrado o arquivo, o `xml_path` é regravado. Sem chave nem número na nota, não há fallback.
 - PDF do DANFS-e: gerado a cada download ou envio, sem cópia em disco.
 - Logs técnicos: `mod_opennfse_logs` (tipo, request, response e `correlation_id`).
 - Histórico fiscal: `mod_opennfse_notas_history` guarda cada emissão, cancelamento e snapshot. Já `mod_opennfse_notas` tem uma única linha por fatura, sobrescrita numa reemissão.
