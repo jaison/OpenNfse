@@ -6,13 +6,15 @@ Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emiss�
 
 ## Notas do Autor
 
-**Atualizado em 31 de agosto de 2026.**
+**Atualizado em 28 de outubro de 2026.**
 
 O addon tem sido testado em produção nos últimos dois meses. Durante o uso real, diversos problemas inesperados foram identificados e resolvidos.
 
 Algumas funções de auditoria existentes já não são mais necessárias e provavelmente serão removidas ou unificadas em uma única tela. Nas próximas atualizações, serão realizados ajustes visuais e adicionadas novas funcionalidades. Mantenha sua instalação atualizada.
 
 Ao começar a utilizar o addon, configure primeiro o ambiente de homologação. Caso esteja testando em uma instalação de produção do WHMCS, não ative as automações de emissão automática. Valide as notas emitidas no ambiente de homologação do Emissor Nacional junto à sua contabilidade e verifique se todos os campos foram preenchidos corretamente.
+
+A partir desta versão, o leiaute da DPS segue a NT 009 e muda automaticamente em produção em 01/12/2026 (configurável em **Leiaute da DPS**); depois de atualizar, clique em **Testar conexão** e, se houver erro de certificado, atualize o pacote `ca-certificates` do servidor.
 
 Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https://github.com/jaison/OpenNfse/issues/new).
 
@@ -67,9 +69,9 @@ Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https:/
 - Auditoria de emissão para identificar faturas pagas sem NFS-e e sem item correspondente na fila.
 - Auditoria de XML para localizar órfãos, referências quebradas e inconsistências de armazenamento.
 - Histórico fiscal da invoice com emissões, cancelamentos e snapshots operacionais.
-- Auditoria API DPS para conferência direta com a API nacional e detecção de lacunas na sequência.
+- Auditoria DPS > API para conferência direta com a API nacional e detecção de lacunas na sequência.
 - Relatórios técnicos de logs com visualização detalhada de request/response.
-- Exportação CSV de emitidas.
+- Exportação CSV de NFS-e Emitidas, Falhas, Cancelamentos, Auditoria Emissão e Logs.
 - Download em ZIP dos XMLs emitidos no período.
 - Atalhos para baixar XMLs por competência, com organização pensada para conciliação com a contabilidade.
 
@@ -86,7 +88,8 @@ Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https:/
 - Configuração do envio automático de PDF e XML por e-mail na seção de processamento automático.
 - Configuração da emissão manual de faturas com status `Unpaid`, permitindo ou bloqueando o enfileiramento dessas faturas.
 - Catálogo de código de serviço e NBS.
-- Mapeamento por produto, grupo e gateway.
+- Mapeamento de código de serviço e NBS por grupo de produto do WHMCS.
+- Habilitação da automação por gateway de pagamento.
 - Configuração do DANFS-e e personalização de cabeçalho do PDF.
 - Dados padrão do tomador e sincronização de municípios IBGE.
 - Resolução de municípios com catálogo local alimentado por fonte IBGE e fallback via ViaCEP.
@@ -130,7 +133,7 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 - `migrations/`:
   migrations de banco do addon.
 - `docs/`:
-  documentação complementar técnica e operacional.
+  documentação complementar técnica e operacional, com índice em [`docs/README.md`](docs/README.md).
 - `patches/`:
   correções aplicadas sobre a SDK `nfse-nacional/nfse-php` durante o build.
 - `vendor-scoped/`:
@@ -140,12 +143,13 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 
 - PHP `^8.1`
 - WHMCS `8.13.x`
-- Extensões PHP exigidas pela SDK e pelo ambiente do WHMCS
+- Extensões PHP: `openssl`, `curl`, `dom`, `simplexml`, `mbstring`, `zlib` e `zip`
+- Pacote de certificados raiz (`ca-certificates`) atualizado no servidor
 - Certificado A1 válido (`.pfx` ou `.p12`)
 
 ## Instalação
 
-1. Baixe o release do módulo. Ao extrair o arquivo, por exemplo `OpenNfse-0.1.13.zip`, será criada uma pasta com nome versionado, como `OpenNfse-0.1.13`.
+1. Baixe o release do módulo. Ao extrair o arquivo, por exemplo `OpenNfse-0.1.23.zip`, será criada uma pasta com nome versionado, como `OpenNfse-0.1.23`.
 2. Renomeie a pasta extraída para apenas `OpenNfse`.
 3. Copie a pasta `OpenNfse` para `modules/addons/` do WHMCS.
 4. No admin do WHMCS, acesse `Configuration > System Settings > Addon Modules`.
@@ -155,7 +159,7 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 
 ## Atualização
 
-1. Baixe o release mais recente do módulo. Ao extrair o arquivo, por exemplo `OpenNfse-0.1.13.zip`, será criada uma pasta com nome versionado, como `OpenNfse-0.1.13`.
+1. Baixe o release mais recente do módulo. Ao extrair o arquivo, por exemplo `OpenNfse-0.1.23.zip`, será criada uma pasta com nome versionado, como `OpenNfse-0.1.23`.
 2. Renomeie a pasta extraída para apenas `OpenNfse`.
 3. Envie a pasta `OpenNfse` para `modules/addons/` do WHMCS, substituindo os arquivos da versão anterior.
 4. No admin do WHMCS, acesse `Addons > OpenNfse` e revise a configuração, se necessário.
@@ -216,6 +220,7 @@ Emitidas para Estrangeiros/
 - O addon possui integração com o cron do próprio WHMCS.
 - Quando o cron principal do WHMCS roda a cada minuto, o processamento automático do módulo é disparado junto.
 - O processamento respeita a configuração interna do addon e possui proteção contra execução duplicada no mesmo minuto.
+- Toda a automação depende da fila ligada (**Habilitar fila/cron?** = `Sim`): processamento da fila, consultas automáticas de status, emissão automática ao pagar e envio automático de e-mail. Com a fila desligada, o cron só faz a limpeza por retenção e a checagem de atualização, e a emissão manual passa a ser feita na hora. Esse comportamento é intencional.
 - Em falhas transitórias da API nacional, o cron mantém a nota em processamento e tenta reconciliar a emissão automaticamente nos ciclos seguintes.
 - O arquivo `cron.php` do módulo permanece disponível para compatibilidade, mas a recomendação é usar o cron principal do WHMCS como origem oficial.
 
@@ -241,7 +246,7 @@ Os patches em `patches/` são aplicados automaticamente no `vendor/` pelo `cweag
 | Patch | Motivo |
 | --- | --- |
 | `nfse-php-01-vservmoeda-duas-casas.patch` | `vServMoeda` com duas casas (o XSD rejeita `99.9`). |
-| `nfse-php-02-tls-verificacao.patch` | Religa a verificação TLS nos clients SEFIN, ADN e CNC. O endpoint de Catanduva passa a usar o nome do certificado com o IP fixado via `CURLOPT_RESOLVE`. |
+| `nfse-php-02-tls-verificacao.patch` | Verificação TLS de cadeia e nome nos clients SEFIN, ADN e CNC. O endpoint de Catanduva usa o nome do certificado com o IP fixado via `CURLOPT_RESOLVE`. |
 | `nfse-php-03-connect-timeout.patch` | Connect timeout de 30s para 10s (o retry de GET multiplica a espera por 3). |
 | `nfse-php-04-nt009-ordem-campos.patch` | Leiaute da NT 009: `xDescServ` depois de `cNBS` e `finNFSe` depois de `cMotivoEmisTI`. |
 
