@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\UriInterface;
 /**
@@ -134,7 +134,7 @@ final class UriResolver
         if ($target->getScheme() !== '' && ($base->getScheme() !== $target->getScheme() || $target->getAuthority() === '' && $base->getAuthority() !== '')) {
             return $target;
         }
-        if (\GuzzleHttp\Psr7\Uri::isRelativePathReference($target)) {
+        if (Uri::isRelativePathReference($target)) {
             // As the target is already highly relative we return it as-is. It would be possible to resolve
             // the target with `$target = self::resolve($base, $target);` and then try make it more relative
             // by removing a duplicate query. But let's not do that automatically.

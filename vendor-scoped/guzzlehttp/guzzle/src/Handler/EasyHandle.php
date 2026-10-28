@@ -2,7 +2,7 @@
 
 namespace OpenNfseVendor\GuzzleHttp\Handler;
 
-use GuzzleHttp\Psr7\Response;
+use OpenNfseVendor\GuzzleHttp\Psr7\Response;
 use OpenNfseVendor\GuzzleHttp\Utils;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;

@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\MessageInterface;
 use Psr\Http\Message\RequestInterface;
@@ -26,7 +26,7 @@ final class Message
             throw new \InvalidArgumentException('Unknown message type');
         }
         foreach ($message->getHeaders() as $name => $values) {
-            if (is_string($name) && \GuzzleHttp\Psr7\Utils::asciiToLower($name) === 'set-cookie') {
+            if (is_string($name) && Utils::asciiToLower($name) === 'set-cookie') {
                 foreach ($values as $value) {
                     $msg .= "\r\n{$name}: " . $value;
                 }
@@ -166,20 +166,20 @@ final class Message
         }
         if ($versionMatch === 1 && $matches[1] === '1.0') {
             // Header folding is deprecated for HTTP/1.1, but allowed in HTTP/1.0
-            $rawHeaders = preg_replace(\GuzzleHttp\Psr7\Rfc7230::HEADER_FOLD_REGEX, ' ', $rawHeaders);
+            $rawHeaders = preg_replace(Rfc7230::HEADER_FOLD_REGEX, ' ', $rawHeaders);
             if ($rawHeaders === null) {
                 throw new \RuntimeException('Unable to unfold HTTP headers: ' . preg_last_error_msg());
             }
         }
         /** @var array[] $headerLines */
-        $count = preg_match_all(\GuzzleHttp\Psr7\Rfc7230::HEADER_REGEX, $rawHeaders, $headerLines, \PREG_SET_ORDER);
+        $count = preg_match_all(Rfc7230::HEADER_REGEX, $rawHeaders, $headerLines, \PREG_SET_ORDER);
         if ($count === \false) {
             throw new \RuntimeException('Unable to parse HTTP headers: ' . preg_last_error_msg());
         }
         // If these aren't the same, then one line didn't match and there's an invalid header.
         if ($count !== substr_count($rawHeaders, "\n")) {
             // Folding is deprecated, see https://datatracker.ietf.org/doc/html/rfc7230#section-3.2.4
-            $hasFoldedHeader = preg_match(\GuzzleHttp\Psr7\Rfc7230::HEADER_FOLD_REGEX, $rawHeaders);
+            $hasFoldedHeader = preg_match(Rfc7230::HEADER_FOLD_REGEX, $rawHeaders);
             if ($hasFoldedHeader === \false) {
                 throw new \RuntimeException('Unable to inspect HTTP header folding: ' . preg_last_error_msg());
             }
@@ -227,13 +227,13 @@ final class Message
         $hostKey = array_filter(array_keys($headers), function ($k) {
             // Numeric array keys are converted to int by PHP.
             $k = (string) $k;
-            return \GuzzleHttp\Psr7\Utils::asciiToLower($k) === 'host';
+            return Utils::asciiToLower($k) === 'host';
         });
         if (!$hostKey) {
             return null;
         }
         $host = $headers[reset($hostKey)][0];
-        if (!is_string($host) || \GuzzleHttp\Psr7\Rfc7230::parseHostHeader($host) === null) {
+        if (!is_string($host) || Rfc7230::parseHostHeader($host) === null) {
             throw new \InvalidArgumentException('Invalid request string');
         }
         return $host;
@@ -259,7 +259,7 @@ final class Message
         }
         $parts = explode(' ', $data['start-line'], 3);
         $version = isset($parts[2]) ? explode('/', $parts[2])[1] : '1.1';
-        $request = new \GuzzleHttp\Psr7\Request($parts[0], $matches[1] === '/' ? self::parseRequestUri($parts[1], $data['headers']) : $parts[1], $data['headers'], $data['body'], $version);
+        $request = new Request($parts[0], $matches[1] === '/' ? self::parseRequestUri($parts[1], $data['headers']) : $parts[1], $data['headers'], $data['body'], $version);
         return $matches[1] === '/' ? $request : $request->withRequestTarget($parts[1]);
     }
     /**
@@ -284,6 +284,6 @@ final class Message
             throw new \InvalidArgumentException('Invalid response string: ' . $data['start-line']);
         }
         $parts = explode(' ', $data['start-line'], 3);
-        return new \GuzzleHttp\Psr7\Response((int) $parts[1], $data['headers'], $data['body'], explode('/', $parts[0])[1], $parts[2] ?? null);
+        return new Response((int) $parts[1], $data['headers'], $data['body'], explode('/', $parts[0])[1], $parts[2] ?? null);
     }
 }

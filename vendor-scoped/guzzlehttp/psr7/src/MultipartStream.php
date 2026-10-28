@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\StreamInterface;
 /**
@@ -10,7 +10,7 @@ use Psr\Http\Message\StreamInterface;
  */
 final class MultipartStream implements StreamInterface
 {
-    use \GuzzleHttp\Psr7\StreamDecoratorTrait;
+    use StreamDecoratorTrait;
     /** @var string */
     private $boundary;
     /** @var StreamInterface */
@@ -70,7 +70,7 @@ final class MultipartStream implements StreamInterface
      */
     protected function createStream(array $elements = []): StreamInterface
     {
-        $stream = new \GuzzleHttp\Psr7\AppendStream();
+        $stream = new AppendStream();
         foreach ($elements as $element) {
             if (!is_array($element)) {
                 throw new \UnexpectedValueException('An array is expected');
@@ -78,10 +78,10 @@ final class MultipartStream implements StreamInterface
             $this->addElement($stream, $element);
         }
         // Add the trailing boundary with CRLF
-        $stream->addStream(\GuzzleHttp\Psr7\Utils::streamFor("--{$this->boundary}--\r\n"));
+        $stream->addStream(Utils::streamFor("--{$this->boundary}--\r\n"));
         return $stream;
     }
-    private function addElement(\GuzzleHttp\Psr7\AppendStream $stream, array $element): void
+    private function addElement(AppendStream $stream, array $element): void
     {
         foreach (['contents', 'name'] as $key) {
             if (!array_key_exists($key, $element)) {
@@ -112,7 +112,7 @@ final class MultipartStream implements StreamInterface
             }
             $contents = (string) $contents;
         }
-        $element['contents'] = \GuzzleHttp\Psr7\Utils::streamFor($contents);
+        $element['contents'] = Utils::streamFor($contents);
         if (empty($element['filename'])) {
             $uri = $element['contents']->getMetadata('uri');
             if ($uri && \is_string($uri) && \substr($uri, 0, 6) !== 'php://' && \substr($uri, 0, 7) !== 'data://') {
@@ -120,16 +120,16 @@ final class MultipartStream implements StreamInterface
             }
         }
         [$body, $headers] = $this->createElement((string) $element['name'], $element['contents'], $element['filename'] ?? null, $element['headers'] ?? []);
-        $stream->addStream(\GuzzleHttp\Psr7\Utils::streamFor($this->getHeaders($headers)));
+        $stream->addStream(Utils::streamFor($this->getHeaders($headers)));
         $stream->addStream($body);
-        $stream->addStream(\GuzzleHttp\Psr7\Utils::streamFor("\r\n"));
+        $stream->addStream(Utils::streamFor("\r\n"));
     }
     /**
      * Recursively expand array contents into multiple form fields.
      *
      * @param array<array-key, mixed> $contents
      */
-    private function addNestedElements(\GuzzleHttp\Psr7\AppendStream $stream, array $contents, string $root): void
+    private function addNestedElements(AppendStream $stream, array $contents, string $root): void
     {
         foreach ($contents as $key => $value) {
             $fieldName = $root === '' ? sprintf('[%s]', (string) $key) : sprintf('%s[%s]', $root, (string) $key);
@@ -163,7 +163,7 @@ final class MultipartStream implements StreamInterface
         // Set a default Content-Type if one was not supplied
         $type = self::getHeader($headers, 'content-type');
         if (!$type && ($filename === '0' || $filename)) {
-            $headers['Content-Type'] = \GuzzleHttp\Psr7\MimeType::fromFilename($filename) ?? 'application/octet-stream';
+            $headers['Content-Type'] = MimeType::fromFilename($filename) ?? 'application/octet-stream';
         }
         return [$stream, $headers];
     }
@@ -172,9 +172,9 @@ final class MultipartStream implements StreamInterface
      */
     private static function getHeader(array $headers, string $key): ?string
     {
-        $lowercaseHeader = \GuzzleHttp\Psr7\Utils::asciiToLower($key);
+        $lowercaseHeader = Utils::asciiToLower($key);
         foreach ($headers as $k => $v) {
-            if (\GuzzleHttp\Psr7\Utils::asciiToLower((string) $k) === $lowercaseHeader) {
+            if (Utils::asciiToLower((string) $k) === $lowercaseHeader) {
                 return $v;
             }
         }

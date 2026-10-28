@@ -70,7 +70,7 @@ final class Utils
         if (\defined('STDOUT')) {
             return \STDOUT;
         }
-        return \GuzzleHttp\Psr7\Utils::tryFopen('php://output', 'w');
+        return Psr7\Utils::tryFopen('php://output', 'w');
     }
     /**
      * Chooses and creates a default handler to use based on the environment.
@@ -281,7 +281,7 @@ EOT
     {
         $result = [];
         foreach (\array_keys($headers) as $key) {
-            $result[\GuzzleHttp\Psr7\Utils::asciiToLower((string) $key)] = $key;
+            $result[Psr7\Utils::asciiToLower((string) $key)] = $key;
         }
         return $result;
     }
@@ -476,7 +476,7 @@ EOT
                 return null;
             }
         }
-        return ['type' => 'domain', 'value' => \GuzzleHttp\Psr7\Utils::asciiToLower($host), 'port' => $port, 'matchesRoot' => $matchesRoot];
+        return ['type' => 'domain', 'value' => Psr7\Utils::asciiToLower($host), 'port' => $port, 'matchesRoot' => $matchesRoot];
     }
     /**
      * @return array{0: string, 1: int|null}|null

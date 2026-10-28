@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\StreamInterface;
 /**
@@ -10,7 +10,7 @@ use Psr\Http\Message\StreamInterface;
  */
 final class DroppingStream implements StreamInterface
 {
-    use \GuzzleHttp\Psr7\StreamDecoratorTrait;
+    use StreamDecoratorTrait;
     /** @var int */
     private $maxLength;
     /** @var StreamInterface */

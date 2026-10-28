@@ -79,20 +79,26 @@ return [
             ->in($runtimeDirs),
     ],
 
+    // Sempre regex ancorada (namespace exato ou sub-namespace). Um nome simples
+    // aqui é comparado pelo php-scoper como SUBSTRING (str_contains, sem
+    // diferenciar maiúsculas): 'Psr' também excluía GuzzleHttp\Psr7, que ficava
+    // sem prefixo e era servido pela psr7 do WHMCS ou de outro módulo.
+    // Ao mudar esta lista, ajuste também $globalNamespaces em
+    // tools/build-scoped-vendor.php, que confere os namespaces do resultado.
     'exclude-namespaces' => [
-        // Keep our own code and WHMCS runtime untouched.
-        'OpenNfse',
-        'NfsePdf',
-        'WHMCS',
-        // The nfse-php SDK is referenced by FQCN throughout src/ — keep it
-        // global so those references keep working without a mass rewrite.
-        'Nfse',
-        // PSR interfaces must stay global so Guzzle's prefixed classes still
-        // satisfy the (unprefixed) type-hints used by the excluded SDKs.
-        'Psr',
-        // The nfse-php SDK extends Spatie\DataTransferObject\DataTransferObject
-        // directly; keep it global so those references keep resolving.
-        'Spatie',
+        // Código do próprio módulo e do WHMCS (não estão no vendor-scoped, mas
+        // podem ser referenciados por ele).
+        '~^OpenNfse(\\\\|$)~',
+        '~^WHMCS(\\\\|$)~',
+        // SDK nfse-php: o src/ usa as classes pelo nome completo (\Nfse\...).
+        '~^Nfse(\\\\|$)~',
+        // Gerador de PDF: o src/PasetoOverrides/ redefine NfsePdf\NfsePdfGenerator.
+        '~^NfsePdf(\\\\|$)~',
+        // Interfaces PSR (http-message, http-client, http-factory): contratos
+        // estáveis entre versões, compartilhados com o host como era antes.
+        '~^Psr(\\\\|$)~',
+        // Base dos DTOs da SDK (Spatie\DataTransferObject).
+        '~^Spatie(\\\\|$)~',
     ],
 
     'exclude-classes' => [

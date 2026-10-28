@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use InvalidArgumentException;
 use Psr\Http\Message\StreamInterface;
@@ -63,7 +63,7 @@ class UploadedFile implements UploadedFileInterface
         if (is_string($streamOrFile)) {
             $this->file = $streamOrFile;
         } elseif (is_resource($streamOrFile)) {
-            $this->stream = new \GuzzleHttp\Psr7\Stream($streamOrFile);
+            $this->stream = new Stream($streamOrFile);
         } elseif ($streamOrFile instanceof StreamInterface) {
             $this->stream = $streamOrFile;
         } else {
@@ -75,7 +75,7 @@ class UploadedFile implements UploadedFileInterface
      */
     private function setError(int $error): void
     {
-        if (!isset(\GuzzleHttp\Psr7\UploadedFile::ERROR_MAP[$error])) {
+        if (!isset(UploadedFile::ERROR_MAP[$error])) {
             throw new InvalidArgumentException('Invalid error status for UploadedFile');
         }
         $this->error = $error;
@@ -115,7 +115,7 @@ class UploadedFile implements UploadedFileInterface
         }
         /** @var string $file */
         $file = $this->file;
-        return new \GuzzleHttp\Psr7\LazyOpenStream($file, 'r+');
+        return new LazyOpenStream($file, 'r+');
     }
     public function moveTo($targetPath): void
     {
@@ -126,7 +126,7 @@ class UploadedFile implements UploadedFileInterface
         if ($this->file) {
             $this->moved = \PHP_SAPI === 'cli' ? rename($this->file, $targetPath) : move_uploaded_file($this->file, $targetPath);
         } else {
-            \GuzzleHttp\Psr7\Utils::copyToStream($this->getStream(), new \GuzzleHttp\Psr7\LazyOpenStream($targetPath, 'w'));
+            Utils::copyToStream($this->getStream(), new LazyOpenStream($targetPath, 'w'));
             $this->moved = \true;
         }
         if (\false === $this->moved) {

@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use InvalidArgumentException;
 use Psr\Http\Message\ServerRequestInterface;
@@ -22,7 +22,7 @@ use Psr\Http\Message\UriInterface;
  * implemented such that they retain the internal state of the current
  * message and return a new instance that contains the changed state.
  */
-class ServerRequest extends \GuzzleHttp\Psr7\Request implements ServerRequestInterface
+class ServerRequest extends Request implements ServerRequestInterface
 {
     /**
      * @var array
@@ -100,7 +100,7 @@ class ServerRequest extends \GuzzleHttp\Psr7\Request implements ServerRequestInt
         if (is_array($value['tmp_name'])) {
             return self::normalizeNestedFileSpec($value);
         }
-        return new \GuzzleHttp\Psr7\UploadedFile($value['tmp_name'], (int) $value['size'], (int) $value['error'], $value['name'], $value['type']);
+        return new UploadedFile($value['tmp_name'], (int) $value['size'], (int) $value['error'], $value['name'], $value['type']);
     }
     /**
      * Normalize an array of file specifications.
@@ -129,13 +129,13 @@ class ServerRequest extends \GuzzleHttp\Psr7\Request implements ServerRequestInt
      */
     public static function fromGlobals(): ServerRequestInterface
     {
-        $method = \GuzzleHttp\Psr7\Utils::asciiToUpper(self::getServerParam('REQUEST_METHOD') ?? 'GET');
+        $method = Utils::asciiToUpper(self::getServerParam('REQUEST_METHOD') ?? 'GET');
         $headers = self::removeInvalidHostHeader(self::getAllHeaders());
         $uri = self::getUriFromGlobals();
-        $body = new \GuzzleHttp\Psr7\CachingStream(new \GuzzleHttp\Psr7\LazyOpenStream('php://input', 'r+'));
+        $body = new CachingStream(new LazyOpenStream('php://input', 'r+'));
         $serverProtocol = self::getServerParam('SERVER_PROTOCOL');
         $protocol = $serverProtocol !== null ? str_replace('HTTP/', '', $serverProtocol) : '1.1';
-        $serverRequest = new \GuzzleHttp\Psr7\ServerRequest($method, $uri, $headers, $body, $protocol, $_SERVER);
+        $serverRequest = new ServerRequest($method, $uri, $headers, $body, $protocol, $_SERVER);
         return $serverRequest->withCookieParams($_COOKIE)->withQueryParams($_GET)->withParsedBody($_POST)->withUploadedFiles(self::normalizeFiles($_FILES));
     }
     /**
@@ -172,10 +172,10 @@ class ServerRequest extends \GuzzleHttp\Psr7\Request implements ServerRequestInt
     private static function removeInvalidHostHeader(array $headers): array
     {
         foreach ($headers as $name => $value) {
-            if (\GuzzleHttp\Psr7\Utils::asciiToLower((string) $name) !== 'host') {
+            if (Utils::asciiToLower((string) $name) !== 'host') {
                 continue;
             }
-            if (\GuzzleHttp\Psr7\Rfc7230::parseHostHeader($value) === null) {
+            if (Rfc7230::parseHostHeader($value) === null) {
                 unset($headers[$name]);
             }
         }
@@ -186,14 +186,14 @@ class ServerRequest extends \GuzzleHttp\Psr7\Request implements ServerRequestInt
      */
     private static function extractHostAndPortFromAuthority(string $authority): array
     {
-        return \GuzzleHttp\Psr7\Rfc7230::parseHostHeader($authority) ?? [null, null];
+        return Rfc7230::parseHostHeader($authority) ?? [null, null];
     }
     /**
      * Get a Uri populated with values from $_SERVER.
      */
     public static function getUriFromGlobals(): UriInterface
     {
-        $uri = new \GuzzleHttp\Psr7\Uri('');
+        $uri = new Uri('');
         $https = self::getServerParam('HTTPS');
         $uri = $uri->withScheme(!empty($https) && $https !== 'off' ? 'https' : 'http');
         $hasPort = \false;

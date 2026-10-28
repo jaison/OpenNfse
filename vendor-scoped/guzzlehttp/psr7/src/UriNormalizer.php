@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\UriInterface;
 /**
@@ -123,11 +123,11 @@ final class UriNormalizer
         if ($flags & self::REMOVE_DEFAULT_HOST && $uri->getScheme() === 'file' && $uri->getHost() === 'localhost') {
             $uri = $uri->withHost('');
         }
-        if ($flags & self::REMOVE_DEFAULT_PORT && $uri->getPort() !== null && \GuzzleHttp\Psr7\Uri::isDefaultPort($uri)) {
+        if ($flags & self::REMOVE_DEFAULT_PORT && $uri->getPort() !== null && Uri::isDefaultPort($uri)) {
             $uri = $uri->withPort(null);
         }
-        if ($flags & self::REMOVE_DOT_SEGMENTS && !\GuzzleHttp\Psr7\Uri::isRelativePathReference($uri)) {
-            $uri = $uri->withPath(\GuzzleHttp\Psr7\UriResolver::removeDotSegments($uri->getPath()));
+        if ($flags & self::REMOVE_DOT_SEGMENTS && !Uri::isRelativePathReference($uri)) {
+            $uri = $uri->withPath(UriResolver::removeDotSegments($uri->getPath()));
         }
         if ($flags & self::REMOVE_DUPLICATE_SLASHES) {
             $path = preg_replace('#//++#', '/', $uri->getPath());
@@ -165,7 +165,7 @@ final class UriNormalizer
     {
         $regex = '/(?:%[A-Fa-f0-9]{2})++/';
         $callback = function (array $match): string {
-            return \GuzzleHttp\Psr7\Utils::asciiToUpper($match[0]);
+            return Utils::asciiToUpper($match[0]);
         };
         return self::withGuardedPath($uri, self::normalizePercentEncodingInComponent($uri->getPath(), $regex, $callback))->withQuery(self::normalizePercentEncodingInComponent($uri->getQuery(), $regex, $callback))->withFragment(self::normalizePercentEncodingInComponent($uri->getFragment(), $regex, $callback));
     }
@@ -185,7 +185,7 @@ final class UriNormalizer
         if ($path === $uri->getPath()) {
             return $uri;
         }
-        return $uri->withPath(\GuzzleHttp\Psr7\UriResolver::guardedPath($uri, $path));
+        return $uri->withPath(UriResolver::guardedPath($uri, $path));
     }
     /**
      * @param callable(array): string $callback

@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\StreamInterface;
 /**
@@ -17,17 +17,17 @@ use Psr\Http\Message\StreamInterface;
  */
 final class InflateStream implements StreamInterface
 {
-    use \GuzzleHttp\Psr7\StreamDecoratorTrait;
+    use StreamDecoratorTrait;
     /** @var StreamInterface */
     private $stream;
     public function __construct(StreamInterface $stream)
     {
-        $resource = \GuzzleHttp\Psr7\StreamWrapper::getResource($stream);
+        $resource = StreamWrapper::getResource($stream);
         // Specify window=15+32, so zlib will use header detection to both gzip (with header) and zlib data
         // See https://www.zlib.net/manual.html#Advanced definition of inflateInit2
         // "Add 32 to windowBits to enable zlib and gzip decoding with automatic header detection"
         // Default window size is 15.
         stream_filter_append($resource, 'zlib.inflate', \STREAM_FILTER_READ, ['window' => 15 + 32]);
-        $this->stream = $stream->isSeekable() ? new \GuzzleHttp\Psr7\Stream($resource) : new \GuzzleHttp\Psr7\NoSeekStream(new \GuzzleHttp\Psr7\Stream($resource));
+        $this->stream = $stream->isSeekable() ? new Stream($resource) : new NoSeekStream(new Stream($resource));
     }
 }

@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\UriInterface;
 /**
@@ -17,7 +17,7 @@ final class UriComparator
      */
     public static function isCrossOrigin(UriInterface $original, UriInterface $modified): bool
     {
-        if (!\GuzzleHttp\Psr7\Utils::caselessEquals($original->getHost(), $modified->getHost())) {
+        if (!Utils::caselessEquals($original->getHost(), $modified->getHost())) {
             return \true;
         }
         if ($original->getScheme() !== $modified->getScheme()) {

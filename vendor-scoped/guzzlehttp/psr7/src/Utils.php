@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\StreamInterface;
@@ -465,7 +465,7 @@ final class Utils
                 fwrite($stream, (string) $resource);
                 fseek($stream, 0);
             }
-            return new \GuzzleHttp\Psr7\Stream($stream, $options);
+            return new Stream($stream, $options);
         }
         switch (gettype($resource)) {
             case 'resource':
@@ -480,13 +480,13 @@ final class Utils
                     fseek($stream, 0);
                     $resource = $stream;
                 }
-                return new \GuzzleHttp\Psr7\Stream($resource, $options);
+                return new Stream($resource, $options);
             case 'object':
                 /** @var object $resource */
                 if ($resource instanceof StreamInterface) {
                     return $resource;
                 } elseif ($resource instanceof \Iterator) {
-                    return new \GuzzleHttp\Psr7\PumpStream(function () use ($resource) {
+                    return new PumpStream(function () use ($resource) {
                         if (!$resource->valid()) {
                             return \false;
                         }
@@ -499,10 +499,10 @@ final class Utils
                 }
                 break;
             case 'NULL':
-                return new \GuzzleHttp\Psr7\Stream(self::tryFopen('php://temp', 'r+'), $options);
+                return new Stream(self::tryFopen('php://temp', 'r+'), $options);
         }
         if (is_callable($resource)) {
-            return new \GuzzleHttp\Psr7\PumpStream($resource, $options);
+            return new PumpStream($resource, $options);
         }
         throw new \InvalidArgumentException('Invalid resource type: ' . gettype($resource));
     }
@@ -590,7 +590,7 @@ final class Utils
             return $uri;
         }
         if (is_string($uri)) {
-            return new \GuzzleHttp\Psr7\Uri($uri);
+            return new Uri($uri);
         }
         throw new \InvalidArgumentException('URI must be a string or UriInterface');
     }

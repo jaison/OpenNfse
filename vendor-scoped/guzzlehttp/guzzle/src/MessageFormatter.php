@@ -74,10 +74,10 @@ class MessageFormatter implements MessageFormatterInterface
             $result = '';
             switch ($matches[1]) {
                 case 'request':
-                    $result = \GuzzleHttp\Psr7\Message::toString($request);
+                    $result = Psr7\Message::toString($request);
                     break;
                 case 'response':
-                    $result = $response ? \GuzzleHttp\Psr7\Message::toString($response) : '';
+                    $result = $response ? Psr7\Message::toString($response) : '';
                     break;
                 case 'req_headers':
                     $result = \trim($request->getMethod() . ' ' . $request->getRequestTarget(), " \n\r\t\x00\v") . ' HTTP/' . $request->getProtocolVersion() . "\r\n" . $this->headers($request);

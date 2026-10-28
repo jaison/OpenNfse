@@ -105,7 +105,7 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
         }
         // Convert the base_uri to a UriInterface
         if (isset($config['base_uri'])) {
-            $config['base_uri'] = \GuzzleHttp\Psr7\Utils::uriFor($config['base_uri']);
+            $config['base_uri'] = Psr7\Utils::uriFor($config['base_uri']);
         }
         $this->configureDefaults($config);
     }
@@ -127,7 +127,7 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
         $opts = $args[1] ?? [];
         $isAsync = \substr($method, -5) === 'Async';
         $method = $isAsync ? \substr($method, 0, -5) : $method;
-        $method = \GuzzleHttp\Psr7\Utils::asciiToUpper($method);
+        $method = Psr7\Utils::asciiToUpper($method);
         return $isAsync ? $this->requestAsync($method, $uri, $opts) : $this->request($method, $uri, $opts);
     }
     /**
@@ -181,7 +181,7 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
      */
     public function requestAsync(string $method, $uri = '', array $options = []): PromiseInterface
     {
-        $normalizedMethod = \GuzzleHttp\Psr7\Utils::asciiToUpper($method);
+        $normalizedMethod = Psr7\Utils::asciiToUpper($method);
         if ($method !== $normalizedMethod) {
             \OpenNfseVendor\trigger_deprecation('guzzlehttp/guzzle', '7.11', 'Passing a non-uppercase HTTP method to Client::requestAsync() is deprecated; guzzlehttp/guzzle 8.0 will preserve HTTP method casing. Pass an uppercase method explicitly if uppercase is required.');
             $method = $normalizedMethod;
@@ -191,17 +191,17 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
         $headers = $options['headers'] ?? [];
         $droppedHeaderNames = self::castDeprecatedHeaderOptionValues($headers);
         if ($droppedHeaderNames !== [] && isset($options['_conditional'])) {
-            $options['_conditional'] = \GuzzleHttp\Psr7\Utils::caselessRemove($droppedHeaderNames, $options['_conditional']);
+            $options['_conditional'] = Psr7\Utils::caselessRemove($droppedHeaderNames, $options['_conditional']);
         }
         $body = $options['body'] ?? null;
         $version = self::normalizeProtocolVersion($options['version'] ?? '1.1');
         // Merge the URI into the base URI.
-        $uri = $this->buildUri(\GuzzleHttp\Psr7\Utils::uriFor($uri), $options);
+        $uri = $this->buildUri(Psr7\Utils::uriFor($uri), $options);
         if (\is_array($body)) {
             throw $this->invalidBody();
         }
         $body = self::createBodyStream($body);
-        $request = new \GuzzleHttp\Psr7\Request($method, $uri, $headers, $body, $version);
+        $request = new Psr7\Request($method, $uri, $headers, $body, $version);
         // Remove the option so that they are not doubly-applied.
         unset($options['headers'], $options['body'], $options['version']);
         return $this->transfer($request, $options);
@@ -221,7 +221,7 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
      */
     public function request(string $method, $uri = '', array $options = []): ResponseInterface
     {
-        $normalizedMethod = \GuzzleHttp\Psr7\Utils::asciiToUpper($method);
+        $normalizedMethod = Psr7\Utils::asciiToUpper($method);
         if ($method !== $normalizedMethod) {
             \OpenNfseVendor\trigger_deprecation('guzzlehttp/guzzle', '7.11', 'Passing a non-uppercase HTTP method to Client::request() is deprecated; guzzlehttp/guzzle 8.0 will preserve HTTP method casing. Pass an uppercase method explicitly if uppercase is required.');
             $method = $normalizedMethod;
@@ -247,7 +247,7 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
     private function buildUri(UriInterface $uri, array $config): UriInterface
     {
         if (isset($config['base_uri'])) {
-            $uri = \GuzzleHttp\Psr7\UriResolver::resolve(\GuzzleHttp\Psr7\Utils::uriFor($config['base_uri']), $uri);
+            $uri = Psr7\UriResolver::resolve(Psr7\Utils::uriFor($config['base_uri']), $uri);
         }
         $idnOptions = Utils::normalizeIdnConversionOption($config['idn_conversion'] ?? null);
         if ($idnOptions !== null) {
@@ -309,7 +309,7 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
             // Add the User-Agent header if one was not already set.
             $hasUserAgent = \false;
             foreach (\array_keys($this->config['headers']) as $name) {
-                if (\GuzzleHttp\Psr7\Utils::asciiToLower((string) $name) === 'user-agent') {
+                if (Psr7\Utils::asciiToLower((string) $name) === 'user-agent') {
                     $hasUserAgent = \true;
                     break;
                 }
@@ -847,7 +847,7 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
         $protocolVersion = $request->getProtocolVersion();
         if ('' === $protocolVersion) {
             \OpenNfseVendor\trigger_deprecation('guzzlehttp/guzzle', '7.11', 'Sending a request with an empty protocol version is deprecated; guzzlehttp/guzzle 8.0 will reject empty protocol versions.');
-            $request = \GuzzleHttp\Psr7\Utils::modifyRequest($request, ['version' => '1.1']);
+            $request = Psr7\Utils::modifyRequest($request, ['version' => '1.1']);
         } elseif (!self::isProtocolVersionValid($protocolVersion)) {
             \OpenNfseVendor\trigger_deprecation('guzzlehttp/guzzle', '7.11', 'Sending a request with a malformed protocol version is deprecated; guzzlehttp/guzzle 8.0 will reject malformed protocol versions.');
         }
@@ -872,7 +872,7 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
             $headers = $options['headers'];
             $droppedHeaderNames = self::castDeprecatedHeaderOptionValues($headers);
             if ($droppedHeaderNames !== [] && isset($options['_conditional'])) {
-                $options['_conditional'] = \GuzzleHttp\Psr7\Utils::caselessRemove($droppedHeaderNames, $options['_conditional']);
+                $options['_conditional'] = Psr7\Utils::caselessRemove($droppedHeaderNames, $options['_conditional']);
             }
             $modify['set_headers'] = $headers;
             unset($options['headers']);
@@ -884,11 +884,11 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
             $options['body'] = \http_build_query(self::normalizeNonFiniteFloats($options['form_params'], 'form_params'), '', '&');
             unset($options['form_params']);
             // Ensure that we don't have the header in different case and set the new value.
-            $options['_conditional'] = \GuzzleHttp\Psr7\Utils::caselessRemove(['Content-Type'], $options['_conditional']);
+            $options['_conditional'] = Psr7\Utils::caselessRemove(['Content-Type'], $options['_conditional']);
             $options['_conditional']['Content-Type'] = 'application/x-www-form-urlencoded';
         }
         if (isset($options['multipart'])) {
-            $options['body'] = new \GuzzleHttp\Psr7\MultipartStream($options['multipart']);
+            $options['body'] = new Psr7\MultipartStream($options['multipart']);
             unset($options['multipart']);
         }
         if (isset($options['json'])) {
@@ -900,12 +900,12 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
             $options['body'] = $json;
             unset($options['json']);
             // Ensure that we don't have the header in different case and set the new value.
-            $options['_conditional'] = \GuzzleHttp\Psr7\Utils::caselessRemove(['Content-Type'], $options['_conditional']);
+            $options['_conditional'] = Psr7\Utils::caselessRemove(['Content-Type'], $options['_conditional']);
             $options['_conditional']['Content-Type'] = 'application/json';
         }
         if (isset($options['decode_content']) && \is_string($options['decode_content'])) {
             // Ensure that we don't have the header in different case and set the new value.
-            $options['_conditional'] = \GuzzleHttp\Psr7\Utils::caselessRemove(['Accept-Encoding'], $options['_conditional']);
+            $options['_conditional'] = Psr7\Utils::caselessRemove(['Accept-Encoding'], $options['_conditional']);
             $modify['set_headers']['Accept-Encoding'] = (string) $options['decode_content'];
         }
         if (isset($options['body'])) {
@@ -917,11 +917,11 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
         }
         if (!empty($options['auth']) && \is_array($options['auth'])) {
             $value = $options['auth'];
-            $type = isset($value[2]) ? \GuzzleHttp\Psr7\Utils::asciiToLower($value[2]) : 'basic';
+            $type = isset($value[2]) ? Psr7\Utils::asciiToLower($value[2]) : 'basic';
             switch ($type) {
                 case 'basic':
                     // Ensure that we don't have the header in different case and set the new value.
-                    $modify['set_headers'] = \GuzzleHttp\Psr7\Utils::caselessRemove(['Authorization'], $modify['set_headers']);
+                    $modify['set_headers'] = Psr7\Utils::caselessRemove(['Authorization'], $modify['set_headers']);
                     $modify['set_headers']['Authorization'] = 'Basic ' . \base64_encode("{$value[0]}:{$value[1]}");
                     break;
                 case 'digest':
@@ -960,11 +960,11 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
         if (isset($options['version'])) {
             $modify['version'] = self::normalizeProtocolVersion($options['version']);
         }
-        $request = \GuzzleHttp\Psr7\Utils::modifyRequest($request, $modify);
-        if ($request->getBody() instanceof \GuzzleHttp\Psr7\MultipartStream) {
+        $request = Psr7\Utils::modifyRequest($request, $modify);
+        if ($request->getBody() instanceof Psr7\MultipartStream) {
             // Use a multipart/form-data POST if a Content-Type is not set.
             // Ensure that we don't have the header in different case and set the new value.
-            $options['_conditional'] = \GuzzleHttp\Psr7\Utils::caselessRemove(['Content-Type'], $options['_conditional']);
+            $options['_conditional'] = Psr7\Utils::caselessRemove(['Content-Type'], $options['_conditional']);
             $options['_conditional']['Content-Type'] = 'multipart/form-data; boundary=' . $request->getBody()->getBoundary();
         }
         // Merge in conditional headers if they are not present.
@@ -977,7 +977,7 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
                     $modify['set_headers'][$name] = $v;
                 }
             }
-            $request = \GuzzleHttp\Psr7\Utils::modifyRequest($request, $modify);
+            $request = Psr7\Utils::modifyRequest($request, $modify);
             // Don't pass this internal value along to middleware/handlers.
             unset($options['_conditional']);
         }
@@ -1027,17 +1027,17 @@ class Client implements ClientInterface, \Psr\Http\Client\ClientInterface
             return $body;
         }
         if (\is_resource($body) || $body === null || \is_string($body) || $body instanceof \Iterator) {
-            return \GuzzleHttp\Psr7\Utils::streamFor($body);
+            return Psr7\Utils::streamFor($body);
         }
         if (\is_scalar($body)) {
             \OpenNfseVendor\trigger_deprecation('guzzlehttp/guzzle', '7.12', 'Passing a non-string scalar to the "body" request option is deprecated; guzzlehttp/guzzle 8.0 will reject non-string scalar bodies.');
-            return \GuzzleHttp\Psr7\Utils::streamFor(self::stringifyScalar($body));
+            return Psr7\Utils::streamFor(self::stringifyScalar($body));
         }
         if (\is_object($body) && \method_exists($body, '__toString')) {
-            return \GuzzleHttp\Psr7\Utils::streamFor((string) $body);
+            return Psr7\Utils::streamFor((string) $body);
         }
         if (\is_callable($body)) {
-            return \GuzzleHttp\Psr7\Utils::streamFor($body);
+            return Psr7\Utils::streamFor($body);
         }
         throw new InvalidArgumentException(\sprintf('Passing %s to request option "body" is invalid; expected resource|string|null|int|float|bool|StreamInterface|callable&object|Iterator|Stringable.', \get_debug_type($body)));
     }

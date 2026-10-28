@@ -56,6 +56,40 @@ if ($scopedPackages !== $runtimePackages) {
     exit(1);
 }
 
+// Todo namespace declarado no resultado precisa ter o prefixo, exceto os que
+// ficam globais de propósito (os mesmos de exclude-namespaces no scoper.inc.php):
+// - Nfse\: SDK, usada pelo src/ com o nome completo;
+// - NfsePdf\: gerador de PDF, cuja classe principal o src/PasetoOverrides/ redefine;
+// - Psr\: interfaces PSR, compartilhadas com o host;
+// - Spatie\: base dos DTOs da SDK.
+// Um namespace de terceiro sem prefixo (como o GuzzleHttp\Psr7 que o
+// php-scoper deixava passar) seria servido pela cópia do WHMCS ou de outro
+// módulo, porque o nosso autoload é registrado por último.
+$globalNamespaces = ['Nfse', 'NfsePdf', 'Psr', 'Spatie'];
+$namespaceViolations = [];
+$scopedFiles = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($scopedDir, FilesystemIterator::SKIP_DOTS));
+foreach ($scopedFiles as $file) {
+    if ($file->getExtension() !== 'php') {
+        continue;
+    }
+    $source = (string) file_get_contents((string) $file);
+    if (!preg_match_all('/^\s*namespace\s+([A-Za-z0-9_\\\\]+)\s*[;{]/m', $source, $matches)) {
+        continue;
+    }
+    foreach ($matches[1] as $namespace) {
+        $namespaceRoot = explode('\\', $namespace)[0];
+        if ($namespaceRoot !== 'OpenNfseVendor' && !in_array($namespaceRoot, $globalNamespaces, true)) {
+            $namespaceViolations[] = substr((string) $file, strlen($scopedDir) + 1) . ': namespace ' . $namespace;
+        }
+    }
+}
+if ($namespaceViolations !== []) {
+    fwrite(STDERR, "Namespaces sem o prefixo OpenNfseVendor\\ em build/scoped:\n");
+    fwrite(STDERR, '  ' . implode("\n  ", array_slice($namespaceViolations, 0, 20)) . "\n");
+    fwrite(STDERR, 'Total: ' . count($namespaceViolations) . ". Revise exclude-namespaces no scoper.inc.php.\n");
+    exit(1);
+}
+
 function extractClassNames(string $source): array
 {
     $classes = [];

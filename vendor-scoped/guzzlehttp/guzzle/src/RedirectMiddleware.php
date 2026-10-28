@@ -68,7 +68,7 @@ class RedirectMiddleware
         $this->guardMax($request, $response, $options);
         $nextRequest = $this->modifyRequest($request, $options, $response);
         // If authorization is handled by curl, unset it if URI is cross-origin.
-        if (\GuzzleHttp\Psr7\UriComparator::isCrossOrigin($request->getUri(), $nextRequest->getUri()) && defined('\CURLOPT_HTTPAUTH')) {
+        if (Psr7\UriComparator::isCrossOrigin($request->getUri(), $nextRequest->getUri()) && defined('\CURLOPT_HTTPAUTH')) {
             unset($options['curl'][\CURLOPT_HTTPAUTH], $options['curl'][\CURLOPT_USERPWD]);
         }
         if (isset($options['allow_redirects']['on_redirect'])) {
@@ -140,7 +140,7 @@ class RedirectMiddleware
         // The body only needs to be rewound when the next request reuses it.
         if (!isset($modify['body'])) {
             try {
-                \GuzzleHttp\Psr7\Message::rewindBody($request);
+                Psr7\Message::rewindBody($request);
             } catch (\RuntimeException $e) {
                 throw new RequestException('Redirect failed because the request body could not be rewound: ' . $e->getMessage(), $request, $response, $e);
             }
@@ -154,18 +154,18 @@ class RedirectMiddleware
             $modify['remove_headers'][] = 'Referer';
         }
         // Remove Authorization and Cookie headers if URI is cross-origin.
-        if (\GuzzleHttp\Psr7\UriComparator::isCrossOrigin($request->getUri(), $modify['uri'])) {
+        if (Psr7\UriComparator::isCrossOrigin($request->getUri(), $modify['uri'])) {
             $modify['remove_headers'][] = 'Authorization';
             $modify['remove_headers'][] = 'Cookie';
         }
-        return \GuzzleHttp\Psr7\Utils::modifyRequest($request, $modify);
+        return Psr7\Utils::modifyRequest($request, $modify);
     }
     /**
      * Set the appropriate URL on the request based on the location header.
      */
     private static function redirectUri(RequestInterface $request, ResponseInterface $response, array $protocols): UriInterface
     {
-        $location = \GuzzleHttp\Psr7\UriResolver::resolve($request->getUri(), new \GuzzleHttp\Psr7\Uri($response->getHeaderLine('Location')));
+        $location = Psr7\UriResolver::resolve($request->getUri(), new Psr7\Uri($response->getHeaderLine('Location')));
         // Ensure that the redirect URI is allowed based on the protocols.
         if (!\in_array($location->getScheme(), $protocols)) {
             throw new BadResponseException(\sprintf('Redirect URI, %s, does not use one of the allowed redirect protocols: %s', $location, \implode(', ', $protocols)), $request, $response);

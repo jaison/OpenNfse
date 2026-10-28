@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\MessageInterface;
 use Psr\Http\Message\StreamInterface;
@@ -44,11 +44,11 @@ trait MessageTrait
     }
     public function hasHeader($header): bool
     {
-        return isset($this->headerNames[\GuzzleHttp\Psr7\Utils::asciiToLower($header)]);
+        return isset($this->headerNames[Utils::asciiToLower($header)]);
     }
     public function getHeader($header): array
     {
-        $header = \GuzzleHttp\Psr7\Utils::asciiToLower($header);
+        $header = Utils::asciiToLower($header);
         if (!isset($this->headerNames[$header])) {
             return [];
         }
@@ -73,7 +73,7 @@ trait MessageTrait
             }
         }
         $value = $this->normalizeHeaderValue($value);
-        $normalized = \GuzzleHttp\Psr7\Utils::asciiToLower($header);
+        $normalized = Utils::asciiToLower($header);
         $new = clone $this;
         if (isset($new->headerNames[$normalized])) {
             unset($new->headers[$new->headerNames[$normalized]]);
@@ -96,7 +96,7 @@ trait MessageTrait
             }
         }
         $value = $this->normalizeHeaderValue($value);
-        $normalized = \GuzzleHttp\Psr7\Utils::asciiToLower($header);
+        $normalized = Utils::asciiToLower($header);
         $new = clone $this;
         if (isset($new->headerNames[$normalized])) {
             $header = $this->headerNames[$normalized];
@@ -112,7 +112,7 @@ trait MessageTrait
      */
     public function withoutHeader($header): MessageInterface
     {
-        $normalized = \GuzzleHttp\Psr7\Utils::asciiToLower($header);
+        $normalized = Utils::asciiToLower($header);
         if (!isset($this->headerNames[$normalized])) {
             return $this;
         }
@@ -124,7 +124,7 @@ trait MessageTrait
     public function getBody(): StreamInterface
     {
         if (!$this->stream) {
-            $this->stream = \GuzzleHttp\Psr7\Utils::streamFor('');
+            $this->stream = Utils::streamFor('');
         }
         return $this->stream;
     }
@@ -158,7 +158,7 @@ trait MessageTrait
                 }
             }
             $value = $this->normalizeHeaderValue($value);
-            $normalized = \GuzzleHttp\Psr7\Utils::asciiToLower($header);
+            $normalized = Utils::asciiToLower($header);
             if (isset($this->headerNames[$normalized])) {
                 $header = $this->headerNames[$normalized];
                 $this->headers[$header] = array_merge($this->headers[$header], $value);

@@ -34,7 +34,9 @@ Como o OpenNfse usa a SDK oficial da NFS-e Nacional, no papel de **contribuinte 
 
 ## Empacotamento (`vendor-scoped/`)
 
-O release traz as dependências em [`vendor-scoped/`](../vendor-scoped/), geradas pelo `php-scoper` ([`scoper.inc.php`](../scoper.inc.php) e [`tools/build-scoped-vendor.php`](../tools/build-scoped-vendor.php)). As bibliotecas de terceiros recebem o prefixo `OpenNfseVendor\`, para não conflitar com outros módulos do WHMCS. Ficam sem prefixo os namespaces da SDK (`Nfse\`), do gerador de PDF (`NfsePdf\`), do próprio módulo (`OpenNfse\`), as interfaces PSR e as classes globais usadas pelo nome completo, como `\TCPDF`. Por isso o código do módulo usa a SDK com os nomes originais (`\Nfse\Nfse`, `\Nfse\Http\NfseContext` etc.).
+O release traz as dependências em [`vendor-scoped/`](../vendor-scoped/), geradas pelo `php-scoper` ([`scoper.inc.php`](../scoper.inc.php) e [`tools/build-scoped-vendor.php`](../tools/build-scoped-vendor.php)). As bibliotecas de terceiros recebem o prefixo `OpenNfseVendor\`, para não conflitar com outros módulos do WHMCS. Ficam sem prefixo os namespaces da SDK (`Nfse\`), do gerador de PDF (`NfsePdf\`), do próprio módulo (`OpenNfse\`), as interfaces PSR (`Psr\`), a base dos DTOs da SDK (`Spatie\`) e as classes globais usadas pelo nome completo, como `\TCPDF`. Por isso o código do módulo usa a SDK com os nomes originais (`\Nfse\Nfse`, `\Nfse\Http\NfseContext` etc.).
+
+As exclusões de `exclude-namespaces` são regex ancoradas (por exemplo, `~^Psr(\\|$)~`). Com um nome simples, o php-scoper compara por substring, e `Psr` deixava sem prefixo também o `GuzzleHttp\Psr7`. Como o nosso autoload é registrado por último, essa psr7 era atendida pela cópia do WHMCS ou de outro módulo, e uma versão antiga quebrava a Guzzle. O `tools/build-scoped-vendor.php` confere todo `namespace` declarado no resultado e interrompe o build se algum não começar com `OpenNfseVendor\` e não estiver na lista de globais (`Nfse\`, `NfsePdf\`, `Psr\` e `Spatie\`).
 
 Só as dependências de produção entram no `vendor-scoped/`:
 

@@ -1,7 +1,7 @@
 <?php
 
 declare (strict_types=1);
-namespace GuzzleHttp\Psr7;
+namespace OpenNfseVendor\GuzzleHttp\Psr7;
 
 use Psr\Http\Message\StreamInterface;
 /**
@@ -9,7 +9,7 @@ use Psr\Http\Message\StreamInterface;
  */
 final class NoSeekStream implements StreamInterface
 {
-    use \GuzzleHttp\Psr7\StreamDecoratorTrait;
+    use StreamDecoratorTrait;
     /** @var StreamInterface */
     private $stream;
     public function seek($offset, $whence = \SEEK_SET): void
