@@ -337,6 +337,33 @@ $allowUnpaid = $allowUnpaidConfig
         }
     }
 
+    /**
+     * Envio automático após um DONE fora do lote (ex.: "Consultar agora"). Usa o mesmo caminho do
+     * processBatch: respeita auto_send_nfse_email e a proteção contra duplicidade (claimAutomaticEmail).
+     * Nunca lança exceção: o item já está DONE e uma falha aqui não pode mudar o status da fila.
+     */
+    public function sendAutomaticEmailForDoneItem(int $invoiceId, ?string $correlationId = null): void
+    {
+        try {
+            $notaRepo = new NotaRepository();
+            $nota = $notaRepo->findByInvoiceId($invoiceId);
+            if (!$this->shouldMarkQueueDone($nota)) {
+                return;
+            }
+
+            $correlationId = trim((string) $correlationId);
+            $this->sendAutomaticEmailAfterQueueDone(
+                $invoiceId,
+                (int) ($nota['id'] ?? 0),
+                $notaRepo,
+                new LogRepository(),
+                (new ConfigRepository())->get(),
+                $correlationId !== '' ? $correlationId : CorrelationIdGenerator::generate($invoiceId)
+            );
+        } catch (\Throwable $e) {
+        }
+    }
+
     private function sendAutomaticEmailAfterQueueDone(int $invoiceId, int $notaId, NotaRepository $notaRepo, LogRepository $logRepo, array $config, string $correlationId): void
  {
  if ((string) ($config['auto_send_nfse_email'] ?? '0') !== '1') {

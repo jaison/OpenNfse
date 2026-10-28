@@ -618,6 +618,10 @@ final class QueueController
             $chave = trim((string) ($nota['chave_acesso'] ?? ''));
             if ($status === 'EMITIDA' && $chave !== '') {
                 $queueRepo->markDone($queueId);
+                (new QueueService())->sendAutomaticEmailForDoneItem(
+                    $invoiceId,
+                    (string) ($row['correlation_id'] ?? '')
+                );
             } elseif ($status === 'PROCESSANDO' || ($status === 'EMITIDA' && $chave === '')) {
                 $queueRepo->touchWaitStatus($queueId, $nextInterval);
             } else {
