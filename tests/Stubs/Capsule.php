@@ -18,9 +18,27 @@ final class Capsule
         return new CapsuleQueryStub($name);
     }
 
+    /** @var array<int, string> statements recebidos por Capsule::statement() */
+    public static array $statements = [];
+
+    public static function statement(string $sql): bool
+    {
+        self::$statements[] = $sql;
+        return true;
+    }
+
+    /** @var array<string, array<int, array>> linhas recebidas por insert(), por tabela */
+    public static array $inserts = [];
+
+    /** @var array<int, string> tabelas que receberam delete() */
+    public static array $deletes = [];
+
     public static function reset(): void
     {
+        self::$inserts = [];
+        self::$deletes = [];
         self::$rows = [];
+        self::$statements = [];
     }
 }
 
@@ -31,6 +49,16 @@ final class CapsuleQueryStub
     }
 
     public function where(...$args): self
+    {
+        return $this;
+    }
+
+    public function orderBy(...$args): self
+    {
+        return $this;
+    }
+
+    public function whereIn(...$args): self
     {
         return $this;
     }
@@ -51,8 +79,15 @@ final class CapsuleQueryStub
         return 0;
     }
 
+    public function delete(): int
+    {
+        Capsule::$deletes[] = $this->table;
+        return 1;
+    }
+
     public function insert(array $data): bool
     {
+        Capsule::$inserts[$this->table][] = $data;
         return true;
     }
 }

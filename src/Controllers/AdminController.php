@@ -17,6 +17,8 @@ use OpenNfse\Repositories\ServiceNbsCatalogRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
 use OpenNfse\Repositories\WhmcsPaymentGatewayRepository;
 use OpenNfse\Services\CryptoService;
+use OpenNfse\Services\EmissionPolicyContextLoader;
+use OpenNfse\Services\EmissionPolicyService;
 use OpenNfse\Services\InvoiceEmailService;
 use OpenNfse\Services\NfseService;
 use OpenNfse\Services\QueueErrorClassifierService;
@@ -40,6 +42,8 @@ final class AdminController
 
     private QueueController $queueController;
 
+    private AlertasController $alertasController;
+
     public function __construct()
     {
         $this->sequenciaisController = new SequenciaisController();
@@ -47,6 +51,7 @@ final class AdminController
         $this->reportsController = new ReportsController();
         $this->notasController = new NotasController();
         $this->queueController = new QueueController();
+        $this->alertasController = new AlertasController();
     }
 
     public function handle(string $action): void
@@ -304,6 +309,17 @@ final class AdminController
                     $this->notasController->sendEmail($invoiceId);
                 },
             ],
+            'alertas' => [
+                'method' => 'GET',
+                'requiresToken' => false,
+                'handler' => [$this->alertasController, 'showAlertas'],
+            ],
+            'alertaResolver' => [
+                'method' => 'POST',
+                'requiresToken' => true,
+                'requiresTokenMessage' => 'Método inválido para resolver alerta de NFS-e.',
+                'handler' => [$this->alertasController, 'resolveAlerta'],
+            ],
             'saveConfig' => [
                 'method' => 'POST',
                 'requiresToken' => true,
@@ -369,8 +385,15 @@ final class AdminController
             (string) ($metrics['range_end'] ?? '')
         );
 
+        $alertasAbertos = $this->alertasController->countOpen();
+
         Module::ui()->renderHeader('Dashboard - OpenNfse');
         $this->renderTabs('dashboard');
+        if (EmissionPolicyContextLoader::configuredCustomFieldMissing($config)) {
+            echo '<div class="alert alert-warning" style="margin:10px 0;">'
+                . htmlspecialchars(EmissionPolicyService::MSG_CUSTOMFIELD_MISSING, ENT_QUOTES, 'UTF-8')
+                . ' <a href="addonmodules.php?module=OpenNfse&amp;action=config&amp;tab=processamento">Revisar a configuração</a></div>';
+        }
 
         $rangeStart = $this->formatDate((string) ($metrics['range_start'] ?? ''), 'd/m/Y');
         $rangeEnd = $this->formatDate((string) ($metrics['range_end'] ?? ''), 'd/m/Y');
@@ -817,6 +840,13 @@ final class AdminController
                 'href' => $auditoriaUrl,
                 'color' => '#c0392b',
                 'desc' => $auditoriaDescription,
+            ],
+            [
+                'label' => 'Alertas de NFS-e',
+                'count' => $alertasAbertos,
+                'href' => 'addonmodules.php?module=OpenNfse&action=alertas',
+                'color' => '#d35400',
+                'desc' => 'Revisão manual (abertos, qualquer período)',
             ],
         ];
         foreach ($attentionItems as $item) {

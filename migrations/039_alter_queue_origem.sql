@@ -1,0 +1,1 @@
+ALTER TABLE mod_opennfse_queue ADD COLUMN origem VARCHAR(16) NULL DEFAULT NULL;

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenNfse\Services;
 
+use OpenNfse\Hooks\InvoiceCreatedHook;
 use OpenNfse\Migrations\Migrator;
 use OpenNfse\Repositories\ConfigRepository;
 use OpenNfse\Repositories\LogRepository;
@@ -71,9 +72,15 @@ final class CronService
             $this->markCronRun($configRepo, $source);
 
             if ((string) ($config['queue_enabled'] ?? '0') === '1') {
+                // Antes da fila: faturas publicadas sem hook útil (ex.: "Publish" sem e-mail no admin).
+                $this->runGenerationChecks($config);
                 $this->processAutomationBatch();
             }
 
+            // Novas tentativas do e-mail automático: valem também com a fila desligada (emissão direta).
+            (new AutoEmailService())->processRetries();
+
+            $this->runAlertChecks();
             (new UpdateCheckService())->autoCheckIfDue($config);
             $this->cleanup($config);
         } catch (\Throwable $e) {
@@ -144,6 +151,43 @@ final class CronService
             'cron_last_source' => $source,
             'cron_last_minute_key' => $this->getCurrentMinuteKey(),
         ]);
+    }
+
+    /**
+     * Conferências de criação de fatura (emissão na geração sem hook útil, ex.: "Publish" sem
+     * e-mail). Roda antes da fila, só com a fila ligada, e nunca interrompe o ciclo.
+     */
+    private function runGenerationChecks(array $config): void
+    {
+        try {
+            (new GenerationCheckService())->processPending($config);
+        } catch (\Throwable $e) {
+            try {
+                (new LogRepository())->insert(
+                    null,
+                    InvoiceCreatedHook::LOG_ERROR,
+                    json_encode(['origem' => 'cron_conferencia_geracao'], JSON_UNESCAPED_UNICODE),
+                    $e->getMessage()
+                );
+            } catch (\Throwable $loggingError) {
+            }
+        }
+    }
+
+    /**
+     * Conferência diferida dos alertas de NFS-e (total da fatura x valor da nota).
+     * Roda sob o lock do cron, independe da fila e nunca interrompe o ciclo.
+     */
+    private function runAlertChecks(): void
+    {
+        try {
+            (new AlertCheckService())->processDue();
+        } catch (\Throwable $e) {
+            try {
+                (new LogRepository())->insert(null, 'NFSE_ALERTA_ERRO', json_encode(['origem' => 'cron'], JSON_UNESCAPED_UNICODE), $e->getMessage());
+            } catch (\Throwable $loggingError) {
+            }
+        }
     }
 
     private function processAutomationBatch(): void

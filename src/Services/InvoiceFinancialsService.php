@@ -37,6 +37,14 @@ final class InvoiceFinancialsService
         return $this->getGatewayPaidAmount($invoice) <= 0.00001;
     }
 
+    /**
+     * Total zero (ou negativo) sem crédito aplicado. Com crédito e total zero, é pagamento só com crédito.
+     */
+    public function isZeroValue(array $invoice): bool
+    {
+        return $this->getInvoiceTotal($invoice) <= 0.00001 && $this->getAppliedCredit($invoice) <= 0.00001;
+    }
+
     private function parseMoney(mixed $value): float
     {
         return (float) str_replace(',', '.', (string) $value);

@@ -17,7 +17,7 @@ final class QueueService
 {
     private const MAX_TENTATIVAS = QueueStatePolicy::MAX_TENTATIVAS;
 
-    public function enqueueEmit(int $invoiceId, string $tipoLog, ?bool $allowUnpaid = null): bool
+    public function enqueueEmit(int $invoiceId, string $tipoLog, ?bool $allowUnpaid = null, ?string $origem = null): bool
     {
         (new Migrator())->up();
         $correlationId = CorrelationIdGenerator::generate($invoiceId);
@@ -29,7 +29,7 @@ final class QueueService
             throw new NfseModuleException(InvoiceLockService::BUSY_MESSAGE);
         }
         try {
-            $created = $repo->enqueue($invoiceId, $correlationId, $allowUnpaid);
+            $created = $repo->enqueue($invoiceId, $correlationId, $allowUnpaid, $origem);
         } finally {
             $lock->release($invoiceId);
         }
@@ -207,7 +207,9 @@ if (empty($config)) {
                 $notaBefore = $notaRepo->findByInvoiceId($invoiceId);
                 if ($this->shouldMarkQueueDone($notaBefore)) {
                     $queueRepo->markDone($id);
-                    $this->sendAutomaticEmailAfterQueueDone($invoiceId, (int) ($notaBefore['id'] ?? 0), $notaRepo, $logRepo, $config, $correlationId);
+                    // Rede de segurança: se uma falha depois de gravar EMITIDA impediu o disparo, o e-mail sai
+                    // agora. O claim por chave evita duplicata, e o "já enviado" aqui não gera log.
+                    (new AutoEmailService())->onNotaEmitida($invoiceId, $correlationId, false);
                     $logRepo->insert(null, 'QUEUE_SKIP_ALREADY_EMITIDA', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
                     continue;
                 }
@@ -218,11 +220,38 @@ if (empty($config)) {
                 }
 
                 $invoice = $invoiceRepo->getInvoice($invoiceId);
-                                $allowUnpaidConfig = (string) ($config['allow_manual_unpaid'] ?? '0') === '1';
-$invoiceStatus = strtolower(trim((string) ($invoice['status'] ?? '')));
-$allowUnpaid = $allowUnpaidConfig
-&& $invoiceStatus === 'unpaid'
-&& (($job['allow_unpaid'] ?? null) === null || (int) $job['allow_unpaid'] === 1);
+                // Item da geração com a fatura ainda Unpaid: reavalia a política com os dados atuais
+                // (gatilho, grupo, custom field e gateway podem ter mudado desde o enfileiramento).
+                if (EmissionPolicyService::queueItemNeedsGeradaRecheck($job, $invoice)) {
+                    $ctx = (new EmissionPolicyContextLoader())->load($invoiceId, $config);
+                    $invoice = $ctx['invoice'];
+                    $recheck = (new EmissionPolicyService())->recheckQueuedGerada(
+                        $job,
+                        $invoice,
+                        $ctx['client'],
+                        $config,
+                        $ctx['gateway'],
+                        $notaBefore
+                    );
+                    if ($recheck !== null && !$recheck->emit) {
+                        $queueRepo->markDone($id);
+                        $logRepo->insert(
+                            null,
+                            'QUEUE_SKIP_POLICY',
+                            json_encode([
+                                'queue_id' => $id,
+                                'invoiceid' => $invoiceId,
+                                'evento' => EmissionPolicyService::EVENT_GERADA,
+                                'origem' => EmissionPolicyService::QUEUE_ORIGEM_GERADA,
+                            ] + $recheck->toLogContext(), JSON_UNESCAPED_UNICODE),
+                            $recheck->message,
+                            $correlationId
+                        );
+                        continue;
+                    }
+                }
+                // Item da geração: a política autorizou a fatura Unpaid (no enfileiramento e acima).
+                $allowUnpaid = EmissionPolicyService::queueAllowsUnpaid($job, $invoice, $config);
                 $eligibility = $eligibilityChecker->check($invoice, $allowUnpaid);
                 if ($eligibility !== null) {
                     $queueRepo->markDone($id);
@@ -254,17 +283,46 @@ $allowUnpaid = $allowUnpaidConfig
                                 $correlationId
                             );
                             break;
+                        case EmissionEligibilityService::SKIP_ZERO_VALUE:
+                            $logRepo->insert(
+                                null,
+                                'QUEUE_SKIP_ZERO_VALUE',
+                                json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId, 'total' => $eligibility['total'] ?? 0.0], JSON_UNESCAPED_UNICODE),
+                                null,
+                                $correlationId
+                            );
+                            break;
                     }
+                    continue;
+                }
+
+                // Agregadora de Mass Pay: recalcula o valor na hora de emitir (uma filha pode ter ganhado
+                // nota depois do enfileiramento). Sem valor a declarar, o item vai para DONE.
+                $nfseValue = (new NfseValueResolver())->resolve($invoice, $invoiceRepo->getItems($invoiceId));
+                $massPayBlock = EmissionPolicyService::massPayBlock($nfseValue);
+                if ($massPayBlock !== null) {
+                    $queueRepo->markDone($id);
+                    $logRepo->insert(
+                        null,
+                        'QUEUE_SKIP_POLICY',
+                        json_encode([
+                            'queue_id' => $id,
+                            'invoiceid' => $invoiceId,
+                            'motivo' => $massPayBlock[0],
+                            'excluded_children' => $nfseValue['excluded_children'],
+                        ], JSON_UNESCAPED_UNICODE),
+                        $massPayBlock[1],
+                        $correlationId
+                    );
                     continue;
                 }
 
                 $nfseService->emitir($invoiceId, $correlationId, ['allow_unpaid' => $allowUnpaid]);
                 $nota = $notaRepo->findByInvoiceId($invoiceId);
                 if ($this->shouldMarkQueueDone($nota)) {
- $queueRepo->markDone($id);
- $this->sendAutomaticEmailAfterQueueDone($invoiceId, (int) ($nota['id'] ?? 0), $notaRepo, $logRepo, $config, $correlationId);
- $logRepo->insert(null, 'QUEUE_DONE', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
- } elseif ($this->shouldKeepWaitingForStatus($nota)) {
+                    $queueRepo->markDone($id);
+                    $logRepo->insert(null, 'QUEUE_DONE', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
+                } elseif ($this->shouldKeepWaitingForStatus($nota)) {
                     $queueRepo->markWaitStatus($id, $waitIntervalSeconds, $nota ? (string) ($nota['erro_api'] ?? '') : null);
                     $logRepo->insert(null, 'QUEUE_WAIT_STATUS', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
                     $mustWaitBeforeNextEmission = true;
@@ -329,11 +387,10 @@ $allowUnpaid = $allowUnpaidConfig
                 $nfseService->consultarStatus($invoiceId, $correlationId);
                 $nota = $notaRepo->findByInvoiceId($invoiceId);
                 if ($this->shouldMarkQueueDone($nota)) {
- $queueRepo->markDone($id);
- $this->sendAutomaticEmailAfterQueueDone($invoiceId, (int) ($nota['id'] ?? 0), $notaRepo, $logRepo, (new ConfigRepository())->get(), $correlationId);
- $logRepo->insert(null, 'QUEUE_DONE', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
- } elseif ($this->shouldKeepWaitingForStatus($nota)) {
- $queueRepo->touchWaitStatus($id, $nextInterval);
+                    $queueRepo->markDone($id);
+                    $logRepo->insert(null, 'QUEUE_DONE', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
+                } elseif ($this->shouldKeepWaitingForStatus($nota)) {
+                    $queueRepo->touchWaitStatus($id, $nextInterval);
                 } else {
                     $status = $nota ? (string) ($nota['status'] ?? '') : '';
                     $err = $nota ? (string) ($nota['erro_api'] ?? '') : '';
@@ -351,65 +408,8 @@ $allowUnpaid = $allowUnpaidConfig
         }
     }
 
-    /**
-     * Envio automático após um DONE fora do lote (ex.: "Consultar agora"). Usa o mesmo caminho do
-     * processBatch: respeita auto_send_nfse_email e a proteção contra duplicidade (claimAutomaticEmail).
-     * Nunca lança exceção: o item já está DONE e uma falha aqui não pode mudar o status da fila.
-     */
-    public function sendAutomaticEmailForDoneItem(int $invoiceId, ?string $correlationId = null): void
+    private function shouldMarkQueueDone(?array $nota): bool
     {
-        try {
-            $notaRepo = new NotaRepository();
-            $nota = $notaRepo->findByInvoiceId($invoiceId);
-            if (!$this->shouldMarkQueueDone($nota)) {
-                return;
-            }
-
-            $correlationId = trim((string) $correlationId);
-            $this->sendAutomaticEmailAfterQueueDone(
-                $invoiceId,
-                (int) ($nota['id'] ?? 0),
-                $notaRepo,
-                new LogRepository(),
-                (new ConfigRepository())->get(),
-                $correlationId !== '' ? $correlationId : CorrelationIdGenerator::generate($invoiceId)
-            );
-        } catch (\Throwable $e) {
-        }
-    }
-
-    private function sendAutomaticEmailAfterQueueDone(int $invoiceId, int $notaId, NotaRepository $notaRepo, LogRepository $logRepo, array $config, string $correlationId): void
- {
- if ((string) ($config['auto_send_nfse_email'] ?? '0') !== '1') {
- return;
- }
-
- try {
- if (!$notaRepo->claimAutomaticEmail($invoiceId)) {
- return;
- }
- (new InvoiceEmailService())->sendToClient($invoiceId);
- $notaRepo->markAutomaticEmailSent($invoiceId);
- $logRepo->insert($notaId, 'EMAIL_NFSE_AUTO_SENT', json_encode(['invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
- } catch (\Throwable $e) {
- $message = $e->getMessage() !== '' ? $e->getMessage() : 'Falha no envio automático da NFS-e.';
- try {
- $notaRepo->markAutomaticEmailFailed($invoiceId);
- } catch (\Throwable $ignored) {
- }
- try {
- $logRepo->insert($notaId, 'EMAIL_NFSE_AUTO_ERROR', json_encode(['invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), $message, $correlationId);
- } catch (\Throwable $ignored) {
- }
- try {
- (new InvoiceHistoryService())->append($invoiceId, 'Falha no envio automático do e-mail da NFS-e. Motivo: ' . $message);
- } catch (\Throwable $ignored) {
- }
- }
- }
-
- private function shouldMarkQueueDone(?array $nota): bool
- {
         if (!$nota) {
             return false;
         }

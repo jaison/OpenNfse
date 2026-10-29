@@ -32,6 +32,55 @@ add_hook('InvoicePaid', 1, static function (array $vars) {
     Module::invoicePaidHook()->handle($vars);
 });
 
+// Emissão na geração da fatura. Observado no WHMCS 9 (ambiente de testes): o admin não chama
+// InvoiceCreated; o "Publish and Send Email" chama InvoiceCreationPreEmail e o "Publish" sem e-mail
+// não chama hook útil (o InvoiceCreation registra uma conferência, e o cron trata a fatura depois).
+// O PreEmail só age na fatura com conferência registrada (não reavalia reenvio de e-mail).
+add_hook('InvoiceCreated', 1, static function (array $vars) {
+    Module::invoiceCreatedHook()->handle($vars);
+});
+
+add_hook('InvoiceCreationPreEmail', 1, static function (array $vars) {
+    Module::invoiceCreatedHook()->handlePreEmail($vars);
+});
+
+add_hook('InvoiceCreation', 1, static function (array $vars) {
+    Module::invoiceCreatedHook()->registerCreation($vars);
+});
+
+// Alertas de NFS-e (só observam; nunca cancelam nota nem bloqueiam o fluxo do WHMCS).
+add_hook('InvoicePaid', 2, static function (array $vars) {
+    Module::invoiceAlertHook()->onPaid($vars);
+});
+
+add_hook('InvoiceCancelled', 1, static function (array $vars) {
+    Module::invoiceAlertHook()->onCancelled($vars);
+});
+
+add_hook('InvoiceRefunded', 1, static function (array $vars) {
+    Module::invoiceAlertHook()->onRefunded($vars);
+});
+
+add_hook('InvoiceUnpaid', 1, static function (array $vars) {
+    Module::invoiceAlertHook()->onUnpaid($vars);
+});
+
+add_hook('UpdateInvoiceTotal', 1, static function (array $vars) {
+    Module::invoiceAlertHook()->onTotalChanged($vars);
+});
+
+add_hook('AddInvoiceLateFee', 1, static function (array $vars) {
+    Module::invoiceAlertHook()->onTotalChangedBy('AddInvoiceLateFee', $vars);
+});
+
+add_hook('InvoiceSplit', 1, static function (array $vars) {
+    Module::invoiceAlertHook()->onTotalChangedBy('InvoiceSplit', $vars);
+});
+
+add_hook('AddTransaction', 1, static function (array $vars) {
+    Module::invoiceAlertHook()->onTransaction($vars);
+});
+
 add_hook('AfterCronJob', 1, static function (array $vars) {
     try {
         Module::cron()->runFromWhmcsCron();

@@ -63,9 +63,12 @@ final class DpsBuilderService
         }
         $isExterior = $country !== 'BR';
 
-        $descricao = $this->buildDescricao($invoice, $items);
+        // Valor e itens da nota pelo resolver único (fatura comum: igual à v0.1.24; agregadora de
+        // Mass Pay: sem os itens das filhas que já têm nota).
+        $nfseValue = (new NfseValueResolver())->resolve($invoice, $items);
+        $descricao = $this->buildDescricao($invoice, $nfseValue['items']);
 
-        $total = (new InvoiceFinancialsService())->getGatewayPaidAmount($invoice);
+        $total = $nfseValue['value'];
         if ($total <= 0) {
             throw new NfseValidationException('Valor total da fatura inválido.');
         }

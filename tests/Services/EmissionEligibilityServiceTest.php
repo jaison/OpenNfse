@@ -41,17 +41,18 @@ final class EmissionEligibilityServiceTest extends TestCase
     }
 
     public function testAllowsUnpaidWhenExplicitlyPermitted(): void
-{
-$invoice = [
-'status' => 'Unpaid',
-'paymentmethod' => 'paypal',
-'credit' => '0.00',
-];
+    {
+        $invoice = [
+            'status' => 'Unpaid',
+            'paymentmethod' => 'paypal',
+            'total' => '100.00',
+            'credit' => '0.00',
+        ];
 
-$this->assertNull($this->service->check($invoice, true));
-}
+        $this->assertNull($this->service->check($invoice, true));
+    }
 
-public function testSkipsWhenPaidWithCreditPaymentMethod(): void
+    public function testSkipsWhenPaidWithCreditPaymentMethod(): void
     {
         $invoice = [
             'status' => 'Paid',
@@ -108,6 +109,7 @@ public function testSkipsWhenPaidWithCreditPaymentMethod(): void
         $invoice = [
             'status' => 'Paid',
             'paymentmethod' => 'paypal',
+            'total' => '100.00',
             'credit' => '0.00',
         ];
 
@@ -127,6 +129,7 @@ public function testSkipsWhenPaidWithCreditPaymentMethod(): void
         $invoice = [
             'status' => 'Paid',
             'paymentmethod' => 'paypal',
+            'total' => '100.00',
             'credit' => '0.00',
         ];
 
@@ -138,9 +141,27 @@ public function testSkipsWhenPaidWithCreditPaymentMethod(): void
         $invoice = [
             'status' => 'Paid',
             'paymentmethod' => 'banktransfer',
+            'total' => '100.00',
             'credit' => '0',
         ];
 
         $this->assertNull($this->service->check($invoice));
+    }
+
+    public function testSkipsZeroValueInvoiceWithoutCredit(): void
+    {
+        foreach (['0.00', '0', '-1.00'] as $total) {
+            $result = $this->service->check(['status' => 'Paid', 'paymentmethod' => 'paypal', 'total' => $total, 'credit' => '0.00']);
+            $this->assertNotNull($result);
+            $this->assertSame(EmissionEligibilityService::SKIP_ZERO_VALUE, $result['reason']);
+        }
+
+        // Unpaid permitida com total zero também é descartada.
+        $result = $this->service->check(['status' => 'Unpaid', 'paymentmethod' => 'paypal', 'total' => '0.00', 'credit' => '0.00'], true);
+        $this->assertSame(EmissionEligibilityService::SKIP_ZERO_VALUE, $result['reason']);
+
+        // Com crédito e total zero, continua sendo pagamento só com crédito.
+        $result = $this->service->check(['status' => 'Paid', 'paymentmethod' => 'paypal', 'total' => '0.00', 'credit' => '10.00']);
+        $this->assertSame(EmissionEligibilityService::SKIP_CREDIT_PAYMENT, $result['reason']);
     }
 }

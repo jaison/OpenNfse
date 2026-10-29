@@ -8,8 +8,15 @@ use WHMCS\Database\Capsule;
 
 final class Migrator
 {
+    /** As migrations rodam no máximo uma vez por processo PHP (cron, lote da fila, hooks, telas). */
+    private static bool $ran = false;
+
     public function up(): void
     {
+        if (self::$ran) {
+            return;
+        }
+
         $dir = dirname(__DIR__, 2) . '/migrations';
         $files = glob($dir . '/*.sql') ?: [];
         sort($files);
@@ -42,5 +49,16 @@ final class Migrator
                 }
             }
         }
+
+        // Só marca depois de tudo aplicado: uma falha faz a próxima chamada tentar de novo.
+        self::$ran = true;
+    }
+
+    /**
+     * @internal Para testes.
+     */
+    public static function resetForTests(): void
+    {
+        self::$ran = false;
     }
 }

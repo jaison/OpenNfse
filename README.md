@@ -24,7 +24,7 @@ Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https:/
 
 ## Visão Geral
 
-- Compatível com WHMCS `8.13.x`.
+- Compatível com WHMCS `8.13.x` ou `9.1`. A v0.1.25 foi validada no WHMCS `9.1`.
 - Requer PHP `8.1+`.
 - Usa a SDK `nfse-nacional/nfse-php`.
 - Usa `vendor-scoped` para reduzir risco de conflito com dependências de outros módulos do WHMCS.
@@ -44,7 +44,7 @@ Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https:/
 - Controle de automação separado por gateway de pagamento.
 - Fila de processamento para emissões, reprocessamentos e consultas de status.
 - Permite enfileirar manualmente faturas com status `Unpaid` quando a opção de emissão manual de faturas não pagas estiver habilitada.
-- Envio automático configurável de PDF e XML por e-mail somente após a fila concluir a emissão com status `DONE`.
+- Envio automático configurável de PDF e XML por e-mail, uma vez por nota, quando ela é emitida (com ou sem fila), com novas tentativas automáticas em caso de falha.
 - Reconciliação automática de emissões quando a API nacional retorna indisponibilidade transitória, como erro `503`, timeout ou falha de conexão.
 - Cron integrado ao WHMCS com proteção contra execução duplicada.
 
@@ -142,7 +142,7 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 ## Requisitos
 
 - PHP `^8.1`
-- WHMCS `8.13.x`
+- WHMCS `8.13.x` ou `9.1` (a v0.1.25 foi validada no `9.1`)
 - MySQL `5.7.5+` ou MariaDB `10.0.2+` (recomendado; em versões anteriores o módulo funciona, com a fila protegida só pelo lock do cron, como explicado em [docs/INSTALACAO.md](docs/INSTALACAO.md))
 - Extensões PHP: `openssl`, `curl`, `dom`, `simplexml`, `mbstring`, `zlib` e `zip`
 - Pacote de certificados raiz (`ca-certificates`) atualizado no servidor
@@ -165,13 +165,16 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 3. Apague a pasta `modules/addons/OpenNfse/` da versão anterior (ou, no mínimo, a subpasta `vendor-scoped/`) e envie a pasta `OpenNfse` nova para `modules/addons/`. O módulo não guarda dados nessa pasta: a configuração fica no banco, os XML e PDF ficam em `attachments/` e o certificado A1 fica obrigatoriamente fora do webroot (`public_html`), conforme [docs/SEGURANCA.md](docs/SEGURANCA.md). Enviar por cima também funciona, mas deixa no servidor arquivos que a versão nova não usa mais.
 4. No admin do WHMCS, acesse `Addons > OpenNfse` e revise a configuração, se necessário.
 
+Para voltar à v0.1.24, revise antes a emissão automática: quem usa o gatilho "Quando a fatura for gerada" ou o escopo por grupos passa a emitir ao pagar para todos os clientes, porque a v0.1.24 só conhece `auto_emit_on_payment`, que fica `1` sempre que o gatilho não é "Nunca".
+
 ## Configuração Inicial
 
 - Configure ambiente, certificado digital e dados do prestador.
 - Em **Leiaute da DPS**, mantenha **Automático**. Ele segue a NT 009: em homologação o leiaute novo já vale; em produção ele passa a valer em 01/12/2026 00:00 (horário de Brasília). A tela mostra o leiaute ativo. Só force **Pré-NT 009** ou **NT 009** se a SEFIN rejeitar a DPS com E1235 por leiaute; nesse caso a mensagem de erro da nota indica o ajuste.
 - Configure a série DPS conforme a operação desejada.
 - Revise as opções de fila/processamento automático.
-- Em **Automação de E-mail**, configure **Enviar PDF/XML automaticamente por e-mail?** como `Sim` para enviar os anexos após a fila concluir a nota como `DONE`; a opção vem desativada por padrão.
+- Em **Automação de E-mail**, configure **Enviar PDF/XML automaticamente por e-mail?** como `Sim` para enviar os anexos quando a nota for emitida; a opção vem desativada por padrão. Cada nota recebe um e-mail automático; uma reemissão gera nota nova e, portanto, um e-mail novo.
+- Se usar a emissão automática **Quando a fatura for gerada**, não repasse taxas ao cliente nos gateways marcados em **Emitir ao gerar a fatura**: a NFS-e usa o valor da fatura na geração, e taxa, juros, multa ou desconto acrescentados no pagamento (ex.: o PagHiper inclui a taxa só depois do pagamento) deixam o valor da fatura diferente da nota e abrem o alerta "Fatura alterada com NFS-e". Como não dá para saber de antemão qual gateway o cliente vai usar, e cada um pode ter uma taxa diferente, o recomendado é não repassar taxas nesses gateways.
 - Emita manualmente faturas com status `Unpaid` somente quando a opção **Permitir enfileirar manualmente a emissão de faturas não pagas?** estiver configurada como `Sim`.
 - Salve a configuração antes de realizar testes de emissão.
 
@@ -221,7 +224,8 @@ Emitidas para Estrangeiros/
 - O addon possui integração com o cron do próprio WHMCS.
 - Quando o cron principal do WHMCS roda a cada minuto, o processamento automático do módulo é disparado junto.
 - O processamento respeita a configuração interna do addon e possui proteção contra execução duplicada no mesmo minuto.
-- Toda a automação depende da fila ligada (**Habilitar fila/cron?** = `Sim`): processamento da fila, consultas automáticas de status, emissão automática ao pagar e envio automático de e-mail. Com a fila desligada, o cron só faz a limpeza por retenção e a checagem de atualização, e a emissão manual passa a ser feita na hora. Esse comportamento é intencional.
+- A automação de emissão depende da fila ligada (**Habilitar fila/cron?** = `Sim`): processamento da fila, consultas automáticas de status e emissão automática (na geração ou no pagamento). Com a fila desligada, o cron faz as novas tentativas do e-mail automático, a conferência diferida dos alertas, a limpeza e a checagem de atualização, e a emissão manual passa a ser feita na hora. Esse comportamento é intencional.
+- O envio automático de e-mail vale com ou sem fila: sai quando a nota é emitida e, em caso de falha, o cron faz até 3 novas tentativas (15 minutos, 1 hora e 6 horas depois).
 - Em falhas transitórias da API nacional, o cron mantém a nota em processamento e tenta reconciliar a emissão automaticamente nos ciclos seguintes.
 - O arquivo `cron.php` do módulo permanece disponível para compatibilidade, mas a recomendação é usar o cron principal do WHMCS como origem oficial.
 

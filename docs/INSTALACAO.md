@@ -2,7 +2,7 @@
 
 ## Requisitos
 
-- WHMCS `8.13.x` e PHP `8.1+`.
+- WHMCS `8.13.x` ou `9.1` e PHP `8.1+`. A v0.1.25 foi validada no WHMCS `9.1`.
 - Banco recomendado: MySQL `5.7.5+` ou MariaDB `10.0.2+`. Nessas versões a sessão pode manter vários `GET_LOCK` ao mesmo tempo, e o módulo usa o lock do cron junto com o lock por fatura. Em versões anteriores o módulo continua funcionando, mas, dentro do processamento da fila, abre mão do lock por fatura e conta só com o lock do cron (ver [Locks em FLUXOS.md](FLUXOS.md#locks)).
 - Extensões PHP: `openssl` (certificado e assinatura), `curl` (chamadas à API Nacional, sincronização IBGE e checagem de atualização), `dom`, `simplexml`, `mbstring`, `zlib` (compactação da DPS e leitura dos documentos da API) e `zip` (exportação ZIP de XMLs).
 - Pacote de certificados raiz (CAs) atualizado no servidor (`ca-certificates`, ou o bundle apontado por `curl.cainfo` no `php.ini`). As chamadas à API Nacional verificam o certificado TLS do servidor.
@@ -25,6 +25,8 @@ O release já traz as dependências em `vendor-scoped/`, com namespaces prefixad
 2. As migrations novas são aplicadas automaticamente no próximo acesso ao addon, ciclo do cron ou emissão. Desativar e reativar o addon não é necessário.
 3. Revise a configuração em **Addons > OpenNfse** e clique em **Testar conexão**. Se o teste falhar com erro de certificado (por exemplo, `unable to get local issuer certificate`), atualize o pacote `ca-certificates` do servidor ou aponte `curl.cainfo` no `php.ini` para um bundle atualizado.
 4. No OpenLiteSpeed, faça um graceful restart para que os `.htaccess` sejam relidos (ver [SEGURANCA.md](SEGURANCA.md#5-acesso-web-direto-ao-diretório-do-addon)).
+
+Para voltar à v0.1.24, revise antes a emissão automática: quem usa o gatilho "Quando a fatura for gerada" ou o escopo por grupos passa a emitir ao pagar para todos os clientes, porque a v0.1.24 só conhece `auto_emit_on_payment`, que fica `1` sempre que o gatilho não é "Nunca" (ver [FLUXOS.md](FLUXOS.md#atualização-de-versões-anteriores)).
 
 O dashboard do addon avisa quando há versão nova. A checagem lê o `update.json` do repositório a cada 24 h, ou na hora, pelo botão **Verificar atualizações agora**.
 

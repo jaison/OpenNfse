@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.24",
-  "release_date": "2026-10-28",
+  "latest_version": "0.1.25",
+  "release_date": "2026-10-29",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "As dependências foram atualizadas e o pacote do módulo ficou menor e mais leve. A fila de emissão ficou mais robusta, com proteção contra emissão duplicada, recuperação automática de itens travados e o Reprocessar reiniciando as tentativas automáticas. IMPORTANTE: antes de atualizar, apague a pasta modules/addons/OpenNfse e envie a nova (a pasta não guarda dados: a configuração fica no banco, os XML/PDF ficam em attachments/ e o certificado fica obrigatoriamente fora do webroot); depois, clique em \"Testar conexão\"."
+  "message": "Emissão automática configurável: a NFS-e pode ser emitida quando a fatura for paga ou quando for gerada, com regras por grupo de clientes, por custom field do cliente e por gateway. Novos alertas no painel para faturas com NFS-e que forem canceladas, estornadas, reabertas ou alteradas, novo relatório de NFS-e de faturas não pagas e e-mail automático por nota, com novas tentativas. Quem já emitia ao pagar continua igual. Ao emitir na geração, recomendamos não repassar taxas de gateway ao cliente. IMPORTANTE: antes de atualizar, apague a pasta modules/addons/OpenNfse e envie a nova (a pasta não guarda dados: a configuração fica no banco, os XML/PDF ficam em attachments/ e o certificado fica obrigatoriamente fora do webroot)."
 }
