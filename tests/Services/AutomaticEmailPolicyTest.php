@@ -87,6 +87,14 @@ final class AutomaticEmailPolicyTest extends TestCase
         }
     }
 
+    public function testAlreadySentSkipCanBeSilencedForQueueSafetyNet(): void
+    {
+        $this->assertFalse(AutomaticEmailPolicy::shouldLogSkip(AutomaticEmailPolicy::SKIP_ALREADY_SENT, false));
+        $this->assertTrue(AutomaticEmailPolicy::shouldLogSkip(AutomaticEmailPolicy::SKIP_NOT_EMITIDA, false));
+        $this->assertTrue(AutomaticEmailPolicy::shouldLogSkip(AutomaticEmailPolicy::SKIP_NO_KEY, false));
+        $this->assertFalse(AutomaticEmailPolicy::shouldLogSkip(AutomaticEmailPolicy::SKIP_CONFIG_DISABLED, false));
+    }
+
     public function testSkipWhenNotaIsNotEmitida(): void
     {
         $this->assertSame(AutomaticEmailPolicy::SKIP_NOT_EMITIDA, AutomaticEmailPolicy::skipReason(true, null));

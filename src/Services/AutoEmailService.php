@@ -22,7 +22,11 @@ final class AutoEmailService
 {
     private const RETRY_BATCH_LIMIT = 20;
 
-    public function onNotaEmitida(int $invoiceId, ?string $correlationId = null): void
+    /**
+     * @param bool $logAlreadySent false na rede de segurança da fila (QUEUE_SKIP_ALREADY_EMITIDA), onde
+     *        "já enviado para esta chave" é o resultado esperado e o log seria só ruído
+     */
+    public function onNotaEmitida(int $invoiceId, ?string $correlationId = null, bool $logAlreadySent = true): void
     {
         try {
             $correlationId = $this->resolveCorrelationId($invoiceId, $correlationId);
@@ -40,7 +44,7 @@ final class AutoEmailService
             }
 
             if ($reason !== null) {
-                if (!AutomaticEmailPolicy::shouldLogSkip($reason)) {
+                if (!AutomaticEmailPolicy::shouldLogSkip($reason, $logAlreadySent)) {
                     return;
                 }
                 $logRepo->insert(

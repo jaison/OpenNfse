@@ -69,6 +69,7 @@ Arquivos, PDF e e-mail:
 - `InvoiceEmailService`: monta os anexos (XML salvo e PDF gerado) e envia ao cliente pelo módulo de e-mail do WHMCS (`whmcs_provider`) ou, sem ele, pelo `sendmessage()`.
 - `EmailTemplateService`: monta assunto e corpo do e-mail da NFS-e.
 - `AutoEmailService`: envio automático do e-mail da NFS-e, uma vez por chave de acesso, disparado quando a nota passa a `EMITIDA`, e novas tentativas depois de falha (pelo cron).
+- `AutoEmailTrigger`: avalia o disparo do e-mail automático ao fim da emissão e da consulta do `NfseService`, inclusive quando elas terminam com exceção, sem disparo duplo quando a consulta reenvia a DPS por `emitir()`.
 - `AutomaticEmailPolicy`: regras puras do envio automático (transição para `EMITIDA`, motivos para não enviar e agenda das novas tentativas).
 - `InvoiceHistoryService`: registra eventos da NFS-e nas notas da fatura (`tblinvoices.notes`).
 

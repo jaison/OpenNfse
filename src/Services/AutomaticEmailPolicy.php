@@ -78,10 +78,15 @@ final class AutomaticEmailPolicy
     /**
      * Só vira log EMAIL_NFSE_AUTO_SKIPPED quando o envio está ligado e houve tentativa real de disparo.
      * Com a opção desligada (padrão), não há log: seria uma linha a mais por emissão.
+     * $logAlreadySent = false omite também o "já enviado para esta chave" (rede de segurança da fila).
      */
-    public static function shouldLogSkip(string $reason): bool
+    public static function shouldLogSkip(string $reason, bool $logAlreadySent = true): bool
     {
-        return $reason !== self::SKIP_CONFIG_DISABLED;
+        if ($reason === self::SKIP_CONFIG_DISABLED) {
+            return false;
+        }
+
+        return $logAlreadySent || $reason !== self::SKIP_ALREADY_SENT;
     }
 
     /**

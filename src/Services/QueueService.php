@@ -207,6 +207,9 @@ if (empty($config)) {
                 $notaBefore = $notaRepo->findByInvoiceId($invoiceId);
                 if ($this->shouldMarkQueueDone($notaBefore)) {
                     $queueRepo->markDone($id);
+                    // Rede de segurança: se uma falha depois de gravar EMITIDA impediu o disparo, o e-mail sai
+                    // agora. O claim por chave evita duplicata, e o "já enviado" aqui não gera log.
+                    (new AutoEmailService())->onNotaEmitida($invoiceId, $correlationId, false);
                     $logRepo->insert(null, 'QUEUE_SKIP_ALREADY_EMITIDA', json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId], JSON_UNESCAPED_UNICODE), null, $correlationId);
                     continue;
                 }

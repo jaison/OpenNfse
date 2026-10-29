@@ -22,11 +22,43 @@ final class NfseService
 {
     private const MAX_E2404_REEMIT_ATTEMPTS = 2;
 
+    private ?AutoEmailTrigger $emailTrigger;
+
+    public function __construct(?AutoEmailTrigger $emailTrigger = null)
+    {
+        $this->emailTrigger = $emailTrigger;
+    }
+
     public function emitir(int $invoiceId, ?string $correlationId = null, array $options = []): void
     {
         $this->ensureMigrated();
         $correlationId = $correlationId ?: CorrelationIdGenerator::generate($invoiceId);
 
+        // O e-mail automático é avaliado depois de liberar o lock da fatura, mesmo se a emissão lançar exceção.
+        $this->emailTrigger()->aroundEmission(
+            $invoiceId,
+            $correlationId,
+            function (callable $markStarted) use ($invoiceId, $correlationId, $options): void {
+                $this->emitirComLockDaFatura($invoiceId, $correlationId, $options, $markStarted);
+            },
+            static fn (): ?array => (new NotaRepository())->findByInvoiceId($invoiceId)
+        );
+    }
+
+    private function emailTrigger(): AutoEmailTrigger
+    {
+        return $this->emailTrigger ??= new AutoEmailTrigger();
+    }
+
+    /**
+     * @param callable(?array): void $markStarted avisa que a emissão começou, com a nota lida sob o lock
+     */
+    private function emitirComLockDaFatura(
+        int $invoiceId,
+        string $correlationId,
+        array $options,
+        callable $markStarted
+    ): void {
         // Lock por fatura: impede duas emissões simultâneas (e dois nDPS) para a mesma fatura.
         $lock = new InvoiceLockService();
         if (!$lock->acquire($invoiceId)) {
@@ -58,15 +90,10 @@ final class NfseService
                 throw new NfseModuleException($blockReason);
             }
 
+            $markStarted($notaAtual);
             $this->emitirComLock($invoiceId, $correlationId, $options);
-            $notaDepois = (new NotaRepository())->findByInvoiceId($invoiceId);
         } finally {
             $lock->release($invoiceId);
-        }
-
-        // Fora do lock da fatura: o envio do e-mail não segura a emissão de outros pedidos.
-        if (AutomaticEmailPolicy::isEmissionTransition($notaAtual, $notaDepois)) {
-            (new AutoEmailService())->onNotaEmitida($invoiceId, $correlationId);
         }
     }
 
@@ -320,34 +347,34 @@ final class NfseService
         if (!$nota) {
             throw new NfseModuleException('Nota não encontrada para esta fatura.');
         }
-        $notaId = (int) $nota['id'];
-        if ($this->shouldRetryEmissionAfterTransientOutage($nota)) {
-            // O reenvio passa por emitir(), que já dispara o e-mail automático se a nota for emitida.
-            $this->retryEmissionAfterTransientOutage($notaRepo, $logRepo, $nota, $invoiceId, $notaId, $correlationId);
-            return;
-        }
-
-        $delegatedToEmitir = $this->consultarStatusSemEmail(
+        // O e-mail automático é avaliado ao fim da consulta, mesmo se ela lançar exceção. Quando a consulta
+        // reenvia a DPS por emitir() (503 ou E2404), quem dispara é a emissão.
+        $this->emailTrigger()->aroundConsulta(
             $invoiceId,
             $correlationId,
-            $config,
-            $notaRepo,
-            $logRepo,
-            $nota
-        );
+            $nota,
+            function () use ($invoiceId, $correlationId, $config, $notaRepo, $logRepo, $nota): void {
+                $notaId = (int) $nota['id'];
+                if ($this->shouldRetryEmissionAfterTransientOutage($nota)) {
+                    $this->retryEmissionAfterTransientOutage(
+                        $notaRepo,
+                        $logRepo,
+                        $nota,
+                        $invoiceId,
+                        $notaId,
+                        $correlationId
+                    );
+                    return;
+                }
 
-        // Quando a consulta reenviou a DPS (E2404), emitir() já tratou o e-mail automático.
-        if (
-            !$delegatedToEmitir
-            && AutomaticEmailPolicy::isEmissionTransition($nota, $notaRepo->findByInvoiceId($invoiceId))
-        ) {
-            (new AutoEmailService())->onNotaEmitida($invoiceId, $correlationId);
-        }
+                $this->consultarStatusSemEmail($invoiceId, $correlationId, $config, $notaRepo, $logRepo, $nota);
+            },
+            static fn (): ?array => (new NotaRepository())->findByInvoiceId($invoiceId)
+        );
     }
 
     /**
-     * Consulta a nota na API e atualiza o registro local. Retorna true quando a consulta
-     * terminou reenviando a mesma DPS por emitir() (E2404).
+     * Consulta a nota na API e atualiza o registro local. O e-mail automático fica com consultarStatus().
      */
     private function consultarStatusSemEmail(
         int $invoiceId,
@@ -356,7 +383,7 @@ final class NfseService
         NotaRepository $notaRepo,
         LogRepository $logRepo,
         array $nota
-    ): bool {
+    ): void {
         $notaId = (int) $nota['id'];
         $statusBefore = (string) ($nota['status'] ?? '');
         $errorBefore = (string) ($nota['erro_api'] ?? '');
@@ -422,7 +449,7 @@ final class NfseService
                     ], ['touch_last_status_checked_at' => true]);
                 }
             }
-            return false;
+            return;
         }
 
         $idDps = $nota['id_dps'] ?? null;
@@ -468,7 +495,7 @@ final class NfseService
             if ($this->shouldRetryConsultaAfterServiceUnavailable($resp->errorMessage)) {
                 $this->preserveStatusForPendingConsulta($notaRepo, $nota, $invoiceId);
             } elseif ($this->attemptE2404SameDpsReemit($notaRepo, $logRepo, $nota, $invoiceId, $notaId, $resp->errorMessage, $correlationId)) {
-                return true;
+                return;
             } else {
                 $errorMessage = $this->shouldKeepExistingErrorTimestamp($statusBefore, $errorBefore, $resp->errorMessage)
                     ? $errorBefore
@@ -481,8 +508,6 @@ final class NfseService
                 ], ['touch_last_status_checked_at' => true]);
             }
         }
-
-        return false;
     }
 
     public function cancelarNfse(int $invoiceId, string $codigoMotivo, string $motivo, string $descricao, ?string $correlationId = null): void

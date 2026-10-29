@@ -284,6 +284,12 @@ O ponto único de disparo é `AutoEmailService::onNotaEmitida()`, chamado pelo `
 
 Consultar de novo uma nota que já estava `EMITIDA` com a mesma chave não dispara nada.
 
+O encadeamento fica em `AutoEmailTrigger`. A transição é avaliada ao fim da emissão ou da consulta, **também quando ela termina com exceção**: se a nota já foi gravada como `EMITIDA` e uma escrita seguinte falha (histórico fiscal, log, resolução de itens da fila), o e-mail sai mesmo assim e a exceção segue normalmente. Quando a consulta reenvia a DPS por `emitir()` (indisponibilidade da API ou E2404), quem dispara é a emissão, uma única vez.
+
+Rede de segurança na fila: quando um item encontra a nota já `EMITIDA` com chave (`QUEUE_SKIP_ALREADY_EMITIDA`), a fila chama `onNotaEmitida()` de novo. Se o e-mail dessa chave ainda não saiu, ele sai agora. Se já saiu, o claim não tem efeito e nada é registrado, porque esse é o resultado esperado ali.
+
+Itens enfileirados na **geração** da fatura são emitidos antes do pagamento, e o e-mail automático sai nesse momento, com a NFS-e acompanhando a cobrança. É o comportamento desejado para quem emite na geração.
+
 O controle é por nota, pela chave de acesso. `NotaRepository::claimAutomaticEmail()` faz um `UPDATE` condicional que só tem efeito se a nota está `EMITIDA` com essa chave e se `email_automatico_chave` ainda não é essa chave. Só o processo que conseguir essa atualização envia, e ele grava a chave em `email_automatico_chave`. Com isso:
 
 - a mesma chave nunca recebe dois e-mails automáticos;
@@ -297,13 +303,13 @@ Logs:
 |---|---|
 | `EMAIL_NFSE_AUTO_SENT` | E-mail enviado (com a chave e o número da tentativa). |
 | `EMAIL_NFSE_AUTO_ERROR` | Falha no envio, com a próxima tentativa (`proxima_tentativa_at`) ou `null` quando as tentativas acabaram. A falha também vai para as notas da fatura. |
-| `EMAIL_NFSE_AUTO_SKIPPED` | Disparo não enviado com o envio automático ligado. O campo `motivo` traz `ja_enviado_para_chave`, `nota_nao_emitida` ou `nota_sem_chave`. Só é gravado quando a nota passa a `EMITIDA`, nunca a cada consulta. Com `auto_send_nfse_email = 0`, nada é enviado e nada é registrado. |
+| `EMAIL_NFSE_AUTO_SKIPPED` | Disparo não enviado com o envio automático ligado. O campo `motivo` traz `ja_enviado_para_chave`, `nota_nao_emitida` ou `nota_sem_chave`. Só é gravado quando a nota passa a `EMITIDA`, nunca a cada consulta, e não é gravado com `ja_enviado_para_chave` na rede de segurança da fila. Com `auto_send_nfse_email = 0`, nada é enviado e nada é registrado. |
 
 **Novas tentativas**: depois de uma falha, o módulo agenda até 3 novas tentativas, 15 minutos, 1 hora e 6 horas depois da falha anterior (`email_automatico_tentativas` e `email_automatico_proxima_tentativa_at`; regras em `AutomaticEmailPolicy`). Elas são executadas pelo cron, sob o lock do cron, com um claim próprio (`claimAutomaticEmailRetry()`) que exige a falha da chave atual e a tentativa vencida. Se a última tentativa falhar, a nota fica com `FALHOU` e as notas da fatura indicam o envio manual. Com `auto_send_nfse_email = 0`, as tentativas pendentes ficam paradas. A nota que deixa de estar `EMITIDA` ou ganha chave nova não recebe a tentativa pendente da chave anterior.
 
 O envio manual (admin ou cliente) continua disponível a qualquer momento. Quando ele dá certo, a nova tentativa automática pendente da mesma chave é cancelada, para o cliente não receber o e-mail duas vezes.
 
-**Atualização para a v0.1.25**: a migration `043` grava a chave atual em `email_automatico_chave` nas notas que já tinham passado pelo envio automático (`email_automatico_processado_at` preenchido). Assim, nenhum e-mail antigo é reenviado depois da atualização. O `UPDATE` só alcança linhas com `email_automatico_chave` vazio, por isso repeti-lo não altera nada.
+**Atualização para a v0.1.25**: a migration `043` grava a chave atual em `email_automatico_chave` nas notas que já tinham passado pelo envio automático (`email_automatico_processado_at` preenchido). Assim, nenhum e-mail antigo é reenviado depois da atualização. O `UPDATE` só alcança linhas com `email_automatico_chave` `NULL`, por isso repeti-lo não altera nada. Nas notas antigas sem chave, a migration grava `''`, e a primeira chave real libera o e-mail.
 
 ## Cancelamento
 
