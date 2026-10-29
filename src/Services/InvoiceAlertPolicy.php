@@ -74,8 +74,11 @@ final class InvoiceAlertPolicy
      *
      * Quando o valor da nota é desconhecido não há decisão. Fatura quitada só com crédito
      * fica para o alerta CREDITO_APOS_EMISSAO, gerado no pagamento.
+     *
+     * $expectedValue é o valor que a nota deveria ter (NfseValueResolver), usado na fatura de
+     * Mass Pay que desconta faturas originais com nota própria. Null compara com o total cobrado.
      */
-    public static function onTotalChanged(?array $nota, ?float $notaValue, array $invoice): ?array
+    public static function onTotalChanged(?array $nota, ?float $notaValue, array $invoice, ?float $expectedValue = null): ?array
     {
         if (!self::hasEmittedNota($nota) || $notaValue === null) {
             return null;
@@ -86,12 +89,15 @@ final class InvoiceAlertPolicy
             return null;
         }
 
-        $currentValue = $financials->getGatewayPaidAmount($invoice);
+        $currentValue = $expectedValue ?? $financials->getGatewayPaidAmount($invoice);
         if (abs(round($currentValue, 2) - round($notaValue, 2)) <= self::MONEY_TOLERANCE) {
             return null;
         }
 
-        $detalhes = 'Total da fatura (' . self::money($currentValue) . ') difere do valor da ' . self::notaLabel($nota)
+        $label = $expectedValue === null
+            ? 'Total da fatura'
+            : 'Valor da fatura sem as faturas originais que já têm NFS-e própria';
+        $detalhes = $label . ' (' . self::money($currentValue) . ') difere do valor da ' . self::notaLabel($nota)
             . ' (' . self::money($notaValue) . ').';
         $credit = $financials->getAppliedCredit($invoice);
         if ($credit > self::MONEY_TOLERANCE) {

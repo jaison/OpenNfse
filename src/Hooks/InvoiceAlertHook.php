@@ -11,6 +11,7 @@ use OpenNfse\Repositories\WhmcsInvoiceRepository;
 use OpenNfse\Services\AlertCheckService;
 use OpenNfse\Services\AlertService;
 use OpenNfse\Services\InvoiceAlertPolicy;
+use OpenNfse\Services\NfseValueResolver;
 use OpenNfse\Services\StorageService;
 
 /**
@@ -91,9 +92,15 @@ final class InvoiceAlertHook
                 return null;
             }
 
-            $invoice = (new WhmcsInvoiceRepository())->getInvoice($invoiceId);
+            $invoiceRepo = new WhmcsInvoiceRepository();
+            $invoice = $invoiceRepo->getInvoice($invoiceId);
+            // Mass Pay: a nota desconta as faturas originais que já têm nota própria.
+            $items = $invoiceRepo->getItems($invoiceId);
+            $expected = NfseValueResolver::massPayChildIds($items) === []
+                ? null
+                : (new NfseValueResolver())->resolve($invoice, $items)['value'];
 
-            return InvoiceAlertPolicy::onTotalChanged($nota, $notaValue, $invoice);
+            return InvoiceAlertPolicy::onTotalChanged($nota, $notaValue, $invoice, $expected);
         });
     }
 

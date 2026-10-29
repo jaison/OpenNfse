@@ -6,6 +6,7 @@ namespace OpenNfse\Tests\Services;
 
 use OpenNfse\Services\AlertService;
 use OpenNfse\Services\InvoiceAlertPolicy;
+use OpenNfse\Services\NfseValueResolver;
 use PHPUnit\Framework\TestCase;
 
 final class InvoiceAlertPolicyTest extends TestCase
@@ -91,6 +92,53 @@ final class InvoiceAlertPolicyTest extends TestCase
     public function testTotalChangedLeavesCreditOnlyToPaidAlert(): void
     {
         $this->assertNull(InvoiceAlertPolicy::onTotalChanged(self::EMITIDA, 100.0, ['total' => '0.00', 'credit' => '100.00']));
+    }
+
+    /**
+     * Mass Pay parcial: a fatura agregadora cobre a filha 101 (100,00), que já tem nota própria,
+     * e o serviço de 55,00. A nota da agregadora foi emitida com 55,00.
+     */
+    private static function massPayPartialItems(): array
+    {
+        return [
+            ['type' => 'Invoice', 'relid' => 101, 'amount' => '100.00', 'description' => 'Fatura #101'],
+            ['type' => 'Invoice', 'relid' => 102, 'amount' => '55.00', 'description' => 'Fatura #102'],
+        ];
+    }
+
+    public function testMassPayPartialMatchingExpectedValueDoesNotAlert(): void
+    {
+        $invoice = ['total' => '155.00', 'credit' => '0.00'];
+        $expected = NfseValueResolver::compute($invoice, self::massPayPartialItems(), [101])['value'];
+
+        $this->assertSame(55.0, $expected);
+        $this->assertNull(InvoiceAlertPolicy::onTotalChanged(self::EMITIDA, 55.0, $invoice, $expected));
+    }
+
+    public function testMassPayPartialWithNewLateFeeAlerts(): void
+    {
+        $invoice = ['total' => '165.00', 'credit' => '0.00'];
+        $items = array_merge(self::massPayPartialItems(), [['type' => 'LateFee', 'relid' => 0, 'amount' => '10.00', 'description' => 'Multa']]);
+        $expected = NfseValueResolver::compute($invoice, $items, [101])['value'];
+
+        $decision = InvoiceAlertPolicy::onTotalChanged(self::EMITIDA, 55.0, $invoice, $expected);
+        $this->assertSame(AlertService::FATURA_ALTERADA_COM_NFSE, $decision['tipo']);
+        $this->assertStringContainsString('R$ 65,00', $decision['detalhes']);
+        $this->assertStringContainsString('R$ 55,00', $decision['detalhes']);
+        $this->assertStringContainsString('faturas originais', $decision['detalhes']);
+    }
+
+    public function testCommonInvoiceWithoutExpectedValueKeepsTotalComparison(): void
+    {
+        $invoice = ['total' => '155.00', 'credit' => '0.00'];
+
+        $this->assertSame(
+            InvoiceAlertPolicy::onTotalChanged(self::EMITIDA, 55.0, $invoice),
+            InvoiceAlertPolicy::onTotalChanged(self::EMITIDA, 55.0, $invoice, null)
+        );
+        $decision = InvoiceAlertPolicy::onTotalChanged(self::EMITIDA, 55.0, $invoice, null);
+        $this->assertStringContainsString('Total da fatura (R$ 155,00)', $decision['detalhes']);
+        $this->assertNull(InvoiceAlertPolicy::onTotalChanged(self::EMITIDA, 155.0, $invoice, null));
     }
 
     public function testCreditAfterEmissionDetected(): void

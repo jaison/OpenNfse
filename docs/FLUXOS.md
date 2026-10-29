@@ -554,6 +554,8 @@ A cada ciclo do [cron](#cron), sob o lock do cron e com a fila ligada ou não, `
 
 Como a comparação usa o total já gravado, o resultado não depende de o hook rodar antes ou depois de o WHMCS salvar o total novo.
 
+Na fatura de Mass Pay, a comparação usa o valor que a nota deve ter (`NfseValueResolver::resolve()`): o total sem os itens das faturas originais que já têm NFS-e própria (`EMITIDA` ou `PROCESSANDO`). Assim, a nota parcial da agregadora não abre o alerta só por ser menor que o total, mas uma multa ou outro item novo abre. Na fatura comum, a comparação continua com o total cobrado.
+
 O valor da nota vem do `vServ` do XML salvo (`NfseXmlExtractor::extractValorServico()`). O XML é localizado pelo `xml_path` da nota ou, se ele não resolver, por `StorageService::findLatestXmlAbsolutePath()` (ver [Localização do XML](#localização-do-xml-para-pdf-e-e-mail)), com limite de 5 MB. Sem o valor, não há alerta, e o log `NFSE_ALERTA_SEM_VALOR` registra que a alteração não foi conferida. Erros na conferência vão para o log `NFSE_ALERTA_ERRO`, com o hook `UpdateInvoiceTotal/cron` ou a origem `conferencia_diferida`.
 
 ### Idempotência
