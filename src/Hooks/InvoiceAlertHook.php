@@ -62,6 +62,21 @@ final class InvoiceAlertHook
     }
 
     /**
+     * AddInvoiceLateFee e InvoiceSplit: pedem a mesma conferência diferida do UpdateInvoiceTotal
+     * para cada fatura afetada (só grava se a fatura tiver nota emitida).
+     */
+    public function onTotalChangedBy(string $hook, array $vars): void
+    {
+        foreach (InvoiceAlertPolicy::deferredCheckInvoiceIds($hook, $vars) as $invoiceId) {
+            $this->run($hook, $invoiceId, static function (array $nota, int $invoiceId): ?array {
+                (new AlertCheckService())->request($invoiceId);
+
+                return null;
+            });
+        }
+    }
+
+    /**
      * Conferência diferida (AlertCheckService): compara o total gravado da fatura com o vServ da nota.
      */
     public function checkTotalNow(int $invoiceId): void

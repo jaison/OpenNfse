@@ -53,6 +53,14 @@ add_hook('UpdateInvoiceTotal', 1, static function (array $vars) {
     Module::invoiceAlertHook()->onTotalChanged($vars);
 });
 
+add_hook('AddInvoiceLateFee', 1, static function (array $vars) {
+    Module::invoiceAlertHook()->onTotalChangedBy('AddInvoiceLateFee', $vars);
+});
+
+add_hook('InvoiceSplit', 1, static function (array $vars) {
+    Module::invoiceAlertHook()->onTotalChangedBy('InvoiceSplit', $vars);
+});
+
 add_hook('AddTransaction', 1, static function (array $vars) {
     Module::invoiceAlertHook()->onTransaction($vars);
 });

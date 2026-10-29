@@ -19,7 +19,7 @@ Todos ficam em `modules/addons/OpenNfse/`:
   - `AdminInvoicesControlsOutput`: botões e status da NFS-e na fatura do admin (`InvoiceHook`).
   - `InvoicePaid`: enfileira a emissão automática (`InvoicePaidHook`, prioridade 1) e, num hook separado de prioridade 2, confere o alerta de crédito após a emissão (`InvoiceAlertHook::onPaid()`).
   - `InvoiceCancelled`, `InvoiceRefunded`, `InvoiceUnpaid` e `AddTransaction`: abrem alertas de NFS-e quando a fatura já tem nota emitida (`InvoiceAlertHook`). O `AddTransaction` só age em transação de saída (estorno total ou parcial, reversão de pagamento).
-  - `UpdateInvoiceTotal`: só registra o pedido de conferência do total, que o cron faz depois (`InvoiceAlertHook::onTotalChanged()` → `AlertCheckService`).
+  - `UpdateInvoiceTotal`, `AddInvoiceLateFee` e `InvoiceSplit`: só registram o pedido de conferência do total, que o cron faz depois (`InvoiceAlertHook::onTotalChanged()` e `onTotalChangedBy()` → `AlertCheckService`).
   - Os hooks de alerta só observam: não cancelam nota nem bloqueiam o fluxo do WHMCS.
   - `AfterCronJob`: roda o cron do módulo junto com o cron do WHMCS (`CronService::runFromWhmcsCron()`).
   - `ClientAreaPageViewInvoice`: resumo da NFS-e na fatura da área do cliente (`ClientInvoiceHook`).

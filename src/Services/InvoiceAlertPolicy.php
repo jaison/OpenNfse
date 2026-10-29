@@ -134,6 +134,34 @@ final class InvoiceAlertPolicy
     }
 
     /**
+     * Faturas cuja conferência diferida do total deve ser pedida por um hook que altera
+     * o total sem passar necessariamente pelo UpdateInvoiceTotal.
+     *
+     * - AddInvoiceLateFee: a fatura que recebeu a multa (invoiceid);
+     * - InvoiceSplit: a fatura original e a nova (originalinvoiceid, newinvoiceid).
+     *
+     * @return int[]
+     */
+    public static function deferredCheckInvoiceIds(string $hook, array $vars): array
+    {
+        $keys = match ($hook) {
+            'AddInvoiceLateFee' => ['invoiceid'],
+            'InvoiceSplit' => ['originalinvoiceid', 'newinvoiceid'],
+            default => [],
+        };
+
+        $ids = [];
+        foreach ($keys as $key) {
+            $id = (int) ($vars[$key] ?? 0);
+            if ($id > 0 && !in_array($id, $ids, true)) {
+                $ids[] = $id;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
      * Fatura do parâmetro do hook AddTransaction. A documentação do WHMCS grafa "invocieid",
      * então as duas grafias são aceitas.
      */

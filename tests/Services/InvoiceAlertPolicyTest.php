@@ -182,4 +182,24 @@ final class InvoiceAlertPolicyTest extends TestCase
         $this->assertNull(InvoiceAlertPolicy::onTransaction(null, ['amountout' => '30.00']));
         $this->assertNull(InvoiceAlertPolicy::onTransaction(['status' => 'CANCELADA'] + self::EMITIDA, ['amountout' => '30.00']));
     }
+
+    public function testLateFeeRequestsCheckForTheInvoice(): void
+    {
+        $this->assertSame([10], InvoiceAlertPolicy::deferredCheckInvoiceIds('AddInvoiceLateFee', ['invoiceid' => '10']));
+        $this->assertSame([], InvoiceAlertPolicy::deferredCheckInvoiceIds('AddInvoiceLateFee', ['invoiceid' => 0]));
+    }
+
+    public function testSplitRequestsCheckForBothInvoices(): void
+    {
+        $vars = ['originalinvoiceid' => '10', 'newinvoiceid' => 11];
+
+        $this->assertSame([10, 11], InvoiceAlertPolicy::deferredCheckInvoiceIds('InvoiceSplit', $vars));
+        $this->assertSame([10], InvoiceAlertPolicy::deferredCheckInvoiceIds('InvoiceSplit', ['originalinvoiceid' => 10]));
+        $this->assertSame([10], InvoiceAlertPolicy::deferredCheckInvoiceIds('InvoiceSplit', ['originalinvoiceid' => 10, 'newinvoiceid' => 10]));
+    }
+
+    public function testOtherHooksDoNotRequestCheck(): void
+    {
+        $this->assertSame([], InvoiceAlertPolicy::deferredCheckInvoiceIds('InvoicePaid', ['invoiceid' => 10]));
+    }
 }
