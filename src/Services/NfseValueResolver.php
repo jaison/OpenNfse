@@ -22,11 +22,13 @@ final class NfseValueResolver
     public const COVERED_NOTA_STATUSES = ['EMITIDA', 'PROCESSANDO'];
 
     /**
-     * Cálculo puro.
+     * Cálculo puro. all_children_covered diz se todas as filhas da agregadora têm nota (só faz
+     * sentido com excluded_children não vazio).
      *
      * @param array<int, int> $issuedChildIds filhas com nota EMITIDA ou PROCESSANDO
+     *
      * @return array{value: float, base: float, excluded_amount: float, excluded_children: array<int, int>,
-     *               items: array, partial: bool}
+     *               items: array, partial: bool, all_children_covered: bool}
      */
     public static function compute(array $invoice, array $items, array $issuedChildIds): array
     {
@@ -57,6 +59,7 @@ final class NfseValueResolver
                 'excluded_children' => [],
                 'items' => $items,
                 'partial' => false,
+                'all_children_covered' => false,
             ];
         }
 
@@ -70,6 +73,7 @@ final class NfseValueResolver
             'excluded_children' => $excludedChildren,
             'items' => $describedItems,
             'partial' => $value > 0 && $value < $base,
+            'all_children_covered' => count($excludedChildren) >= count(self::massPayChildIds($items)),
         ];
     }
 
@@ -78,7 +82,7 @@ final class NfseValueResolver
      * type Invoice (Mass Pay); nas demais, não há consulta extra.
      *
      * @return array{value: float, base: float, excluded_amount: float, excluded_children: array<int, int>,
-     *               items: array, partial: bool}
+     *               items: array, partial: bool, all_children_covered: bool}
      */
     public function resolve(array $invoice, array $items): array
     {

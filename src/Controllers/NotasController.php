@@ -349,6 +349,7 @@ final class NotasController
                     EmissionPolicyService::CODE_GATEWAY_DISABLED => 'gateway_disabled',
                     EmissionPolicyService::CODE_ZERO_VALUE => 'zero_value',
                     EmissionPolicyService::CODE_MASS_PAY_CHILD_ALREADY_ISSUED => 'mass_pay_child_issued',
+                    EmissionPolicyService::CODE_MASS_PAY_NO_REMAINING_VALUE => 'mass_pay_no_remaining_value',
                 ];
                 $this->redirectInvoice($invoiceId, ['nfse_emit' => $emitRedirects[$decision->code] ?? 'error']);
             }

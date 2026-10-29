@@ -136,6 +136,8 @@ $invoiceTotal = $financials->getGatewayPaidAmount($invoice);
         } elseif ($emitMsg === 'mass_pay_child_issued') {
             $html .= '<div class="errorbox">' . htmlspecialchars(\OpenNfse\Services\EmissionPolicyService::MSG_MASS_PAY_CHILD_ISSUED
                 . ' Para emitir mesmo assim, cancele antes as NFS-e das faturas originais.', ENT_QUOTES, 'UTF-8') . '</div>';
+        } elseif ($emitMsg === 'mass_pay_no_remaining_value') {
+            $html .= '<div class="errorbox">' . htmlspecialchars(\OpenNfse\Services\EmissionPolicyService::MSG_MASS_PAY_NO_REMAINING_VALUE, ENT_QUOTES, 'UTF-8') . '</div>';
         } elseif ($emitMsg === 'already_linked') {
             $html .= '<div class="errorbox">Esta invoice já possui nota vinculada ou DPS registrada. Use Consultar Status, a fila ou a ação de reemitir para evitar duplicidade.</div>';
         } elseif ($emitMsg === 'error') {
