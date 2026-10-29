@@ -9,10 +9,10 @@ Todas ficam em `mod_opennfse_config` e são editadas em **Addons > OpenNfse > Co
 | Campo | Padrão | Efeito |
 |---|---|---|
 | `dps_leiaute` | `auto` | Leiaute da DPS (seção Ambiente): `auto` segue a NT 009 (homologação já no leiaute novo; produção a partir de 01/12/2026 00:00, horário de Brasília), `pre_nt009` e `nt009` forçam um leiaute. Ver [LEVANTAMENTO_API_NACIONAL.md](LEVANTAMENTO_API_NACIONAL.md#leiaute-da-dps-nt-009). |
-| `queue_enabled` | `0` | Liga a fila. Sem ela, a emissão manual é síncrona e o cron não processa nada além de limpeza e checagem de atualização. |
+| `queue_enabled` | `0` | Liga a fila. Sem ela, a emissão manual é síncrona e o cron não processa nada além das novas tentativas do e-mail automático, da limpeza e da checagem de atualização. |
 | `auto_emit_on_payment` | `0` | Enfileira a emissão quando a fatura é paga (exige `queue_enabled`). |
 | `allow_manual_unpaid` | `0` | Permite enfileirar manualmente faturas `Unpaid` (exige `queue_enabled`). |
-| `auto_send_nfse_email` | `0` | Envia XML e PDF ao cliente quando a fila conclui a nota como `DONE`. |
+| `auto_send_nfse_email` | `0` | Envia XML e PDF ao cliente uma vez por nota, quando ela passa a `EMITIDA` com chave de acesso, com ou sem fila. Ver [Envio automático](#envio-automático). |
 | `queue_wait_status_interval_seconds` | `120` | Intervalo base entre consultas de itens em `WAIT_STATUS` (limitado entre 30 e 3600 s). |
 | `logs_retention_days` | `90` | Dias de retenção de `mod_opennfse_logs` (`0` desativa a limpeza). |
 | `queue_done_retention_days` | `30` | Dias de retenção dos itens `DONE` e `RESOLVIDO` da fila (`0` desativa a limpeza). |
@@ -105,7 +105,7 @@ Botão **Emitir NFS-e** na fatura (`InvoiceHook` → action `emit` → `NotasCon
 4. Monta a DPS (`DpsBuilderService`) no leiaute ativo (`DpsLayoutService`) e grava a nota como `PROCESSANDO` com `id_dps`, limpando chave, XML e erro anteriores.
 5. Registra o log `EMISSAO_REQUEST` e envia pela SDK (`NfsePhpSdkAdapter::emitir()`).
 6. Resultado:
-   - **Sucesso**: salva o XML, extrai número, competência e data de emissão, marca `EMITIDA`, grava o histórico fiscal, passa os itens `ERROR` da fatura para `RESOLVIDO` e anota na fatura.
+   - **Sucesso**: salva o XML, extrai número, competência e data de emissão, marca `EMITIDA`, grava o histórico fiscal, passa os itens `ERROR` da fatura para `RESOLVIDO` e anota na fatura. Depois de liberar o lock da fatura, dispara o [envio automático](#envio-automático) do e-mail.
    - **Indisponibilidade transitória** (503, timeout, falha de conexão; ver [503 e timeout](#indisponibilidade-da-api-503-e-timeout)): mantém `PROCESSANDO` com o erro em `erro_api`.
    - **Erro da API**: `REJEITADA`. Se for um E1235 por leiaute (erro de estrutura do schema com `cLocEmi` ou `finNFSe` fora do lugar), o `erro_api` começa com: "Rejeição de leiaute da DPS (E1235): foi enviado o leiaute X e a SEFIN espera o leiaute Y. Ajuste "Leiaute da DPS" em Configurações > Ambiente e reenvie a nota.", seguido do detalhe da API.
    - **Erro técnico**: `ERRO`.
@@ -232,9 +232,10 @@ A origem recomendada é o cron do WHMCS, pelo hook `AfterCronJob`. `cron.php` co
    - processa a fila (`processBatch(20)`);
    - consulta até 50 notas `PROCESSANDO` (as consultadas há mais tempo primeiro), pulando faturas com item ativo na fila para não haver consulta paralela da mesma nota. Exceção na consulta marca a nota como `ERRO` (log `CRON_ERROR`);
    - consulta até 50 notas `EMITIDA` sem chave para recuperar a chave, com a mesma exclusão.
-5. Verifica atualização do módulo se a última checagem tiver mais de 24 h (`UpdateCheckService`).
-6. Limpa logs e itens `DONE`/`RESOLVIDO` da fila conforme a retenção configurada.
-7. Libera o lock. Falhas são registradas como `CRON_ERROR` (ou `CRON_HOOK_ERROR`, quando vêm do hook).
+5. Executa as novas tentativas vencidas do e-mail automático (`AutoEmailService::processRetries()`, até 20 por ciclo), com ou sem fila, desde que `auto_send_nfse_email = 1`.
+6. Verifica atualização do módulo se a última checagem tiver mais de 24 h (`UpdateCheckService`).
+7. Limpa logs e itens `DONE`/`RESOLVIDO` da fila conforme a retenção configurada.
+8. Libera o lock. Falhas são registradas como `CRON_ERROR` (ou `CRON_HOOK_ERROR`, quando vêm do hook).
 
 ### Locks
 
@@ -272,9 +273,37 @@ Pontos de disparo:
 
 - **Manual, pelo admin**: botão **Enviar por e-mail** na fatura (action `sendEmail`).
 - **Manual, pelo cliente**: botão na fatura e na lista da área do cliente.
-- **Automático após `DONE`**: com `auto_send_nfse_email = 1`, a fila envia o e-mail sempre que marca um item como `DONE` com a nota emitida, na emissão, na consulta `WAIT_STATUS` do processamento em lote ou no **Consultar agora**.
+- **Automático**: com `auto_send_nfse_email = 1`, uma vez por nota. Ver [Envio automático](#envio-automático).
 
-Proteção contra duplicidade no envio automático (`NotaRepository::claimAutomaticEmail()`): antes de enviar, o módulo preenche `email_automatico_processado_at` com um `UPDATE ... WHERE email_automatico_processado_at IS NULL`. Só o processo que conseguir essa atualização envia. O resultado fica em `email_automatico_status` (`PROCESSANDO`, `ENVIADO` ou `FALHOU`). Uma falha é registrada em `EMAIL_NFSE_AUTO_ERROR` e nas notas da fatura, e não há nova tentativa automática. O reenvio manual continua disponível.
+### Envio automático
+
+O ponto único de disparo é `AutoEmailService::onNotaEmitida()`, chamado pelo `NfseService` sempre que a nota **passa** a `EMITIDA` com chave de acesso (`AutomaticEmailPolicy::isEmissionTransition()`):
+
+- emissão pela fila ou direta, com a fila desligada (`emitir()`, depois de liberar o lock da fatura);
+- consulta que conclui uma nota `PROCESSANDO` ou recupera a chave de uma nota `EMITIDA` sem chave (`consultarStatus()`), seja pela fila (`WAIT_STATUS` e **Consultar agora**), pelo cron fora da fila ou pelo botão **Consultar Status**.
+
+Consultar de novo uma nota que já estava `EMITIDA` com a mesma chave não dispara nada.
+
+O controle é por nota, pela chave de acesso. `NotaRepository::claimAutomaticEmail()` faz um `UPDATE` condicional que só tem efeito se a nota está `EMITIDA` com essa chave e se `email_automatico_chave` ainda não é essa chave. Só o processo que conseguir essa atualização envia, e ele grava a chave em `email_automatico_chave`. Com isso:
+
+- a mesma chave nunca recebe dois e-mails automáticos;
+- a reemissão depois de um cancelamento gera chave nova e, portanto, um e-mail novo.
+
+O resultado fica em `email_automatico_status` (`PROCESSANDO`, `ENVIADO` ou `FALHOU`). Uma falha de e-mail nunca interrompe a emissão nem altera o status da fila.
+
+Logs:
+
+| Log | Quando |
+|---|---|
+| `EMAIL_NFSE_AUTO_SENT` | E-mail enviado (com a chave e o número da tentativa). |
+| `EMAIL_NFSE_AUTO_ERROR` | Falha no envio, com a próxima tentativa (`proxima_tentativa_at`) ou `null` quando as tentativas acabaram. A falha também vai para as notas da fatura. |
+| `EMAIL_NFSE_AUTO_SKIPPED` | Disparo não enviado. O campo `motivo` traz `config_desligada`, `ja_enviado_para_chave`, `nota_nao_emitida` ou `nota_sem_chave`. Só é gravado quando a nota passa a `EMITIDA`, nunca a cada consulta. |
+
+**Novas tentativas**: depois de uma falha, o módulo agenda até 3 novas tentativas, 15 minutos, 1 hora e 6 horas depois da falha anterior (`email_automatico_tentativas` e `email_automatico_proxima_tentativa_at`; regras em `AutomaticEmailPolicy`). Elas são executadas pelo cron, sob o lock do cron, com um claim próprio (`claimAutomaticEmailRetry()`) que exige a falha da chave atual e a tentativa vencida. Se a última tentativa falhar, a nota fica com `FALHOU` e as notas da fatura indicam o envio manual. Com `auto_send_nfse_email = 0`, as tentativas pendentes ficam paradas. A nota que deixa de estar `EMITIDA` ou ganha chave nova não recebe a tentativa pendente da chave anterior.
+
+O envio manual (admin ou cliente) continua disponível a qualquer momento. Quando ele dá certo, a nova tentativa automática pendente da mesma chave é cancelada, para o cliente não receber o e-mail duas vezes.
+
+**Atualização para a v0.1.25**: a migration `043` grava a chave atual em `email_automatico_chave` nas notas que já tinham passado pelo envio automático (`email_automatico_processado_at` preenchido). Assim, nenhum e-mail antigo é reenviado depois da atualização. O `UPDATE` só alcança linhas com `email_automatico_chave` vazio, por isso repeti-lo não altera nada.
 
 ## Cancelamento
 

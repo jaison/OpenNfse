@@ -612,16 +612,13 @@ final class QueueController
         }
 
         try {
-            (new NfseService())->consultarStatus($invoiceId);
+            (new NfseService())->consultarStatus($invoiceId, (string) ($row['correlation_id'] ?? ''));
             $nota = (new NotaRepository())->findByInvoiceId($invoiceId);
             $status = trim((string) ($nota['status'] ?? ''));
             $chave = trim((string) ($nota['chave_acesso'] ?? ''));
             if ($status === 'EMITIDA' && $chave !== '') {
+                // O e-mail automático já foi tratado por consultarStatus() quando a nota passou a EMITIDA.
                 $queueRepo->markDone($queueId);
-                (new QueueService())->sendAutomaticEmailForDoneItem(
-                    $invoiceId,
-                    (string) ($row['correlation_id'] ?? '')
-                );
             } elseif ($status === 'PROCESSANDO' || ($status === 'EMITIDA' && $chave === '')) {
                 $queueRepo->touchWaitStatus($queueId, $nextInterval);
             } else {
