@@ -189,6 +189,28 @@ final class NfseXmlExtractor
     }
 
     /**
+     * Valor do serviço (vServ) da DPS contida na NFS-e.
+     */
+    public static function extractValorServico(string $xml): ?float
+    {
+        $value = self::withDocument($xml, static function (\DOMXPath $xp): ?string {
+            foreach (['//*[local-name()="vServPrest"]/*[local-name()="vServ"]', '//*[local-name()="vServ"]'] as $query) {
+                $nodes = $xp->query($query);
+                if ($nodes && $nodes->length > 0) {
+                    $raw = trim((string) $nodes->item(0)?->textContent);
+                    if (preg_match('/^-?\d+(\.\d+)?$/', $raw) === 1) {
+                        return $raw;
+                    }
+                }
+            }
+
+            return null;
+        });
+
+        return $value === null ? null : (float) $value;
+    }
+
+    /**
      * @param callable(\DOMXPath): ?string $callback
      */
     private static function withDocument(string $xml, callable $callback): ?string

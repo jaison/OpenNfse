@@ -108,4 +108,28 @@ XML;
     {
         $this->assertNull(NfseXmlExtractor::extractNumeroNfse('<not><valid'));
     }
+
+    public function testExtractValorServicoFromDpsInsideNfse(): void
+    {
+        $xml = <<<'XML'
+<NFSe xmlns="http://www.sped.fazenda.gov.br/nfse">
+    <infNFSe Id="NFS123">
+        <valores><vLiq>95.00</vLiq></valores>
+        <DPS>
+            <infDPS>
+                <valores><vServPrest><vServ>119.90</vServ></vServPrest></valores>
+            </infDPS>
+        </DPS>
+    </infNFSe>
+</NFSe>
+XML;
+        $this->assertSame(119.90, NfseXmlExtractor::extractValorServico($xml));
+    }
+
+    public function testExtractValorServicoReturnsNullWithoutValue(): void
+    {
+        $this->assertNull(NfseXmlExtractor::extractValorServico(self::XML_NFSE));
+        $this->assertNull(NfseXmlExtractor::extractValorServico('<NFSe><vServ>abc</vServ></NFSe>'));
+        $this->assertNull(NfseXmlExtractor::extractValorServico('não é xml'));
+    }
 }

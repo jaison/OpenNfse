@@ -32,6 +32,27 @@ add_hook('InvoicePaid', 1, static function (array $vars) {
     Module::invoicePaidHook()->handle($vars);
 });
 
+// Alertas de NFS-e (só observam; nunca cancelam nota nem bloqueiam o fluxo do WHMCS).
+add_hook('InvoicePaid', 2, static function (array $vars) {
+    Module::invoiceAlertHook()->onPaid($vars);
+});
+
+add_hook('InvoiceCancelled', 1, static function (array $vars) {
+    Module::invoiceAlertHook()->onCancelled($vars);
+});
+
+add_hook('InvoiceRefunded', 1, static function (array $vars) {
+    Module::invoiceAlertHook()->onRefunded($vars);
+});
+
+add_hook('InvoiceUnpaid', 1, static function (array $vars) {
+    Module::invoiceAlertHook()->onUnpaid($vars);
+});
+
+add_hook('UpdateInvoiceTotal', 1, static function (array $vars) {
+    Module::invoiceAlertHook()->onTotalChanged($vars);
+});
+
 add_hook('AfterCronJob', 1, static function (array $vars) {
     try {
         Module::cron()->runFromWhmcsCron();
