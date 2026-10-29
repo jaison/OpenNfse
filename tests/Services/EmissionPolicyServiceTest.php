@@ -575,12 +575,17 @@ final class EmissionPolicyServiceTest extends TestCase
         $this->assertSame(P::CODE_GROUP_NOT_SELECTED, $d->code);
     }
 
-    // ---- Mass Pay contra NFS-e em duplicidade ----
+    // ---- Mass Pay: nota de M só com as filhas sem nota ----
 
-    public function testMassPayWithIssuedChildDoesNotEmitOnPaymentOrManually(): void
+    private function massPayValue(float $value, array $excluded): array
+    {
+        return ['value' => $value, 'base' => 100.0, 'excluded_amount' => 100.0 - $value, 'excluded_children' => $excluded, 'items' => [], 'partial' => $value > 0 && $value < 100];
+    }
+
+    public function testMassPayAllChildrenIssuedDoesNotEmit(): void
     {
         $config = $this->config(['auto_emit_trigger' => P::TRIGGER_GERADA, 'allow_manual_unpaid' => '1']);
-        $massPay = $this->paid(['item_types' => ['Invoice'], 'mass_pay_issued_children' => [101]]);
+        $massPay = $this->paid(['item_types' => ['Invoice'], 'nfse_value' => $this->massPayValue(0.0, [101, 102])]);
 
         $d = $this->policy->decide(P::EVENT_PAGA, $massPay, $this->client(), $config, $this->gw());
         $this->assertFalse($d->emit);
@@ -591,19 +596,21 @@ final class EmissionPolicyServiceTest extends TestCase
         $this->assertFalse($d->emit);
         $this->assertSame(P::CODE_MASS_PAY_CHILD_ALREADY_ISSUED, $d->code);
 
-        // Gatilho "paga" também protege.
         $paga = $this->config();
         $this->assertSame(P::CODE_MASS_PAY_CHILD_ALREADY_ISSUED, $this->policy->decide(P::EVENT_PAGA, $massPay, $this->client(), $paga, $this->gw())->code);
     }
 
-    public function testMassPayWithoutIssuedChildEmitsAsBefore(): void
+    public function testMassPayPartialOrNormalEmits(): void
     {
         $config = $this->config();
-        $massPay = $this->paid(['item_types' => ['Invoice'], 'mass_pay_issued_children' => []]);
+        $partial = $this->paid(['item_types' => ['Invoice'], 'nfse_value' => $this->massPayValue(40.0, [101])]);
+        $this->assertTrue($this->policy->decide(P::EVENT_PAGA, $partial, $this->client(), $config, $this->gw())->emit);
+        $this->assertTrue($this->policy->decide(P::EVENT_MANUAL, $partial, [], $config, $this->gw())->emit);
 
-        $this->assertTrue($this->policy->decide(P::EVENT_PAGA, $massPay, $this->client(), $config, $this->gw())->emit);
-        $this->assertTrue($this->policy->decide(P::EVENT_MANUAL, $massPay, [], $config, $this->gw())->emit);
-        // Sem a informação carregada (chamadas antigas), nada muda.
+        $normal = $this->paid(['item_types' => ['Invoice'], 'nfse_value' => $this->massPayValue(100.0, [])]);
+        $this->assertTrue($this->policy->decide(P::EVENT_PAGA, $normal, $this->client(), $config, $this->gw())->emit);
+
+        // Sem o valor carregado (chamadas antigas), nada muda.
         $this->assertTrue($this->policy->decide(P::EVENT_PAGA, $this->paid(['item_types' => ['Invoice']]), $this->client(), $config, $this->gw())->emit);
     }
 
@@ -619,21 +626,23 @@ final class EmissionPolicyServiceTest extends TestCase
         $this->assertSame([101, 102], (new WhmcsInvoiceRepository())->getMassPayChildInvoiceIds($items));
     }
 
-    public function testLoaderMarksMassPayChildrenWithNota(): void
+    public function testLoaderResolvesMassPayValue(): void
     {
         Capsule::$rows['tblinvoiceitems'] = [
-            (object) ['type' => 'Invoice', 'relid' => 101],
-            (object) ['type' => 'Invoice', 'relid' => 102],
+            (object) ['type' => 'Invoice', 'relid' => 101, 'amount' => '60.00', 'description' => 'Fatura #101'],
+            (object) ['type' => 'Invoice', 'relid' => 102, 'amount' => '40.00', 'description' => 'Fatura #102'],
         ];
         Capsule::$rows['mod_opennfse_notas'] = [(object) ['invoiceid' => 101, 'status' => 'EMITIDA']];
 
-        $invoice = (new EmissionPolicyContextLoader())->withItemInfo(500, ['status' => 'Paid']);
+        $invoice = (new EmissionPolicyContextLoader())->withItemInfo(500, ['id' => 500, 'status' => 'Paid', 'total' => '100.00']);
         $this->assertSame(['Invoice'], $invoice['item_types']);
-        $this->assertSame([101], $invoice['mass_pay_issued_children']);
+        $this->assertSame(40.0, $invoice['nfse_value']['value']);
+        $this->assertSame([101], $invoice['nfse_value']['excluded_children']);
 
-        Capsule::$rows['tblinvoiceitems'] = [(object) ['type' => 'Hosting', 'relid' => 9]];
-        $invoice = (new EmissionPolicyContextLoader())->withItemInfo(501, ['status' => 'Paid']);
-        $this->assertSame([], $invoice['mass_pay_issued_children']);
+        Capsule::$rows['tblinvoiceitems'] = [(object) ['type' => 'Hosting', 'relid' => 9, 'amount' => '100.00']];
+        $invoice = (new EmissionPolicyContextLoader())->withItemInfo(501, ['id' => 501, 'status' => 'Paid', 'total' => '100.00']);
+        $this->assertSame(100.0, $invoice['nfse_value']['value']);
+        $this->assertSame([], $invoice['nfse_value']['excluded_children']);
     }
 
     // ---- Valor zero ----

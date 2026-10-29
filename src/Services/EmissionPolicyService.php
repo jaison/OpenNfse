@@ -61,8 +61,9 @@ final class EmissionPolicyService
         . 'a regra por cliente está sendo ignorada.';
 
     public const MSG_ZERO_VALUE = 'Fatura com valor zero: não há serviço a declarar na NFS-e.';
-    public const MSG_MASS_PAY_CHILD_ISSUED = 'Esta fatura de pagamento em massa (Mass Pay) agrupa faturas '
-        . 'que já têm NFS-e emitida ou em processamento. Emitir outra NFS-e aqui duplicaria a nota do mesmo serviço.';
+    public const MSG_MASS_PAY_CHILD_ISSUED = 'Todas as faturas agrupadas nesta fatura de pagamento em massa '
+        . '(Mass Pay) já têm NFS-e emitida ou em processamento. Emitir outra NFS-e aqui duplicaria a nota do '
+        . 'mesmo serviço.';
 
     public const CF_NAO_CONFIGURADO = 'Não configurado';
     public const CF_NAO_EMITIR = 'Não emitir automaticamente';
@@ -116,7 +117,7 @@ final class EmissionPolicyService
 
     /**
      * @param array $invoice tblinvoices (status, total, credit, paymentmethod), item_types (tblinvoiceitems.type) e
-     *                       mass_pay_issued_children (faturas originais do Mass Pay com nota EMITIDA ou PROCESSANDO)
+     *                       nfse_value (NfseValueResolver: na agregadora de Mass Pay, valor sem as filhas com nota)
      * @param array $client groupid (int), customfield_value (?string, valor do custom field da política) e
      *                      customfield_missing (bool, campo configurado que não existe mais no WHMCS)
      * @param array $config mod_opennfse_config
@@ -493,17 +494,21 @@ final class EmissionPolicyService
     }
 
     /**
-     * Fatura agregadora de Mass Pay (itens type Invoice) em que alguma fatura original já tem nota
-     * EMITIDA ou PROCESSANDO: emitir aqui duplicaria a NFS-e do mesmo serviço.
+     * Fatura agregadora de Mass Pay (itens type Invoice) em que as filhas com nota EMITIDA ou
+     * PROCESSANDO cobrem todo o valor: o NfseValueResolver devolve valor <= 0 e não há o que emitir.
+     * Com parte das filhas coberta, a nota de M sai só com o restante (não bloqueia).
      */
     private function massPayChildAlreadyIssued(array $invoice): bool
     {
         if (!in_array('invoice', self::normalizedItemTypes($invoice['item_types'] ?? []), true)) {
             return false;
         }
-        $issued = $invoice['mass_pay_issued_children'] ?? [];
+        $resolved = $invoice['nfse_value'] ?? null;
+        if (!is_array($resolved) || ($resolved['excluded_children'] ?? []) === []) {
+            return false;
+        }
 
-        return is_array($issued) && $issued !== [];
+        return (float) ($resolved['value'] ?? 0) <= 0.00001;
     }
 
     /**

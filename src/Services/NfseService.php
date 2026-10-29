@@ -158,6 +158,36 @@ final class NfseService
             }
         }
         $items = $invoiceRepo->getItems($invoiceId);
+        // Agregadora de Mass Pay: a nota cobre só as filhas sem nota. Recalculado aqui (fila, manual e
+        // reemissão), porque uma filha pode ter ganhado nota depois do enfileiramento.
+        $nfseValue = (new NfseValueResolver())->resolve($invoice, $items);
+        if ($nfseValue['excluded_children'] !== [] && $nfseValue['value'] <= 0) {
+            $logRepo->insert(
+                null,
+                'EMISSAO_SKIP_POLICY',
+                json_encode([
+                    'invoiceid' => $invoiceId,
+                    'motivo' => EmissionPolicyService::CODE_MASS_PAY_CHILD_ALREADY_ISSUED,
+                    'excluded_children' => $nfseValue['excluded_children'],
+                ], JSON_UNESCAPED_UNICODE),
+                null,
+                $correlationId
+            );
+            throw new NfseModuleException(EmissionPolicyService::MSG_MASS_PAY_CHILD_ISSUED);
+        }
+        if ($nfseValue['partial']) {
+            $logRepo->insert(
+                null,
+                'MASS_PAY_PARTIAL',
+                json_encode([
+                    'invoiceid' => $invoiceId,
+                    'valor' => $nfseValue['value'],
+                    'excluded_children' => $nfseValue['excluded_children'],
+                ], JSON_UNESCAPED_UNICODE),
+                null,
+                $correlationId
+            );
+        }
         $userId = (int) ($invoice['userid'] ?? 0);
         $client = $customerRepo->getClient($userId);
 

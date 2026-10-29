@@ -57,8 +57,8 @@ final class EmissionPolicyContextLoader
     }
 
     /**
-     * Acrescenta à fatura os tipos dos itens (item_types: Mass Pay e Add Funds) e, na fatura de
-     * Mass Pay, as faturas originais que já têm nota EMITIDA ou PROCESSANDO (mass_pay_issued_children).
+     * Acrescenta à fatura os tipos dos itens (item_types: Mass Pay e Add Funds) e o valor da NFS-e
+     * calculado pelo NfseValueResolver (nfse_value; na agregadora de Mass Pay, sem as filhas com nota).
      */
     public function withItemInfo(int $invoiceId, array $invoice): array
     {
@@ -73,10 +73,8 @@ final class EmissionPolicyContextLoader
         }
         $invoice['item_types'] = $types;
 
-        $children = $invoiceRepo->getMassPayChildInvoiceIds($items);
-        $invoice['mass_pay_issued_children'] = $children === []
-            ? []
-            : (new NotaRepository())->findInvoiceIdsWithStatus($children, ['EMITIDA', 'PROCESSANDO']);
+        // Valor da NFS-e pelo resolver único: na agregadora de Mass Pay, desconta as filhas com nota.
+        $invoice['nfse_value'] = (new NfseValueResolver())->resolve($invoice, $items);
 
         return $invoice;
     }

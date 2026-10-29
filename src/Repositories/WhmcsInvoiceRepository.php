@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenNfse\Repositories;
 
 use OpenNfse\Exceptions\NfseModuleException;
+use OpenNfse\Services\NfseValueResolver;
 use WHMCS\Database\Capsule;
 
 final class WhmcsInvoiceRepository
@@ -25,18 +26,7 @@ final class WhmcsInvoiceRepository
      */
     public function getMassPayChildInvoiceIds(array $items): array
     {
-        $out = [];
-        foreach ($items as $item) {
-            if (strtolower(trim((string) ($item['type'] ?? ''))) !== 'invoice') {
-                continue;
-            }
-            $relid = (int) ($item['relid'] ?? 0);
-            if ($relid > 0 && !in_array($relid, $out, true)) {
-                $out[] = $relid;
-            }
-        }
-
-        return $out;
+        return NfseValueResolver::massPayChildIds($items);
     }
 
     public function getItems(int $invoiceId): array

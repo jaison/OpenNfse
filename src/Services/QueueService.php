@@ -294,6 +294,26 @@ if (empty($config)) {
                     continue;
                 }
 
+                // Agregadora de Mass Pay: recalcula o valor na hora de emitir (uma filha pode ter ganhado
+                // nota depois do enfileiramento). Sem valor a declarar, o item vai para DONE.
+                $nfseValue = (new NfseValueResolver())->resolve($invoice, $invoiceRepo->getItems($invoiceId));
+                if ($nfseValue['excluded_children'] !== [] && $nfseValue['value'] <= 0) {
+                    $queueRepo->markDone($id);
+                    $logRepo->insert(
+                        null,
+                        'QUEUE_SKIP_POLICY',
+                        json_encode([
+                            'queue_id' => $id,
+                            'invoiceid' => $invoiceId,
+                            'motivo' => EmissionPolicyService::CODE_MASS_PAY_CHILD_ALREADY_ISSUED,
+                            'excluded_children' => $nfseValue['excluded_children'],
+                        ], JSON_UNESCAPED_UNICODE),
+                        EmissionPolicyService::MSG_MASS_PAY_CHILD_ISSUED,
+                        $correlationId
+                    );
+                    continue;
+                }
+
                 $nfseService->emitir($invoiceId, $correlationId, ['allow_unpaid' => $allowUnpaid]);
                 $nota = $notaRepo->findByInvoiceId($invoiceId);
                 if ($this->shouldMarkQueueDone($nota)) {

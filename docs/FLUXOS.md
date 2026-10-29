@@ -152,7 +152,7 @@ Regras da fatura em cada evento:
 
   A fatura com item `type = 'Invoice'` em `tblinvoiceitems` é um pagamento em massa (Mass Pay): agrupa outras faturas, e emitir nela duplicaria a nota das faturas agrupadas (motivo `MASS_PAY`). A fatura com item `type = 'AddFunds'` é uma adição de crédito que ainda não foi recebida (motivo `ADD_FUNDS`). As duas não são enfileiradas na geração e seguem só pela regra do pagamento, sem mudança.
 - **Pagamento**: fatura `Paid`, sem pagamento só com crédito, com valor maior que zero e gateway com a emissão de NFS-e ativada.
-- **Pagamento e emissão manual**: a fatura de Mass Pay (com item `type = 'Invoice'`, cujo `relid` aponta a fatura original) não emite se qualquer fatura original já tem nota `EMITIDA` ou `PROCESSANDO` em `mod_opennfse_notas` (motivo `MASS_PAY_CHILD_ALREADY_ISSUED`). As faturas originais são quitadas com crédito pela Mass Pay e podem ter tido a nota emitida na geração; emitir também na agregadora, paga pelo gateway, duplicaria a nota do mesmo serviço. Se nenhuma fatura original tem nota, a agregadora emite como antes. Para emitir na agregadora mesmo assim, cancele antes as notas das faturas originais.
+- **Pagamento e emissão manual**: na fatura de Mass Pay, a nota cobre só as faturas originais que ainda não têm nota (ver [Mass Pay](#mass-pay)). Se todas já têm nota, a agregadora não emite (motivo `MASS_PAY_CHILD_ALREADY_ISSUED`).
 
 A fatura de valor zero (total menor ou igual a zero, sem crédito aplicado) é descartada na elegibilidade (`EmissionEligibilityService::SKIP_ZERO_VALUE`, motivo `ZERO_VALUE`) no pagamento, na emissão manual e no processamento da fila, porque não há serviço a declarar. Com crédito aplicado e total zero, continua valendo a regra do pagamento só com crédito. Na geração, o motivo é `INVOICE_ZERO_TOTAL`.
 
@@ -206,7 +206,7 @@ Quando a política não enfileira, o hook grava um log com o motivo:
 | `ADD_FUNDS` | geração | adição de crédito (item `type = 'AddFunds'`) | `QUEUE_SKIP_POLICY` |
 | `NOT_PAID` | pagamento | fatura não está `Paid` | `QUEUE_SKIP_NOT_PAID` |
 | `ZERO_VALUE` | pagamento | total menor ou igual a zero, sem crédito aplicado | `QUEUE_SKIP_ZERO_VALUE` |
-| `MASS_PAY_CHILD_ALREADY_ISSUED` | pagamento | Mass Pay com fatura original que já tem nota `EMITIDA` ou `PROCESSANDO` | `QUEUE_SKIP_POLICY` |
+| `MASS_PAY_CHILD_ALREADY_ISSUED` | pagamento | Mass Pay em que todas as faturas originais já têm nota `EMITIDA` ou `PROCESSANDO` | `QUEUE_SKIP_POLICY` |
 | `CREDIT_PAYMENT` | pagamento | pagamento só com crédito | `QUEUE_SKIP_CREDIT_PAYMENT` |
 | `GATEWAY_DISABLED` | pagamento | gateway com a emissão de NFS-e desativada | `QUEUE_SKIP_GATEWAY_DISABLED` |
 
@@ -234,7 +234,7 @@ Botão **Emitir NFS-e** na fatura (`InvoiceHook` → action `emit` → `NotasCon
 
 1. Bloqueia se a fatura já tem nota vinculada: `id_dps` ou chave preenchidos, ou status `PROCESSANDO`, `EMITIDA`, `ERRO` ou `REJEITADA`. Nesses casos, use **Consultar Status**, a fila ou **Reemitir**. Nota `CANCELADA` permite nova emissão.
 2. Aplica a política com o evento `MANUAL`, que não depende do gatilho automático, do grupo nem do custom field do cliente. Exige fatura `Paid`. A exceção é a fatura `Unpaid` com `allow_manual_unpaid = 1` e `queue_enabled = 1` (ver [Enfileiramento manual de fatura Unpaid](#enfileiramento-manual-de-fatura-unpaid)).
-3. Bloqueia pagamento só com crédito, gateway desabilitado e fatura de valor zero ("Fatura com valor zero: não há serviço a declarar na NFS-e."). Bloqueia também a fatura de Mass Pay cujas faturas originais já têm nota `EMITIDA` ou `PROCESSANDO` (motivo `MASS_PAY_CHILD_ALREADY_ISSUED`), com a mensagem "Esta fatura de pagamento em massa (Mass Pay) agrupa faturas que já têm NFS-e emitida ou em processamento. Emitir outra NFS-e aqui duplicaria a nota do mesmo serviço." Nesse caso, se for preciso emitir na agregadora, cancele antes as notas das faturas originais.
+3. Bloqueia pagamento só com crédito, gateway desabilitado e fatura de valor zero ("Fatura com valor zero: não há serviço a declarar na NFS-e."). Bloqueia também a fatura de Mass Pay em que todas as faturas originais já têm nota `EMITIDA` ou `PROCESSANDO` (motivo `MASS_PAY_CHILD_ALREADY_ISSUED`), com a mensagem "Todas as faturas agrupadas nesta fatura de pagamento em massa (Mass Pay) já têm NFS-e emitida ou em processamento. Emitir outra NFS-e aqui duplicaria a nota do mesmo serviço." Com parte delas coberta, a agregadora emite só com o restante (ver [Mass Pay](#mass-pay)).
 4. Com a fila ligada, cria um item `PENDING` com origem `manual` (log `QUEUE_EMIT_MANUAL`), e a emissão acontece no próximo processamento. Com a fila desligada, chama `NfseService::emitir()` na hora.
 
 ### `NfseService::emitir()`
@@ -243,7 +243,7 @@ Botão **Emitir NFS-e** na fatura (`InvoiceHook` → action `emit` → `NotasCon
 1. Revalida a elegibilidade (`EmissionEligibilityService`) e roda a validação preventiva (`EmissionPreValidationService`): regime especial de tributação (`7`, `8` e `10` bloqueiam a emissão com mensagem própria), certificado, CNPJ, código IBGE, série, código de serviço, IM, regime do Simples, total e itens da fatura, nome, e-mail, país e documento do tomador, e endereço do tomador no exterior. Os erros são reunidos numa mensagem única. A fatura de valor zero sem crédito aplicado é descartada antes, na elegibilidade: na emissão direta (fila desligada) grava `EMISSAO_SKIP_ZERO_VALUE`, e na fila o item vai para `DONE` com `QUEUE_SKIP_ZERO_VALUE`, em vez de cair como `ERRO` na validação preventiva.
 2. Lê o CPF/CNPJ do tomador brasileiro no custom field configurado.
 3. Obtém o número da DPS em `mod_opennfse_sequences` (transação com `lockForUpdate`, por ambiente, CNPJ e série). No reenvio da mesma DPS, o número é extraído do `id_dps` existente.
-4. Monta a DPS (`DpsBuilderService`) no leiaute ativo (`DpsLayoutService`) e grava a nota como `PROCESSANDO` com `id_dps`, limpando chave, XML e erro anteriores.
+4. Monta a DPS (`DpsBuilderService`) no leiaute ativo, com o valor e os itens da descrição vindos do `NfseValueResolver` (ver [Mass Pay](#mass-pay)) (`DpsLayoutService`) e grava a nota como `PROCESSANDO` com `id_dps`, limpando chave, XML e erro anteriores.
 5. Registra o log `EMISSAO_REQUEST` e envia pela SDK (`NfsePhpSdkAdapter::emitir()`).
 6. Resultado:
    - **Sucesso**: salva o XML, extrai número, competência e data de emissão, marca `EMITIDA`, grava o histórico fiscal, passa os itens `ERROR` da fatura para `RESOLVIDO` e anota na fatura.
@@ -292,7 +292,7 @@ Como não é possível saber de antemão qual gateway o cliente vai usar, e cada
 Hook `InvoicePaid` → `InvoicePaidHook::handle()`:
 
 1. Só age com `queue_enabled = 1` e alguma regra que possa emitir automaticamente: gatilho global diferente de `nunca` ou custom field configurado. Nos demais casos, sai sem log.
-2. Aplica a política com o evento `PAGA` (ver [Política de emissão automática](#política-de-emissão-automática)). A regra da fatura: fatura `Paid`, pagamento que não seja só com crédito, valor maior que zero e gateway habilitado. Se a fatura não passar, registra `QUEUE_SKIP_NOT_PAID`, `QUEUE_SKIP_CREDIT_PAYMENT`, `QUEUE_SKIP_ZERO_VALUE` ou `QUEUE_SKIP_GATEWAY_DISABLED` e não enfileira. Os bloqueios por grupo, custom field, NFS-e já emitida ou Mass Pay com fatura original já emitida (`MASS_PAY_CHILD_ALREADY_ISSUED`) vão para `QUEUE_SKIP_POLICY`.
+2. Aplica a política com o evento `PAGA` (ver [Política de emissão automática](#política-de-emissão-automática)). A regra da fatura: fatura `Paid`, pagamento que não seja só com crédito, valor maior que zero e gateway habilitado. Se a fatura não passar, registra `QUEUE_SKIP_NOT_PAID`, `QUEUE_SKIP_CREDIT_PAYMENT`, `QUEUE_SKIP_ZERO_VALUE` ou `QUEUE_SKIP_GATEWAY_DISABLED` e não enfileira. Os bloqueios por grupo, custom field, NFS-e já emitida ou Mass Pay com todas as faturas originais já emitidas (`MASS_PAY_CHILD_ALREADY_ISSUED`) vão para `QUEUE_SKIP_POLICY`.
 3. Enfileira com `allow_unpaid = 0` e origem `paga` (log `QUEUE_ENQUEUE_AUTO_PAID`).
 
 Com o gatilho `gerada`, o pagamento também enfileira, se a fatura ainda não tem NFS-e `EMITIDA` com chave. Assim, a fatura que não foi emitida na geração (gateway não marcado em **Emitir ao gerar a fatura**, por exemplo) é emitida no pagamento. Já a fatura emitida na geração não é enfileirada de novo (`QUEUE_SKIP_POLICY` com motivo `ALREADY_ISSUED`). Se o item da geração ainda está ativo na fila, o pedido é ignorado com `QUEUE_ENQUEUE_SKIP_ACTIVE`. A fatura paga só com crédito continua sem emissão (`QUEUE_SKIP_CREDIT_PAYMENT`).
@@ -304,6 +304,20 @@ A emissão acontece no próximo processamento da fila (cron ou **Processar agora
 Com `allow_manual_unpaid = 1` e a fila ligada, o botão **Emitir NFS-e** aceita fatura `Unpaid` e cria o item com `allow_unpaid = 1`, independente do gatilho automático, do grupo e do custom field do cliente. Na hora de processar, a fila só ignora a exigência de `Paid` se as três condições continuarem verdadeiras: a configuração ainda ligada, a fatura ainda `Unpaid` e o item com `allow_unpaid` igual a `1` ou nulo. As demais regras (crédito e gateway) continuam valendo. A emissão automática ao pagar sempre grava `allow_unpaid = 0`.
 
 O item da geração da fatura (origem `gerada`) tem regra própria (`EmissionPolicyService::queueAllowsUnpaid()`): com a fatura ainda `Unpaid`, a fila roda de novo a política com o evento `GERADA` (gatilho, grupo, custom field, gateway habilitado e marcado em **Emitir ao gerar a fatura**, total, crédito, Mass Pay e Add Funds). Se a política autorizar, basta o item ter `allow_unpaid = 1`, mesmo com `allow_manual_unpaid = 0`; se não autorizar, o item vai para `DONE` com `QUEUE_SKIP_POLICY`. Os demais itens seguem a regra acima.
+
+### Mass Pay
+
+A fatura de pagamento em massa (Mass Pay, a agregadora M) tem itens `type = 'Invoice'` em `tblinvoiceitems`, cada um com o `relid` de uma fatura original (filha). Quando M é paga pelo gateway, o WHMCS quita as filhas com o crédito gerado pelo pagamento. No addon, crédito é valor coberto por outra nota, aqui a de M, então as filhas pagas só com crédito continuam sem nota própria (`CREDIT_PAYMENT`). Uma filha com parte paga pelo gateway antes do Mass Pay emite essa parte, como antes.
+
+O valor e a descrição da nota de M vêm de um ponto único, `NfseValueResolver::resolve()`, usado pelo `DpsBuilderService`, pela política (via `EmissionPolicyContextLoader`), pela fila e pela emissão direta:
+
+- **Nenhuma filha com nota** (caso comum): valor = total da fatura e descrição com todos os itens, como na v0.1.24.
+- **Parte das filhas com nota** (emitida antes do pagamento, na geração ou na emissão manual de fatura não paga): valor = total de M menos a soma dos itens das filhas com nota `EMITIDA` ou `PROCESSANDO`, arredondado em centavos e nunca negativo. A descrição traz só os itens das filhas sem nota e os itens que não são de fatura, como uma multa. O código de serviço segue a regra de sempre. A emissão grava `MASS_PAY_PARTIAL` com a fatura, o valor e as filhas descontadas.
+- **Todas as filhas com nota**: valor zero, e M não emite (`MASS_PAY_CHILD_ALREADY_ISSUED`): no pagamento grava `QUEUE_SKIP_POLICY`, na emissão manual mostra a mensagem ao admin, e na fila o item vai para `DONE` com `QUEUE_SKIP_POLICY`.
+
+O valor é recalculado na hora de emitir (fila, emissão manual, reemissão), porque uma filha pode ter ganhado nota depois do enfileiramento de M. Na emissão direta (fila desligada), M sem valor a declarar grava `EMISSAO_SKIP_POLICY` e mostra a mesma mensagem.
+
+Pendente de confirmação no dev: se o WHMCS quitar as filhas pelo gateway, e não com crédito, cada filha emite a própria nota pelo pagamento, e a de M só desconta as filhas que já têm nota naquele momento. Item ativo na fila não conta como nota.
 
 ## Processamento da fila
 
