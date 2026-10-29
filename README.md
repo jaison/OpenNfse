@@ -24,7 +24,7 @@ Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https:/
 
 ## Visão Geral
 
-- Compatível com WHMCS `8.13.x`.
+- Compatível com WHMCS `8.13.x` ou `9.1`. A v0.1.25 foi validada no WHMCS `9.1`.
 - Requer PHP `8.1+`.
 - Usa a SDK `nfse-nacional/nfse-php`.
 - Usa `vendor-scoped` para reduzir risco de conflito com dependências de outros módulos do WHMCS.
@@ -142,7 +142,7 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 ## Requisitos
 
 - PHP `^8.1`
-- WHMCS `8.13.x`
+- WHMCS `8.13.x` ou `9.1` (a v0.1.25 foi validada no `9.1`)
 - MySQL `5.7.5+` ou MariaDB `10.0.2+` (recomendado; em versões anteriores o módulo funciona, com a fila protegida só pelo lock do cron, como explicado em [docs/INSTALACAO.md](docs/INSTALACAO.md))
 - Extensões PHP: `openssl`, `curl`, `dom`, `simplexml`, `mbstring`, `zlib` e `zip`
 - Pacote de certificados raiz (`ca-certificates`) atualizado no servidor
