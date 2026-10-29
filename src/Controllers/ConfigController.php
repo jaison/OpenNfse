@@ -17,6 +17,7 @@ use OpenNfse\Repositories\WhmcsInvoiceRepository;
 use OpenNfse\Repositories\WhmcsPaymentGatewayRepository;
 use OpenNfse\Services\CryptoService;
 use OpenNfse\Services\DpsLayoutService;
+use OpenNfse\Services\EmissionPolicyService;
 use OpenNfse\Services\IbgeService;
 use OpenNfse\Services\InvoiceEmailService;
 use OpenNfse\Services\NfseService;
@@ -452,7 +453,7 @@ final class ConfigController
             echo '<span style="color:#666;">Nenhum gateway ativo encontrado.</span>';
         } else {
             echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="margin:0;font-size:12px;table-layout:fixed;width:100%;">';
-            echo '<tr><th style="width:28%;">Gateway</th><th style="width:42%;">Nome</th><th style="width:30%;">Emissão de NFS-e</th></tr>';
+            echo '<tr><th style="width:24%;">Gateway</th><th style="width:30%;">Nome</th><th style="width:22%;">Emissão de NFS-e</th><th style="width:24%;">Emitir ao gerar a fatura</th></tr>';
             foreach ($gateways as $g) {
                 $gateway = (string) ($g['gateway'] ?? '');
                 if ($gateway === '' || !preg_match('/^[a-zA-Z0-9_-]+$/', $gateway)) {
@@ -460,14 +461,17 @@ final class ConfigController
                 }
                 $name = (string) ($g['name'] ?? $gateway);
                 $checked = $gatewaySettingsRepo->isEnabled($gateway) ? ' checked' : '';
+                $checkedOnCreate = $gatewaySettingsRepo->isEmitOnCreate($gateway) ? ' checked' : '';
                 echo '<tr>';
                 echo '<td style="word-break:break-word;overflow-wrap:anywhere;"><span class="nfse-config-mono">' . htmlspecialchars($gateway, ENT_QUOTES, 'UTF-8') . '</span></td>';
                 echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '</td>';
                 echo '<td><label style="margin:0;display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" class="nfse-gateway-check" name="nfse_gateway_enabled[]" value="' . htmlspecialchars($gateway, ENT_QUOTES, 'UTF-8') . '"' . $checked . ' /> <span style="font-weight:600;">Ativado</span></label></td>';
+                echo '<td><label style="margin:0;display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" name="nfse_gateway_emit_on_create[]" value="' . htmlspecialchars($gateway, ENT_QUOTES, 'UTF-8') . '"' . $checkedOnCreate . ' /> <span style="font-weight:600;">Sim</span></label></td>';
                 echo '</tr>';
             }
             echo '</table>';
             echo '<div style="margin-top:6px;color:#666;">Se desativado, o módulo não enfileira/gera NFS-e automaticamente quando a fatura é paga com esse gateway.</div>';
+            echo '<div style="margin-top:4px;color:#666;">"Emitir ao gerar a fatura" só vale quando o gatilho de emissão automática (aba Processamento Automático ou custom field do cliente) for "gerada": a NFS-e entra na fila assim que a fatura Unpaid é publicada, apenas para os gateways marcados aqui (ex.: só boleto). O gateway também precisa estar com a emissão de NFS-e ativada. O comportamento no pagamento não muda.</div>';
         }
         echo '</div>';
         $this->renderConfigSectionEnd();
@@ -581,23 +585,22 @@ final class ConfigController
         $this->renderConfigSectionStart('Atualizações do módulo', 'Acompanhe a versão instalada, verifique novas versões publicadas no GitHub e mantenha um cache local da última checagem remota.');
         $this->renderUpdateCheckContent($updateStatus);
         $this->renderConfigSectionEnd();
-        $this->renderConfigSectionStart('Automação da fila', 'Defina quando o módulo deve enfileirar e processar emissões automaticamente após o pagamento.');
- $this->renderConfigFormTableStart();
+        $this->renderConfigSectionStart('Automação da fila', 'Ligue a fila/cron, que processa as emissões automáticas e manuais, e defina a regra da emissão manual.');
+        $this->renderConfigFormTableStart();
         $this->renderSelectRow('queue_enabled', 'Habilitar fila/cron?', [
             '1' => 'Sim',
             '0' => 'Não',
         ], (string) ($config['queue_enabled'] ?? '0'));
-        $this->renderSelectRow('auto_emit_on_payment', 'Enfileirar emissão ao pagar a fatura?', [
-'1' => 'Sim',
-'0' => 'Não',
-], (string) ($config['auto_emit_on_payment'] ?? '0'));
-$this->renderSelectRow('allow_manual_unpaid', 'Permitir enfileirar manualmente a emissão de faturas não pagas?', [
-'1' => 'Sim',
-'0' => 'Não',
-], (string) ($config['allow_manual_unpaid'] ?? '0'));
-$this->renderTextRow('queue_wait_status_interval_seconds', 'Intervalo de consulta (segundos)', $config['queue_wait_status_interval_seconds'] ?? '120');
- $this->renderConfigFormTableEnd();
- $this->renderConfigSectionEnd();
+        $this->renderSelectRow('allow_manual_unpaid', 'Permitir enfileirar manualmente a emissão de faturas não pagas?', [
+            '1' => 'Sim',
+            '0' => 'Não',
+        ], (string) ($config['allow_manual_unpaid'] ?? '0'));
+        $this->renderTextRow('queue_wait_status_interval_seconds', 'Intervalo de consulta (segundos)', $config['queue_wait_status_interval_seconds'] ?? '120');
+        $this->renderConfigFormTableEnd();
+        $this->renderConfigSectionEnd();
+        $this->renderConfigSectionStart('Emissão automática', 'Defina quando a emissão entra na fila sozinha e para quais clientes. O custom field do cliente, quando preenchido, vale antes do grupo e da regra global.');
+        $this->renderAutoEmitPolicyContent($config);
+        $this->renderConfigSectionEnd();
  $this->renderConfigSectionStart('Automação de E-mail', 'Envie automaticamente o XML e o PDF ao cliente quando a consulta confirmar a autorização da NFS-e.');
  $this->renderConfigFormTableStart();
  $this->renderSelectRow('auto_send_nfse_email', 'Enviar PDF/XML automaticamente por e-mail?', [
@@ -706,6 +709,148 @@ $this->renderTextRow('queue_wait_status_interval_seconds', 'Intervalo de consult
     }
 
 
+    /**
+     * Campos da política de emissão automática: gatilho global, escopo por grupo de clientes e
+     * custom field por cliente.
+     */
+    private function renderAutoEmitPolicyContent(array $config): void
+    {
+        $h = static function ($value): string {
+            return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+        };
+
+        $trigger = EmissionPolicyService::resolveGlobalTrigger($config);
+        $scope = strtolower(trim((string) ($config['auto_emit_scope'] ?? EmissionPolicyService::SCOPE_TODOS)));
+        if (!in_array($scope, EmissionPolicyService::validScopes(), true)) {
+            $scope = EmissionPolicyService::SCOPE_TODOS;
+        }
+        $selectedGroups = EmissionPolicyService::parseGroupIds($config['auto_emit_group_ids'] ?? '');
+        $customFieldId = (int) ($config['auto_emit_customfield_id'] ?? 0);
+
+        $this->renderConfigFormTableStart();
+        $this->renderSelectRow('auto_emit_trigger', 'Enfileirar emissão automaticamente quando?', [
+            EmissionPolicyService::TRIGGER_NUNCA => 'Nunca',
+            EmissionPolicyService::TRIGGER_PAGA => 'Quando a fatura for paga',
+            EmissionPolicyService::TRIGGER_GERADA => 'Quando a fatura for gerada',
+        ], $trigger);
+        $this->renderSelectRow('auto_emit_scope', 'Aplicar a regra a quais clientes?', [
+            EmissionPolicyService::SCOPE_TODOS => 'Todos os clientes',
+            EmissionPolicyService::SCOPE_GRUPOS => 'Só os grupos selecionados',
+        ], $scope);
+
+        echo '<tr id="nfse-auto-emit-groups-row">';
+        echo '<td class="fieldlabel"><div class="nfse-config-label-title">Grupos de clientes</div></td>';
+        echo '<td class="fieldarea">';
+        $groups = $this->listClientGroups();
+        if (empty($groups)) {
+            echo '<span class="nfse-config-note">Nenhum grupo de clientes cadastrado no WHMCS.</span>';
+        } else {
+            echo '<div style="max-height:180px;overflow:auto;border:1px solid #d9e1ea;padding:6px 10px;background:#fff;">';
+            foreach ($groups as $group) {
+                $gid = (int) ($group['id'] ?? 0);
+                $checked = in_array($gid, $selectedGroups, true) ? ' checked' : '';
+                echo '<label style="display:block;margin:2px 0;font-weight:normal;"><input type="checkbox" name="auto_emit_group_ids[]" value="' . $h($gid) . '"' . $checked . ' /> '
+                    . $h((string) ($group['groupname'] ?? '')) . ' <span class="nfse-config-note">(#' . $h($gid) . ')</span></label>';
+            }
+            echo '</div>';
+        }
+        echo '<div class="nfse-config-help">Clientes fora dos grupos marcados não têm emissão automática, salvo se o custom field do cliente disser o contrário.</div>';
+        echo '</td>';
+        echo '</tr>';
+
+        echo '<tr>';
+        echo '<td class="fieldlabel"><div class="nfse-config-label-title">Enfileirar emissão de acordo com o custom field do cliente</div></td>';
+        echo '<td class="fieldarea"><select name="auto_emit_customfield_id" class="form-control nfse-config-select">';
+        echo '<option value="0"' . ($customFieldId === 0 ? ' selected' : '') . '>Não usar (desligado)</option>';
+        $fieldFound = false;
+        foreach ($this->listClientCustomFields() as $field) {
+            $fid = (int) ($field['id'] ?? 0);
+            $isSelected = $fid === $customFieldId;
+            $fieldFound = $fieldFound || $isSelected;
+            $type = (string) ($field['fieldtype'] ?? '');
+            echo '<option value="' . $h($fid) . '"' . ($isSelected ? ' selected' : '') . '>'
+                . $h((string) ($field['fieldname'] ?? '')) . ' (#' . $h($fid) . ($type !== '' ? ', ' . $h($type) : '') . ')</option>';
+        }
+        if ($customFieldId > 0 && !$fieldFound) {
+            echo '<option value="' . $h($customFieldId) . '" selected>#' . $h($customFieldId) . ' (campo não encontrado)</option>';
+        }
+        echo '</select>';
+        echo '<div class="nfse-config-help">Crie o campo em Configurações &gt; Campos personalizados do cliente (Setup &gt; Custom Client Fields) com <strong>Field Type: Drop Down</strong>, marque <strong>Admin Only</strong> (para o cliente não alterar) e use exatamente estas opções, separadas por vírgula:</div>';
+        echo '<div class="nfse-config-mono" style="font-size:11px;margin-top:4px;word-break:break-word;">' . $h(implode(',', array_keys(EmissionPolicyService::customFieldOptions()))) . '</div>';
+        echo '<div class="nfse-config-help">"' . $h(EmissionPolicyService::CF_NAO_CONFIGURADO) . '" segue o grupo e a regra global. "'
+            . $h(EmissionPolicyService::CF_NAO_EMITIR) . '" e "' . $h(EmissionPolicyService::CF_APENAS_MANUAL) . '" desligam a emissão automática do cliente; a emissão manual continua seguindo a opção de faturas não pagas acima. "'
+            . $h(EmissionPolicyService::CF_APENAS_PAGAS) . '" emite no pagamento e "' . $h(EmissionPolicyService::CF_TODAS) . '" emite na geração (e no pagamento, se ainda não houver NFS-e). Valor vazio ou diferente dessas opções é tratado como "'
+            . $h(EmissionPolicyService::CF_NAO_CONFIGURADO) . '" e gera um aviso no log.</div>';
+        echo '</td>';
+        echo '</tr>';
+        $this->renderConfigFormTableEnd();
+
+        echo '<div id="nfse-auto-emit-fiscal-warning" class="alert alert-warning" style="margin:12px 0 4px 0;font-size:12px;line-height:1.5;">';
+        echo '<strong>Atenção fiscal (emissão na geração da fatura):</strong> a NFS-e é emitida antes do pagamento. ';
+        echo 'O ISS é devido mesmo que a fatura nunca seja paga; a competência é a data de emissão; e o prazo do município para cancelar a NFS-e é curto. ';
+        echo 'Se a fatura for cancelada ou alterada depois, o cancelamento da NFS-e continua manual. ';
+        echo 'Na geração, a emissão só vale para os gateways marcados em "Emitir ao gerar a fatura" (aba Integração com WHMCS). Confirme com a contabilidade antes de ligar.';
+        echo '</div>';
+
+        echo '<script>(function(){'
+            . 'var trig=document.querySelector(\'select[name="auto_emit_trigger"]\');'
+            . 'var scope=document.querySelector(\'select[name="auto_emit_scope"]\');'
+            . 'var cf=document.querySelector(\'select[name="auto_emit_customfield_id"]\');'
+            . 'var warn=document.getElementById("nfse-auto-emit-fiscal-warning");'
+            . 'var groups=document.getElementById("nfse-auto-emit-groups-row");'
+            . 'function sync(){'
+            . 'var t=trig?trig.value:"";'
+            . 'if(warn){warn.style.display=(t==="gerada"||(cf&&cf.value!=="0"))?"block":"none";}'
+            . 'if(groups){groups.style.display=(scope&&scope.value==="grupos")?"":"none";}'
+            . '}'
+            . 'if(trig){trig.addEventListener("change",sync);}'
+            . 'if(scope){scope.addEventListener("change",sync);}'
+            . 'if(cf){cf.addEventListener("change",sync);}'
+            . 'sync();'
+            . '})();</script>';
+    }
+
+    /** @return array<int, array{id: int, groupname: string}> */
+    private function listClientGroups(): array
+    {
+        $out = [];
+        try {
+            $rows = Capsule::table('tblclientgroups')->orderBy('groupname')->get(['id', 'groupname']);
+            foreach ($rows as $r) {
+                $id = (int) ($r->id ?? 0);
+                if ($id > 0) {
+                    $out[] = ['id' => $id, 'groupname' => (string) ($r->groupname ?? '')];
+                }
+            }
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        return $out;
+    }
+
+    /** @return array<int, array{id: int, fieldname: string, fieldtype: string}> */
+    private function listClientCustomFields(): array
+    {
+        $out = [];
+        try {
+            $rows = Capsule::table('tblcustomfields')
+                ->where('type', 'client')
+                ->orderBy('fieldname')
+                ->get(['id', 'fieldname', 'fieldtype']);
+            foreach ($rows as $r) {
+                $id = (int) ($r->id ?? 0);
+                if ($id > 0) {
+                    $out[] = ['id' => $id, 'fieldname' => (string) ($r->fieldname ?? ''), 'fieldtype' => (string) ($r->fieldtype ?? '')];
+                }
+            }
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        return $out;
+    }
+
     public function saveConfig(): void
     {
         $existingConfig = (new ConfigRepository())->get();
@@ -735,7 +880,6 @@ $this->renderTextRow('queue_wait_status_interval_seconds', 'Intervalo de consult
         $prestadorRegApTribSn = (string) ($_POST['prestador_reg_ap_trib_sn'] ?? '');
         $prestadorRegEspTrib = (string) ($_POST['prestador_reg_esp_trib'] ?? '');
         $queueEnabled = (string) ($_POST['queue_enabled'] ?? '0');
-        $autoEmitOnPayment = (string) ($_POST['auto_emit_on_payment'] ?? '0');
 $allowManualUnpaid = (string) ($_POST['allow_manual_unpaid'] ?? '0');
 $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '120');
  $autoSendNfseEmail = (string) ($_POST['auto_send_nfse_email'] ?? '0');
@@ -750,6 +894,20 @@ $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '
         $nfseGatewayEnabled = $_POST['nfse_gateway_enabled'] ?? [];
         if (!is_array($nfseGatewayEnabled)) {
             $nfseGatewayEnabled = [];
+        }
+        $nfseGatewayEmitOnCreate = $_POST['nfse_gateway_emit_on_create'] ?? [];
+        if (!is_array($nfseGatewayEmitOnCreate)) {
+            $nfseGatewayEmitOnCreate = [];
+        }
+        $autoEmitTrigger = strtolower(trim((string) ($_POST['auto_emit_trigger'] ?? EmissionPolicyService::resolveGlobalTrigger($existingConfig))));
+        $autoEmitScope = strtolower(trim((string) ($_POST['auto_emit_scope'] ?? EmissionPolicyService::SCOPE_TODOS)));
+        $autoEmitGroupIdsInput = $_POST['auto_emit_group_ids'] ?? [];
+        if (!is_array($autoEmitGroupIdsInput)) {
+            $autoEmitGroupIdsInput = [];
+        }
+        $autoEmitCustomFieldId = trim((string) ($_POST['auto_emit_customfield_id'] ?? '0'));
+        if ($autoEmitCustomFieldId === '') {
+            $autoEmitCustomFieldId = '0';
         }
 
         $errors = [];
@@ -836,16 +994,42 @@ $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '
         if (!in_array($queueEnabled, ['0', '1'], true)) {
             $errors[] = 'Opção inválida para fila/cron.';
         }
-        if (!in_array($autoEmitOnPayment, ['0', '1'], true)) {
-$errors[] = 'Opção inválida para emissão automática.';
-}
+        if (!in_array($autoEmitTrigger, EmissionPolicyService::validTriggers(), true)) {
+            $errors[] = 'Opção inválida para emissão automática.';
+        }
+        if (!in_array($autoEmitScope, EmissionPolicyService::validScopes(), true)) {
+            $errors[] = 'Opção inválida para o escopo da emissão automática.';
+        }
+        $autoEmitGroupIds = EmissionPolicyService::parseGroupIds($autoEmitGroupIdsInput);
+        if (count($autoEmitGroupIds) !== count($autoEmitGroupIdsInput)) {
+            $errors[] = 'Seleção de grupos de clientes inválida.';
+        } elseif (!empty($autoEmitGroupIds)) {
+            $knownGroupIds = array_map(static fn ($g): int => (int) ($g['id'] ?? 0), $this->listClientGroups());
+            if (array_diff($autoEmitGroupIds, $knownGroupIds) !== []) {
+                $errors[] = 'Um ou mais grupos de clientes selecionados não existem mais.';
+            }
+        }
+        if ($autoEmitScope === EmissionPolicyService::SCOPE_GRUPOS && empty($autoEmitGroupIds) && $autoEmitTrigger !== EmissionPolicyService::TRIGGER_NUNCA) {
+            $errors[] = 'Selecione ao menos um grupo de clientes para a emissão automática por grupo.';
+        }
+        if (!ctype_digit($autoEmitCustomFieldId)) {
+            $errors[] = 'Custom field da emissão automática inválido.';
+        } elseif ((int) $autoEmitCustomFieldId > 0) {
+            $knownFieldIds = array_map(static fn ($f): int => (int) ($f['id'] ?? 0), $this->listClientCustomFields());
+            if (!in_array((int) $autoEmitCustomFieldId, $knownFieldIds, true)
+                && (int) $autoEmitCustomFieldId !== (int) ($existingConfig['auto_emit_customfield_id'] ?? 0)) {
+                $errors[] = 'O custom field selecionado para a emissão automática não existe.';
+            }
+        }
+        // Mantido em sincronia para o fallback e para quem voltar a uma versão anterior.
+        $autoEmitOnPayment = $autoEmitTrigger === EmissionPolicyService::TRIGGER_NUNCA ? '0' : '1';
 if (!in_array($allowManualUnpaid, ['0', '1'], true)) {
 $errors[] = 'Opção inválida para emissão manual de faturas não pagas.';
 }
 if (!in_array($autoSendNfseEmail, ['0', '1'], true)) {
 $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
 }
-if ($autoEmitOnPayment === '1' && $queueEnabled !== '1') {
+        if (($autoEmitOnPayment === '1' || (int) $autoEmitCustomFieldId > 0) && $queueEnabled !== '1') {
             $errors[] = 'Para habilitar emissão automática, habilite também a fila/cron.';
         }
         if ($queueWaitInterval === '' || !ctype_digit($queueWaitInterval)) {
@@ -938,6 +1122,10 @@ if ($autoEmitOnPayment === '1' && $queueEnabled !== '1') {
             'prestador_reg_esp_trib' => $prestadorRegEspTrib,
             'queue_enabled' => (int) $queueEnabled,
             'auto_emit_on_payment' => (int) $autoEmitOnPayment,
+            'auto_emit_trigger' => $autoEmitTrigger,
+            'auto_emit_scope' => $autoEmitScope,
+            'auto_emit_group_ids' => implode(',', $autoEmitGroupIds),
+            'auto_emit_customfield_id' => (int) $autoEmitCustomFieldId,
 'allow_manual_unpaid' => (int) $allowManualUnpaid,
 'auto_send_nfse_email' => (int) $autoSendNfseEmail,
 'queue_wait_status_interval_seconds' => (int) $queueWaitInterval,
@@ -954,7 +1142,7 @@ if ($autoEmitOnPayment === '1' && $queueEnabled !== '1') {
             $gatewayKeys[] = (string) ($g['gateway'] ?? '');
         }
         if (!empty($gatewayKeys)) {
-            (new PaymentGatewaySettingsRepository())->saveStatusForGateways($gatewayKeys, $nfseGatewayEnabled);
+            (new PaymentGatewaySettingsRepository())->saveStatusForGateways($gatewayKeys, $nfseGatewayEnabled, $nfseGatewayEmitOnCreate);
         }
 
         $allowedTabs = ['ambiente', 'prestador', 'endereco', 'tributacao', 'servicosnbs', 'sequenciais', 'integracao', 'codigos', 'tomador', 'processamento', 'retencao'];

@@ -35,5 +35,21 @@ final class WhmcsCustomerRepository
         }
         return $value;
     }
-}
 
+    /**
+     * Valor bruto de um custom field do cliente, ou null se o cliente não tiver valor gravado.
+     */
+    public function getCustomFieldValue(int $userId, int $customFieldId): ?string
+    {
+        if ($userId <= 0 || $customFieldId <= 0) {
+            return null;
+        }
+
+        $row = Capsule::table('tblcustomfieldsvalues')
+            ->where('relid', $userId)
+            ->where('fieldid', $customFieldId)
+            ->first();
+
+        return $row ? (string) ($row->value ?? '') : null;
+    }
+}

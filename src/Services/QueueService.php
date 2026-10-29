@@ -17,7 +17,7 @@ final class QueueService
 {
     private const MAX_TENTATIVAS = QueueStatePolicy::MAX_TENTATIVAS;
 
-    public function enqueueEmit(int $invoiceId, string $tipoLog, ?bool $allowUnpaid = null): bool
+    public function enqueueEmit(int $invoiceId, string $tipoLog, ?bool $allowUnpaid = null, ?string $origem = null): bool
     {
         (new Migrator())->up();
         $correlationId = CorrelationIdGenerator::generate($invoiceId);
@@ -29,7 +29,7 @@ final class QueueService
             throw new NfseModuleException(InvoiceLockService::BUSY_MESSAGE);
         }
         try {
-            $created = $repo->enqueue($invoiceId, $correlationId, $allowUnpaid);
+            $created = $repo->enqueue($invoiceId, $correlationId, $allowUnpaid, $origem);
         } finally {
             $lock->release($invoiceId);
         }
@@ -218,11 +218,8 @@ if (empty($config)) {
                 }
 
                 $invoice = $invoiceRepo->getInvoice($invoiceId);
-                                $allowUnpaidConfig = (string) ($config['allow_manual_unpaid'] ?? '0') === '1';
-$invoiceStatus = strtolower(trim((string) ($invoice['status'] ?? '')));
-$allowUnpaid = $allowUnpaidConfig
-&& $invoiceStatus === 'unpaid'
-&& (($job['allow_unpaid'] ?? null) === null || (int) $job['allow_unpaid'] === 1);
+                // Item da geração da fatura: a política já autorizou a fatura Unpaid no enfileiramento.
+                $allowUnpaid = EmissionPolicyService::queueAllowsUnpaid($job, $invoice, $config);
                 $eligibility = $eligibilityChecker->check($invoice, $allowUnpaid);
                 if ($eligibility !== null) {
                     $queueRepo->markDone($id);
