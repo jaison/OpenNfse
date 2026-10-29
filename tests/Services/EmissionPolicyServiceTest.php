@@ -7,6 +7,8 @@ namespace OpenNfse\Tests\Services;
 use OpenNfse\Hooks\InvoiceCreatedHook;
 use OpenNfse\Hooks\InvoicePaidHook;
 use OpenNfse\Repositories\PaymentGatewaySettingsRepository;
+use OpenNfse\Repositories\WhmcsInvoiceRepository;
+use OpenNfse\Services\EmissionPolicyContextLoader;
 use OpenNfse\Services\EmissionPolicyService as P;
 use PHPUnit\Framework\TestCase;
 use WHMCS\Database\Capsule;
@@ -191,7 +193,8 @@ final class EmissionPolicyServiceTest extends TestCase
             $d = $this->policy->decide(P::EVENT_GERADA, $this->unpaid(['status' => $status]), $this->client(), $config, $this->gw());
             $this->assertFalse($d->emit, 'Status ' . $status);
             $this->assertSame(P::CODE_INVOICE_NOT_UNPAID, $d->code);
-            $this->assertFalse($d->silent);
+            // Já Paid (crédito automático, InvoicePaid antes do InvoiceCreated): o pagamento cuida, sem log.
+            $this->assertSame($status === 'Paid', $d->silent, 'Status ' . $status);
         }
 
         foreach (['0.00', '0', '-5.00'] as $total) {
@@ -217,6 +220,31 @@ final class EmissionPolicyServiceTest extends TestCase
 
         $d = $this->policy->decide(P::EVENT_GERADA, $this->unpaid(), $this->client(), $config, ['enabled' => true]);
         $this->assertSame(P::CODE_GATEWAY_NOT_ON_CREATE, $d->code, 'Sem ajuste salvo, o gateway não emite na geração.');
+    }
+
+    public function testCreateSkipsMassPayAndAddFunds(): void
+    {
+        $config = $this->config(['auto_emit_trigger' => P::TRIGGER_GERADA]);
+
+        $d = $this->policy->decide(P::EVENT_GERADA, $this->unpaid(['item_types' => ['Invoice']]), $this->client(), $config, $this->gw());
+        $this->assertFalse($d->emit);
+        $this->assertSame(P::CODE_MASS_PAY, $d->code);
+        $this->assertFalse($d->silent);
+
+        $d = $this->policy->decide(P::EVENT_GERADA, $this->unpaid(['item_types' => ['AddFunds']]), $this->client(), $config, $this->gw());
+        $this->assertSame(P::CODE_ADD_FUNDS, $d->code);
+
+        $d = $this->policy->decide(P::EVENT_GERADA, $this->unpaid(['item_types' => ['Hosting', 'addfunds']]), $this->client(), $config, $this->gw());
+        $this->assertSame(P::CODE_ADD_FUNDS, $d->code, 'Comparação sem diferenciar maiúsculas.');
+
+        $d = $this->policy->decide(P::EVENT_GERADA, $this->unpaid(['item_types' => ['Hosting', 'Domain', 'Addon']]), $this->client(), $config, $this->gw());
+        $this->assertTrue($d->emit);
+
+        // No pagamento, nada muda para essas faturas.
+        foreach (['Invoice', 'AddFunds'] as $type) {
+            $d = $this->policy->decide(P::EVENT_PAGA, $this->paid(['item_types' => [$type]]), $this->client(), $config, $this->gw());
+            $this->assertTrue($d->emit, $type);
+        }
     }
 
     public function testCreateSkipsWhenAlreadyIssued(): void
@@ -354,10 +382,12 @@ final class EmissionPolicyServiceTest extends TestCase
         $this->assertCount(1, $d->warnings);
         $this->assertSame(P::WARNING_CUSTOMFIELD_UNKNOWN, $d->warnings[0]['code']);
 
+        // Vazio ou sem valor gravado: "Não configurado" sem aviso (caso normal).
         foreach ([null, '', '   '] as $empty) {
             $d = $this->policy->decide(P::EVENT_PAGA, $this->paid(), $this->client(0, $empty), $config, $this->gw());
             $this->assertTrue($d->emit);
-            $this->assertSame(P::WARNING_CUSTOMFIELD_EMPTY, $d->warnings[0]['code']);
+            $this->assertSame(P::SOURCE_GLOBAL, $d->source);
+            $this->assertSame([], $d->warnings);
         }
 
         // Aviso também quando a decisão final é não emitir.
@@ -365,6 +395,40 @@ final class EmissionPolicyServiceTest extends TestCase
         $d = $this->policy->decide(P::EVENT_PAGA, $this->paid(), $this->client(0, 'Talvez'), $never, $this->gw());
         $this->assertFalse($d->emit);
         $this->assertCount(1, $d->warnings);
+    }
+
+    public function testCustomFieldMatchIgnoresAccents(): void
+    {
+        $this->assertSame(P::CF_NAO_EMITIR, P::matchCustomFieldOption('Nao emitir automaticamente'));
+        $this->assertSame(P::CF_APENAS_PAGAS, P::matchCustomFieldOption('EMITIR APENAS DE FATURAS PAGAS'));
+        $this->assertSame(P::CF_NAO_CONFIGURADO, P::matchCustomFieldOption('nao configurado'));
+        $this->assertSame(P::CF_TODAS, P::matchCustomFieldOption('Emitir de todas as faturas '));
+        // Maiúscula acentuada: o mapa de acentos não depende de mbstring.
+        $this->assertSame(P::CF_NAO_EMITIR, P::matchCustomFieldOption('NÃO EMITIR AUTOMATICAMENTE'));
+        $this->assertSame(P::CF_NAO_EMITIR, P::matchCustomFieldOption("N\u{00C3}O\temitir   AUTOMATICAMENTE"));
+
+        // Opção sem til bloqueia em vez de cair na regra global e emitir.
+        $config = $this->config(['auto_emit_trigger' => P::TRIGGER_PAGA, 'auto_emit_customfield_id' => 12]);
+        $d = $this->policy->decide(P::EVENT_PAGA, $this->paid(), $this->client(0, 'Nao emitir automaticamente'), $config, $this->gw());
+        $this->assertFalse($d->emit);
+        $this->assertSame(P::CODE_TRIGGER_NEVER, $d->code);
+        $this->assertSame(P::SOURCE_CUSTOMFIELD, $d->source);
+        $this->assertSame([], $d->warnings);
+    }
+
+    public function testDeletedCustomFieldIsIgnoredWithoutWarnings(): void
+    {
+        $config = $this->config(['auto_emit_trigger' => P::TRIGGER_PAGA, 'auto_emit_customfield_id' => 12]);
+        $client = ['groupid' => 0, 'customfield_value' => null, 'customfield_missing' => true];
+
+        $d = $this->policy->decide(P::EVENT_PAGA, $this->paid(), $client, $config, $this->gw());
+        $this->assertTrue($d->emit);
+        $this->assertSame(P::SOURCE_GLOBAL, $d->source);
+        $this->assertSame([], $d->warnings);
+
+        // Mesmo com um valor que bloquearia, o campo apagado não vale.
+        $client['customfield_value'] = P::CF_NAO_EMITIR;
+        $this->assertTrue($this->policy->decide(P::EVENT_PAGA, $this->paid(), $client, $config, $this->gw())->emit);
     }
 
     public function testCustomFieldIgnoredWhenNotConfigured(): void
@@ -436,10 +500,162 @@ final class EmissionPolicyServiceTest extends TestCase
         $this->assertTrue(P::queueAllowsUnpaid(['allow_unpaid' => 1], $unpaid, $on), 'Item sem a coluna origem.');
     }
 
+    // ---- Reavaliação do item "gerada" no processamento da fila ----
+
+    private function geradaJob(): array
+    {
+        return ['origem' => P::QUEUE_ORIGEM_GERADA, 'allow_unpaid' => 1];
+    }
+
+    public function testQueueRecheckOnlyForGeradaItemsStillUnpaid(): void
+    {
+        $config = $this->config(['auto_emit_trigger' => P::TRIGGER_GERADA]);
+
+        $this->assertNull($this->policy->recheckQueuedGerada(['origem' => P::QUEUE_ORIGEM_MANUAL, 'allow_unpaid' => 1], $this->unpaid(), $this->client(), $config, $this->gw()));
+        $this->assertNull($this->policy->recheckQueuedGerada(['origem' => null], $this->unpaid(), $this->client(), $config, $this->gw()));
+        $this->assertNull($this->policy->recheckQueuedGerada($this->geradaJob(), $this->paid(), $this->client(), $config, $this->gw()), 'Paga segue o caminho normal.');
+        $this->assertFalse(P::queueItemNeedsGeradaRecheck($this->geradaJob(), $this->paid()));
+        $this->assertTrue(P::queueItemNeedsGeradaRecheck($this->geradaJob(), $this->unpaid()));
+
+        $d = $this->policy->recheckQueuedGerada($this->geradaJob(), $this->unpaid(), $this->client(), $config, $this->gw());
+        $this->assertNotNull($d);
+        $this->assertTrue($d->emit, 'Nada mudou: continua autorizado.');
+    }
+
+    public function testQueueRecheckDeniesWhenTriggerWasTurnedBack(): void
+    {
+        // (a) O admin ligou "gerada" por engano e voltou para "paga" ou "nunca".
+        foreach ([P::TRIGGER_PAGA => P::CODE_TRIGGER_ON_PAYMENT_ONLY, P::TRIGGER_NUNCA => P::CODE_TRIGGER_NEVER] as $trigger => $code) {
+            $config = $this->config(['auto_emit_trigger' => $trigger]);
+            $d = $this->policy->recheckQueuedGerada($this->geradaJob(), $this->unpaid(), $this->client(), $config, $this->gw());
+            $this->assertNotNull($d);
+            $this->assertFalse($d->emit, $trigger);
+            $this->assertSame($code, $d->code);
+        }
+
+        $noQueue = $this->config(['auto_emit_trigger' => P::TRIGGER_GERADA, 'queue_enabled' => '0']);
+        $this->assertFalse($this->policy->recheckQueuedGerada($this->geradaJob(), $this->unpaid(), $this->client(), $noQueue, $this->gw())->emit);
+    }
+
+    public function testQueueRecheckDeniesWhenGatewayChanged(): void
+    {
+        // (b) O admin desmarcou o gateway, ou o cliente trocou para um gateway não marcado.
+        $config = $this->config(['auto_emit_trigger' => P::TRIGGER_GERADA]);
+
+        $d = $this->policy->recheckQueuedGerada($this->geradaJob(), $this->unpaid(), $this->client(), $config, $this->gw(true, false));
+        $this->assertSame(P::CODE_GATEWAY_NOT_ON_CREATE, $d->code);
+
+        $d = $this->policy->recheckQueuedGerada($this->geradaJob(), $this->unpaid(['paymentmethod' => 'paypal']), $this->client(), $config, $this->gw(false, false));
+        $this->assertSame(P::CODE_GATEWAY_DISABLED, $d->code);
+    }
+
+    public function testQueueRecheckDeniesWhenClientRuleChanged(): void
+    {
+        // (c) O custom field ou o grupo do cliente mudou.
+        $cf = $this->config(['auto_emit_trigger' => P::TRIGGER_GERADA, 'auto_emit_customfield_id' => 12]);
+        $d = $this->policy->recheckQueuedGerada($this->geradaJob(), $this->unpaid(), $this->client(0, P::CF_NAO_EMITIR), $cf, $this->gw());
+        $this->assertSame(P::CODE_TRIGGER_NEVER, $d->code);
+        $this->assertSame(P::SOURCE_CUSTOMFIELD, $d->source);
+
+        $d = $this->policy->recheckQueuedGerada($this->geradaJob(), $this->unpaid(), $this->client(0, P::CF_APENAS_PAGAS), $cf, $this->gw());
+        $this->assertSame(P::CODE_TRIGGER_ON_PAYMENT_ONLY, $d->code);
+
+        $groups = $this->config(['auto_emit_trigger' => P::TRIGGER_GERADA, 'auto_emit_scope' => P::SCOPE_GRUPOS, 'auto_emit_group_ids' => '2']);
+        $this->assertTrue($this->policy->recheckQueuedGerada($this->geradaJob(), $this->unpaid(), $this->client(2), $groups, $this->gw())->emit);
+        $d = $this->policy->recheckQueuedGerada($this->geradaJob(), $this->unpaid(), $this->client(7), $groups, $this->gw());
+        $this->assertSame(P::CODE_GROUP_NOT_SELECTED, $d->code);
+    }
+
+    // ---- Mass Pay contra NFS-e em duplicidade ----
+
+    public function testMassPayWithIssuedChildDoesNotEmitOnPaymentOrManually(): void
+    {
+        $config = $this->config(['auto_emit_trigger' => P::TRIGGER_GERADA, 'allow_manual_unpaid' => '1']);
+        $massPay = $this->paid(['item_types' => ['Invoice'], 'mass_pay_issued_children' => [101]]);
+
+        $d = $this->policy->decide(P::EVENT_PAGA, $massPay, $this->client(), $config, $this->gw());
+        $this->assertFalse($d->emit);
+        $this->assertSame(P::CODE_MASS_PAY_CHILD_ALREADY_ISSUED, $d->code);
+        $this->assertFalse($d->silent);
+
+        $d = $this->policy->decide(P::EVENT_MANUAL, $massPay, [], $config, $this->gw());
+        $this->assertFalse($d->emit);
+        $this->assertSame(P::CODE_MASS_PAY_CHILD_ALREADY_ISSUED, $d->code);
+
+        // Gatilho "paga" também protege.
+        $paga = $this->config();
+        $this->assertSame(P::CODE_MASS_PAY_CHILD_ALREADY_ISSUED, $this->policy->decide(P::EVENT_PAGA, $massPay, $this->client(), $paga, $this->gw())->code);
+    }
+
+    public function testMassPayWithoutIssuedChildEmitsAsBefore(): void
+    {
+        $config = $this->config();
+        $massPay = $this->paid(['item_types' => ['Invoice'], 'mass_pay_issued_children' => []]);
+
+        $this->assertTrue($this->policy->decide(P::EVENT_PAGA, $massPay, $this->client(), $config, $this->gw())->emit);
+        $this->assertTrue($this->policy->decide(P::EVENT_MANUAL, $massPay, [], $config, $this->gw())->emit);
+        // Sem a informação carregada (chamadas antigas), nada muda.
+        $this->assertTrue($this->policy->decide(P::EVENT_PAGA, $this->paid(['item_types' => ['Invoice']]), $this->client(), $config, $this->gw())->emit);
+    }
+
+    public function testMassPayChildIdsFromItems(): void
+    {
+        $items = [
+            ['type' => 'Invoice', 'relid' => '101'],
+            ['type' => 'invoice', 'relid' => 102],
+            ['type' => 'Invoice', 'relid' => 101],
+            ['type' => 'Hosting', 'relid' => 55],
+            ['type' => 'Invoice', 'relid' => 0],
+        ];
+        $this->assertSame([101, 102], (new WhmcsInvoiceRepository())->getMassPayChildInvoiceIds($items));
+    }
+
+    public function testLoaderMarksMassPayChildrenWithNota(): void
+    {
+        Capsule::$rows['tblinvoiceitems'] = [
+            (object) ['type' => 'Invoice', 'relid' => 101],
+            (object) ['type' => 'Invoice', 'relid' => 102],
+        ];
+        Capsule::$rows['mod_opennfse_notas'] = [(object) ['invoiceid' => 101, 'status' => 'EMITIDA']];
+
+        $invoice = (new EmissionPolicyContextLoader())->withItemInfo(500, ['status' => 'Paid']);
+        $this->assertSame(['Invoice'], $invoice['item_types']);
+        $this->assertSame([101], $invoice['mass_pay_issued_children']);
+
+        Capsule::$rows['tblinvoiceitems'] = [(object) ['type' => 'Hosting', 'relid' => 9]];
+        $invoice = (new EmissionPolicyContextLoader())->withItemInfo(501, ['status' => 'Paid']);
+        $this->assertSame([], $invoice['mass_pay_issued_children']);
+    }
+
+    // ---- Valor zero ----
+
+    public function testZeroValueSkipsOnPaymentAndManual(): void
+    {
+        $config = $this->config(['allow_manual_unpaid' => '1']);
+        $zero = $this->paid(['total' => '0.00', 'credit' => '0.00']);
+
+        $d = $this->policy->decide(P::EVENT_PAGA, $zero, $this->client(), $config, $this->gw());
+        $this->assertFalse($d->emit);
+        $this->assertSame(P::CODE_ZERO_VALUE, $d->code);
+
+        $this->assertSame(P::CODE_ZERO_VALUE, $this->policy->decide(P::EVENT_MANUAL, $zero, [], $config, $this->gw())->code);
+        $this->assertSame(P::CODE_ZERO_VALUE, $this->policy->decide(P::EVENT_MANUAL, $this->unpaid(['total' => '0']), [], $config, $this->gw())->code);
+
+        // Total zero com crédito: pagamento só com crédito, como antes.
+        $credit = $this->paid(['total' => '0.00', 'credit' => '30.00']);
+        $this->assertSame(P::CODE_CREDIT_PAYMENT, $this->policy->decide(P::EVENT_PAGA, $credit, $this->client(), $config, $this->gw())->code);
+    }
+
     // ---- Atalhos dos hooks ----
 
     public function testHookShortcuts(): void
     {
+        // Status do hook só serve de atalho para o rascunho; o resto é relido no banco.
+        $this->assertTrue(InvoiceCreatedHook::hookStatusIsDraft(['status' => 'Draft']));
+        $this->assertFalse(InvoiceCreatedHook::hookStatusIsDraft(['status' => 'Paid']));
+        $this->assertFalse(InvoiceCreatedHook::hookStatusIsDraft(['status' => 'Unpaid']));
+        $this->assertFalse(InvoiceCreatedHook::hookStatusIsDraft([]));
+
         $this->assertFalse(InvoicePaidHook::automationMayApply(['queue_enabled' => '0', 'auto_emit_on_payment' => '1']));
         $this->assertTrue(InvoicePaidHook::automationMayApply(['queue_enabled' => '1', 'auto_emit_on_payment' => '1']));
         $this->assertFalse(InvoicePaidHook::automationMayApply(['queue_enabled' => '1', 'auto_emit_trigger' => 'nunca']));

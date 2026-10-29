@@ -146,6 +146,15 @@ final class NfseService
                         $correlationId
                     );
                     throw new NfseModuleException('Emissão desativada para o gateway de pagamento desta fatura.');
+                case EmissionEligibilityService::SKIP_ZERO_VALUE:
+                    $logRepo->insert(
+                        null,
+                        'EMISSAO_SKIP_ZERO_VALUE',
+                        json_encode(['invoiceid' => $invoiceId, 'total' => $eligibility['total'] ?? 0.0], JSON_UNESCAPED_UNICODE),
+                        null,
+                        $correlationId
+                    );
+                    throw new NfseModuleException('Fatura com valor zero: não há serviço a declarar na NFS-e.');
             }
         }
         $items = $invoiceRepo->getItems($invoiceId);

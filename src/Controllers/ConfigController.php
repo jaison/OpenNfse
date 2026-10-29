@@ -775,6 +775,11 @@ final class ConfigController
             echo '<option value="' . $h($customFieldId) . '" selected>#' . $h($customFieldId) . ' (campo não encontrado)</option>';
         }
         echo '</select>';
+        if ($customFieldId > 0 && !$fieldFound) {
+            echo '<div class="alert alert-warning" style="margin:6px 0 0 0;font-size:12px;">'
+                . $h(EmissionPolicyService::MSG_CUSTOMFIELD_MISSING)
+                . ' Selecione outro campo ou "Não usar (desligado)".</div>';
+        }
         echo '<div class="nfse-config-help">Crie o campo em Configurações &gt; Campos personalizados do cliente (Setup &gt; Custom Client Fields) com <strong>Field Type: Drop Down</strong>, marque <strong>Admin Only</strong> (para o cliente não alterar) e use exatamente estas opções, separadas por vírgula:</div>';
         echo '<div class="nfse-config-mono" style="font-size:11px;margin-top:4px;word-break:break-word;">' . $h(implode(',', array_keys(EmissionPolicyService::customFieldOptions()))) . '</div>';
         echo '<div class="nfse-config-help">"' . $h(EmissionPolicyService::CF_NAO_CONFIGURADO) . '" segue o grupo e a regra global. "'

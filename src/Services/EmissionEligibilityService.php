@@ -11,12 +11,13 @@ final class EmissionEligibilityService
     public const SKIP_NOT_PAID = 'NOT_PAID';
     public const SKIP_CREDIT_PAYMENT = 'CREDIT_PAYMENT';
     public const SKIP_GATEWAY_DISABLED = 'GATEWAY_DISABLED';
+    public const SKIP_ZERO_VALUE = 'ZERO_VALUE';
 
     /**
      * Returns null when the invoice is eligible for emission, or an array with
      * the skip reason and the invoice details used to evaluate it.
      *
-     * @return array{reason: string, paymentMethod: string, status: string, credit: float, gatewayPaidAmount?: float}|null
+     * @return array{reason: string, paymentMethod: string, status: string, credit: float, gatewayPaidAmount?: float, total?: float}|null
      */
     public function check(array $invoice, bool $allowUnpaid = false): ?array
     {
@@ -42,6 +43,17 @@ final class EmissionEligibilityService
                 'status' => $invoiceStatus,
                 'credit' => $creditValue,
                 'gatewayPaidAmount' => $gatewayPaidAmount,
+            ];
+        }
+
+        // Total zero sem crédito: não há serviço a declarar. Antes caía como ERRO na pré-validação.
+        if ($financials->isZeroValue($invoice)) {
+            return [
+                'reason' => self::SKIP_ZERO_VALUE,
+                'paymentMethod' => $paymentMethod,
+                'status' => $invoiceStatus,
+                'credit' => $creditValue,
+                'total' => $financials->getInvoiceTotal($invoice),
             ];
         }
 

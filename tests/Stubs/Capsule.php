@@ -18,9 +18,19 @@ final class Capsule
         return new CapsuleQueryStub($name);
     }
 
+    /** @var array<int, string> statements recebidos por Capsule::statement() */
+    public static array $statements = [];
+
+    public static function statement(string $sql): bool
+    {
+        self::$statements[] = $sql;
+        return true;
+    }
+
     public static function reset(): void
     {
         self::$rows = [];
+        self::$statements = [];
     }
 }
 
@@ -31,6 +41,16 @@ final class CapsuleQueryStub
     }
 
     public function where(...$args): self
+    {
+        return $this;
+    }
+
+    public function orderBy(...$args): self
+    {
+        return $this;
+    }
+
+    public function whereIn(...$args): self
     {
         return $this;
     }

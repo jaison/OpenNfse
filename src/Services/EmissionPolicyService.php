@@ -46,19 +46,40 @@ final class EmissionPolicyService
     public const CODE_INVOICE_NOT_UNPAID = 'INVOICE_NOT_UNPAID';
     public const CODE_INVOICE_ZERO_TOTAL = 'INVOICE_ZERO_TOTAL';
     public const CODE_GATEWAY_NOT_ON_CREATE = 'GATEWAY_NOT_ON_CREATE';
+    public const CODE_MASS_PAY = 'MASS_PAY';
+    public const CODE_ADD_FUNDS = 'ADD_FUNDS';
+    public const CODE_MASS_PAY_CHILD_ALREADY_ISSUED = 'MASS_PAY_CHILD_ALREADY_ISSUED';
     // Mesmos códigos do EmissionEligibilityService, para manter os logs QUEUE_SKIP_* de antes.
     public const CODE_NOT_PAID = EmissionEligibilityService::SKIP_NOT_PAID;
     public const CODE_CREDIT_PAYMENT = EmissionEligibilityService::SKIP_CREDIT_PAYMENT;
     public const CODE_GATEWAY_DISABLED = EmissionEligibilityService::SKIP_GATEWAY_DISABLED;
+    public const CODE_ZERO_VALUE = EmissionEligibilityService::SKIP_ZERO_VALUE;
 
-    public const WARNING_CUSTOMFIELD_EMPTY = 'CUSTOMFIELD_EMPTY';
     public const WARNING_CUSTOMFIELD_UNKNOWN = 'CUSTOMFIELD_UNKNOWN_VALUE';
+
+    public const MSG_CUSTOMFIELD_MISSING = 'O custom field configurado para a emissão automática não existe mais; '
+        . 'a regra por cliente está sendo ignorada.';
+
+    public const MSG_ZERO_VALUE = 'Fatura com valor zero: não há serviço a declarar na NFS-e.';
+    public const MSG_MASS_PAY_CHILD_ISSUED = 'Esta fatura de pagamento em massa (Mass Pay) agrupa faturas '
+        . 'que já têm NFS-e emitida ou em processamento. Emitir outra NFS-e aqui duplicaria a nota do mesmo serviço.';
 
     public const CF_NAO_CONFIGURADO = 'Não configurado';
     public const CF_NAO_EMITIR = 'Não emitir automaticamente';
     public const CF_APENAS_MANUAL = 'Emitir apenas manualmente';
     public const CF_APENAS_PAGAS = 'Emitir apenas de faturas pagas';
     public const CF_TODAS = 'Emitir de todas as faturas';
+
+    private const ACCENT_MAP = [
+        'á' => 'a', 'à' => 'a', 'â' => 'a', 'ã' => 'a', 'ä' => 'a',
+        'é' => 'e', 'ê' => 'e', 'í' => 'i',
+        'ó' => 'o', 'ô' => 'o', 'õ' => 'o', 'ö' => 'o',
+        'ú' => 'u', 'ü' => 'u', 'ç' => 'c',
+        'Á' => 'a', 'À' => 'a', 'Â' => 'a', 'Ã' => 'a', 'Ä' => 'a',
+        'É' => 'e', 'Ê' => 'e', 'Í' => 'i',
+        'Ó' => 'o', 'Ô' => 'o', 'Õ' => 'o', 'Ö' => 'o',
+        'Ú' => 'u', 'Ü' => 'u', 'Ç' => 'c',
+    ];
 
     /** Origem gravada no item da fila criado na geração da fatura. */
     public const QUEUE_ORIGEM_GERADA = 'gerada';
@@ -94,8 +115,10 @@ final class EmissionPolicyService
     }
 
     /**
-     * @param array $invoice tblinvoices (status, total, credit, paymentmethod)
-     * @param array $client groupid (int) e customfield_value (?string, valor do custom field da política)
+     * @param array $invoice tblinvoices (status, total, credit, paymentmethod), item_types (tblinvoiceitems.type) e
+     *                       mass_pay_issued_children (faturas originais do Mass Pay com nota EMITIDA ou PROCESSANDO)
+     * @param array $client groupid (int), customfield_value (?string, valor do custom field da política) e
+     *                      customfield_missing (bool, campo configurado que não existe mais no WHMCS)
      * @param array $config mod_opennfse_config
      * @param array $gatewaySettings enabled (bool) e emit_on_create (bool) do gateway da fatura
      * @param array|null $nota linha atual de mod_opennfse_notas da fatura, se houver
@@ -182,7 +205,9 @@ final class EmissionPolicyService
             ? $this->checkInvoiceOnCreate($invoice, $gatewaySettings)
             : $this->checkInvoiceOnPayment($invoice, $gatewaySettings);
         if ($invoiceCheck !== null) {
-            return $this->skip($invoiceCheck[0], $invoiceCheck[1], $source, $trigger, false, $warnings);
+            [$code, $message] = $invoiceCheck;
+
+            return $this->skip($code, $message, $source, $trigger, $invoiceCheck[2] ?? false, $warnings);
         }
 
         return new EmissionDecision(
@@ -281,6 +306,37 @@ final class EmissionPolicyService
     }
 
     /**
+     * Item da fila criado na geração da fatura que ainda está Unpaid: a política precisa ser
+     * reavaliada no processamento, porque config, gateway, grupo ou custom field podem ter mudado
+     * desde o enfileiramento. Fatura já paga segue o caminho normal, sem reavaliar.
+     */
+    public static function queueItemNeedsGeradaRecheck(array $job, array $invoice): bool
+    {
+        return strtolower(trim((string) ($job['origem'] ?? ''))) === self::QUEUE_ORIGEM_GERADA
+            && strtolower(trim((string) ($invoice['status'] ?? ''))) === 'unpaid';
+    }
+
+    /**
+     * Reavalia, no processamento da fila, se o item de origem "gerada" continua autorizado.
+     * Retorna null quando não há o que reavaliar (outra origem ou fatura que não está Unpaid);
+     * senão, a decisão do evento GERADA com os dados atuais.
+     */
+    public function recheckQueuedGerada(
+        array $job,
+        array $invoice,
+        array $client,
+        array $config,
+        array $gatewaySettings,
+        ?array $nota = null
+    ): ?EmissionDecision {
+        if (!self::queueItemNeedsGeradaRecheck($job, $invoice)) {
+            return null;
+        }
+
+        return $this->decide(self::EVENT_GERADA, $invoice, $client, $config, $gatewaySettings, $nota);
+    }
+
+    /**
      * @return array{0: string, 1: string, 2: array<int, array{code: string, message: string}>, 3: bool}
      *         gatilho, origem da regra, avisos e se o cliente ficou fora dos grupos selecionados
      */
@@ -288,17 +344,13 @@ final class EmissionPolicyService
     {
         $warnings = [];
 
+        // Campo apagado no WHMCS (customfield_missing): a regra por cliente é ignorada, sem log;
+        // o aviso único fica na tela de configuração e no dashboard.
+        // Valor vazio ou cliente sem valor gravado: "Não configurado", sem log (caso normal).
         $customFieldId = (int) ($config['auto_emit_customfield_id'] ?? 0);
-        if ($customFieldId > 0) {
-            $raw = $client['customfield_value'] ?? null;
-            $value = trim((string) $raw);
-            if ($value === '') {
-                $warnings[] = [
-                    'code' => self::WARNING_CUSTOMFIELD_EMPTY,
-                    'message' => 'Custom field de emissão automática vazio no cliente; tratado como "'
-                        . self::CF_NAO_CONFIGURADO . '".',
-                ];
-            } else {
+        if ($customFieldId > 0 && empty($client['customfield_missing'])) {
+            $value = trim((string) ($client['customfield_value'] ?? ''));
+            if ($value !== '') {
                 $option = self::matchCustomFieldOption($value);
                 if ($option === null) {
                     $warnings[] = [
@@ -340,11 +392,22 @@ final class EmissionPolicyService
         if ($status !== 'paid' && !$allowUnpaid) {
             return $this->skip(self::CODE_NOT_PAID, 'A fatura não está paga.', self::SOURCE_MANUAL);
         }
-        if ((new InvoiceFinancialsService())->isCreditOnlyPayment($invoice)) {
+        $financials = new InvoiceFinancialsService();
+        if ($financials->isCreditOnlyPayment($invoice)) {
             return $this->skip(self::CODE_CREDIT_PAYMENT, 'Fatura paga só com crédito.', self::SOURCE_MANUAL);
+        }
+        if ($financials->isZeroValue($invoice)) {
+            return $this->skip(self::CODE_ZERO_VALUE, self::MSG_ZERO_VALUE, self::SOURCE_MANUAL);
         }
         if (!$this->gatewayEnabled($gatewaySettings)) {
             return $this->skip(self::CODE_GATEWAY_DISABLED, 'Gateway desabilitado para emissão.', self::SOURCE_MANUAL);
+        }
+        if ($this->massPayChildAlreadyIssued($invoice)) {
+            return $this->skip(
+                self::CODE_MASS_PAY_CHILD_ALREADY_ISSUED,
+                self::MSG_MASS_PAY_CHILD_ISSUED,
+                self::SOURCE_MANUAL
+            );
         }
 
         return new EmissionDecision(
@@ -362,10 +425,13 @@ final class EmissionPolicyService
         $financials = new InvoiceFinancialsService();
         $status = strtolower(trim((string) ($invoice['status'] ?? '')));
         if ($status !== 'unpaid') {
+            // Já Paid (ex.: crédito automático na geração, com o InvoicePaid chegando antes):
+            // o evento de pagamento cuida da fatura, então não há o que logar aqui.
             return [
                 self::CODE_INVOICE_NOT_UNPAID,
                 'A emissão na geração só vale para fatura Unpaid publicada (status atual: '
                     . ($status !== '' ? $status : '-') . ').',
+                $status === 'paid',
             ];
         }
         if ($financials->getInvoiceTotal($invoice) <= 0.00001) {
@@ -373,6 +439,21 @@ final class EmissionPolicyService
         }
         if ($financials->isCreditOnlyPayment($invoice)) {
             return [self::CODE_CREDIT_PAYMENT, 'Fatura com pagamento só por crédito.'];
+        }
+        // Mass Pay agrupa outras faturas (a nota sairia em duplicidade) e Add Funds é crédito ainda
+        // não recebido: as duas seguem só pela regra do pagamento.
+        $itemTypes = self::normalizedItemTypes($invoice['item_types'] ?? []);
+        if (in_array('invoice', $itemTypes, true)) {
+            return [
+                self::CODE_MASS_PAY,
+                'Fatura de pagamento em massa (Mass Pay): emissão só pela regra do pagamento.',
+            ];
+        }
+        if (in_array('addfunds', $itemTypes, true)) {
+            return [
+                self::CODE_ADD_FUNDS,
+                'Fatura de adição de crédito (Add Funds): emissão só pela regra do pagamento.',
+            ];
         }
         if (!$this->gatewayEnabled($gatewaySettings)) {
             return [self::CODE_GATEWAY_DISABLED, 'Gateway desabilitado para emissão.'];
@@ -394,14 +475,35 @@ final class EmissionPolicyService
         if ($status !== 'paid') {
             return [self::CODE_NOT_PAID, 'A fatura não está paga.'];
         }
-        if ((new InvoiceFinancialsService())->isCreditOnlyPayment($invoice)) {
+        $financials = new InvoiceFinancialsService();
+        if ($financials->isCreditOnlyPayment($invoice)) {
             return [self::CODE_CREDIT_PAYMENT, 'Fatura paga só com crédito.'];
+        }
+        if ($financials->isZeroValue($invoice)) {
+            return [self::CODE_ZERO_VALUE, self::MSG_ZERO_VALUE];
         }
         if (!$this->gatewayEnabled($gatewaySettings)) {
             return [self::CODE_GATEWAY_DISABLED, 'Gateway desabilitado para emissão.'];
         }
+        if ($this->massPayChildAlreadyIssued($invoice)) {
+            return [self::CODE_MASS_PAY_CHILD_ALREADY_ISSUED, self::MSG_MASS_PAY_CHILD_ISSUED];
+        }
 
         return null;
+    }
+
+    /**
+     * Fatura agregadora de Mass Pay (itens type Invoice) em que alguma fatura original já tem nota
+     * EMITIDA ou PROCESSANDO: emitir aqui duplicaria a NFS-e do mesmo serviço.
+     */
+    private function massPayChildAlreadyIssued(array $invoice): bool
+    {
+        if (!in_array('invoice', self::normalizedItemTypes($invoice['item_types'] ?? []), true)) {
+            return false;
+        }
+        $issued = $invoice['mass_pay_issued_children'] ?? [];
+
+        return is_array($issued) && $issued !== [];
     }
 
     /**
@@ -434,11 +536,36 @@ final class EmissionPolicyService
             && trim((string) ($nota['chave_acesso'] ?? '')) !== '';
     }
 
+    /**
+     * Texto para comparação: sem acentos, minúsculo e com um espaço entre as palavras.
+     * Não depende de mbstring nem de intl: os acentos do português saem por mapa e as
+     * maiúsculas viram minúsculas só na faixa ASCII, sem influência do locale.
+     */
     private static function normalizeText(string $value): string
     {
-        $value = trim((string) preg_replace('/\s+/u', ' ', $value));
+        $value = strtr($value, self::ACCENT_MAP);
+        $value = strtr($value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz');
 
-        return function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+        return trim((string) preg_replace('/\s+/', ' ', $value));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function normalizedItemTypes(mixed $types): array
+    {
+        if (!is_array($types)) {
+            return [];
+        }
+        $out = [];
+        foreach ($types as $type) {
+            $type = strtolower(trim((string) $type));
+            if ($type !== '') {
+                $out[] = $type;
+            }
+        }
+
+        return $out;
     }
 
     private static function truncate(string $value, int $max): string

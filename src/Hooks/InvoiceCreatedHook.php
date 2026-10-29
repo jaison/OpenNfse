@@ -24,9 +24,9 @@ final class InvoiceCreatedHook
             return;
         }
 
-        // Atalho pelo status informado pelo WHMCS: rascunho e fatura já paga não interessam aqui.
-        $hookStatus = strtolower(trim((string) ($vars['status'] ?? '')));
-        if ($hookStatus !== '' && $hookStatus !== 'unpaid') {
+        // O status recebido só serve de atalho para o rascunho. A decisão relê o status no banco:
+        // com crédito automático, o InvoicePaid pode chegar antes e a fatura já estar Paid.
+        if (self::hookStatusIsDraft($vars)) {
             return;
         }
 
@@ -84,6 +84,11 @@ final class InvoiceCreatedHook
             } catch (\Throwable $loggingError) {
             }
         }
+    }
+
+    public static function hookStatusIsDraft(array $vars): bool
+    {
+        return strtolower(trim((string) ($vars['status'] ?? ''))) === 'draft';
     }
 
     /**

@@ -14,6 +14,35 @@ final class NotaRepository
         return $row ? (array) $row : null;
     }
 
+    /**
+     * Das faturas informadas, as que têm nota em um dos status (ex.: EMITIDA, PROCESSANDO).
+     *
+     * @param array<int, int> $invoiceIds
+     * @param array<int, string> $statuses
+     * @return array<int, int>
+     */
+    public function findInvoiceIdsWithStatus(array $invoiceIds, array $statuses): array
+    {
+        $invoiceIds = array_values(array_filter(array_map('intval', $invoiceIds), static fn (int $id): bool => $id > 0));
+        if ($invoiceIds === [] || $statuses === []) {
+            return [];
+        }
+
+        $out = [];
+        $rows = Capsule::table('mod_opennfse_notas')
+            ->whereIn('invoiceid', $invoiceIds)
+            ->whereIn('status', $statuses)
+            ->get(['invoiceid']);
+        foreach ($rows as $row) {
+            $id = (int) ($row->invoiceid ?? 0);
+            if ($id > 0 && !in_array($id, $out, true)) {
+                $out[] = $id;
+            }
+        }
+
+        return $out;
+    }
+
     public function claimAutomaticEmail(int $invoiceId): bool
  {
   $updated = Capsule::table('mod_opennfse_notas')

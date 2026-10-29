@@ -120,6 +120,17 @@ final class InvoicePaidHook
                     null
                 );
                 return;
+            case EmissionPolicyService::CODE_ZERO_VALUE:
+                $logRepo->insert(
+                    null,
+                    'QUEUE_SKIP_ZERO_VALUE',
+                    json_encode([
+                        'invoiceid' => $invoiceId,
+                        'total' => (new InvoiceFinancialsService())->getInvoiceTotal($invoice),
+                    ], JSON_UNESCAPED_UNICODE),
+                    null
+                );
+                return;
         }
 
         $logRepo->insert(

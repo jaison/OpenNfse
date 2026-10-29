@@ -218,7 +218,37 @@ if (empty($config)) {
                 }
 
                 $invoice = $invoiceRepo->getInvoice($invoiceId);
-                // Item da geração da fatura: a política já autorizou a fatura Unpaid no enfileiramento.
+                // Item da geração com a fatura ainda Unpaid: reavalia a política com os dados atuais
+                // (gatilho, grupo, custom field e gateway podem ter mudado desde o enfileiramento).
+                if (EmissionPolicyService::queueItemNeedsGeradaRecheck($job, $invoice)) {
+                    $ctx = (new EmissionPolicyContextLoader())->load($invoiceId, $config);
+                    $invoice = $ctx['invoice'];
+                    $recheck = (new EmissionPolicyService())->recheckQueuedGerada(
+                        $job,
+                        $invoice,
+                        $ctx['client'],
+                        $config,
+                        $ctx['gateway'],
+                        $notaBefore
+                    );
+                    if ($recheck !== null && !$recheck->emit) {
+                        $queueRepo->markDone($id);
+                        $logRepo->insert(
+                            null,
+                            'QUEUE_SKIP_POLICY',
+                            json_encode([
+                                'queue_id' => $id,
+                                'invoiceid' => $invoiceId,
+                                'evento' => EmissionPolicyService::EVENT_GERADA,
+                                'origem' => EmissionPolicyService::QUEUE_ORIGEM_GERADA,
+                            ] + $recheck->toLogContext(), JSON_UNESCAPED_UNICODE),
+                            $recheck->message,
+                            $correlationId
+                        );
+                        continue;
+                    }
+                }
+                // Item da geração: a política autorizou a fatura Unpaid (no enfileiramento e acima).
                 $allowUnpaid = EmissionPolicyService::queueAllowsUnpaid($job, $invoice, $config);
                 $eligibility = $eligibilityChecker->check($invoice, $allowUnpaid);
                 if ($eligibility !== null) {
@@ -247,6 +277,15 @@ if (empty($config)) {
                                 null,
                                 'QUEUE_SKIP_GATEWAY_DISABLED',
                                 json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId, 'paymentmethod' => $eligibility['paymentMethod']], JSON_UNESCAPED_UNICODE),
+                                null,
+                                $correlationId
+                            );
+                            break;
+                        case EmissionEligibilityService::SKIP_ZERO_VALUE:
+                            $logRepo->insert(
+                                null,
+                                'QUEUE_SKIP_ZERO_VALUE',
+                                json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId, 'total' => $eligibility['total'] ?? 0.0], JSON_UNESCAPED_UNICODE),
                                 null,
                                 $correlationId
                             );

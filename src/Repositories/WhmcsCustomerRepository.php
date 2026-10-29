@@ -45,11 +45,30 @@ final class WhmcsCustomerRepository
             return null;
         }
 
+        // Com linhas duplicadas para o mesmo cliente e campo, vale a mais recente.
         $row = Capsule::table('tblcustomfieldsvalues')
             ->where('relid', $userId)
             ->where('fieldid', $customFieldId)
+            ->orderBy('id', 'desc')
             ->first();
 
         return $row ? (string) ($row->value ?? '') : null;
+    }
+
+    /**
+     * Diz se o custom field de cliente ainda existe no WHMCS.
+     */
+    public function clientCustomFieldExists(int $customFieldId): bool
+    {
+        if ($customFieldId <= 0) {
+            return false;
+        }
+
+        $row = Capsule::table('tblcustomfields')
+            ->where('id', $customFieldId)
+            ->where('type', 'client')
+            ->first();
+
+        return $row !== null;
     }
 }

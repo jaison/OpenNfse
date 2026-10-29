@@ -12,6 +12,7 @@ use OpenNfse\Repositories\NotaRepository;
 use OpenNfse\Repositories\PaymentGatewaySettingsRepository;
 use OpenNfse\Repositories\QueueRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
+use OpenNfse\Services\EmissionPolicyContextLoader;
 use OpenNfse\Services\EmissionPolicyService;
 use OpenNfse\Services\InvoiceEmailService;
 use OpenNfse\Services\InvoiceHistoryService;
@@ -331,6 +332,8 @@ final class NotasController
             $paymentMethod = strtolower(trim((string) ($invoice['paymentmethod'] ?? '')));
             // A emissão manual não depende do gatilho automático nem do custom field do cliente:
             // segue allow_manual_unpaid (fatura Unpaid só com a fila ligada), crédito e gateway.
+            // Tipos de item e faturas originais do Mass Pay (bloqueio de NFS-e em duplicidade).
+            $invoice = (new EmissionPolicyContextLoader())->withItemInfo($invoiceId, $invoice);
             $decision = (new EmissionPolicyService())->decide(
                 EmissionPolicyService::EVENT_MANUAL,
                 $invoice,
@@ -344,6 +347,8 @@ final class NotasController
                     EmissionPolicyService::CODE_NOT_PAID => 'not_paid',
                     EmissionPolicyService::CODE_CREDIT_PAYMENT => 'credit_payment',
                     EmissionPolicyService::CODE_GATEWAY_DISABLED => 'gateway_disabled',
+                    EmissionPolicyService::CODE_ZERO_VALUE => 'zero_value',
+                    EmissionPolicyService::CODE_MASS_PAY_CHILD_ALREADY_ISSUED => 'mass_pay_child_issued',
                 ];
                 $this->redirectInvoice($invoiceId, ['nfse_emit' => $emitRedirects[$decision->code] ?? 'error']);
             }
