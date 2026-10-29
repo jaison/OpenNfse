@@ -15,6 +15,35 @@ final class NotaRepository
     }
 
     /**
+     * Das faturas informadas, as que têm nota em um dos status (ex.: EMITIDA, PROCESSANDO).
+     *
+     * @param array<int, int> $invoiceIds
+     * @param array<int, string> $statuses
+     * @return array<int, int>
+     */
+    public function findInvoiceIdsWithStatus(array $invoiceIds, array $statuses): array
+    {
+        $invoiceIds = array_values(array_filter(array_map('intval', $invoiceIds), static fn (int $id): bool => $id > 0));
+        if ($invoiceIds === [] || $statuses === []) {
+            return [];
+        }
+
+        $out = [];
+        $rows = Capsule::table('mod_opennfse_notas')
+            ->whereIn('invoiceid', $invoiceIds)
+            ->whereIn('status', $statuses)
+            ->get(['invoiceid']);
+        foreach ($rows as $row) {
+            $id = (int) ($row->invoiceid ?? 0);
+            if ($id > 0 && !in_array($id, $out, true)) {
+                $out[] = $id;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Claim atômico do e-mail automático da nota para a chave atual. Só um processo consegue:
      * o UPDATE exige a nota EMITIDA com essa chave e que o e-mail ainda não tenha sido disparado
      * para ela. Uma reemissão (chave nova) libera um novo e-mail; a mesma chave nunca duplica.

@@ -17,7 +17,7 @@ final class QueueService
 {
     private const MAX_TENTATIVAS = QueueStatePolicy::MAX_TENTATIVAS;
 
-    public function enqueueEmit(int $invoiceId, string $tipoLog, ?bool $allowUnpaid = null): bool
+    public function enqueueEmit(int $invoiceId, string $tipoLog, ?bool $allowUnpaid = null, ?string $origem = null): bool
     {
         (new Migrator())->up();
         $correlationId = CorrelationIdGenerator::generate($invoiceId);
@@ -29,7 +29,7 @@ final class QueueService
             throw new NfseModuleException(InvoiceLockService::BUSY_MESSAGE);
         }
         try {
-            $created = $repo->enqueue($invoiceId, $correlationId, $allowUnpaid);
+            $created = $repo->enqueue($invoiceId, $correlationId, $allowUnpaid, $origem);
         } finally {
             $lock->release($invoiceId);
         }
@@ -220,11 +220,38 @@ if (empty($config)) {
                 }
 
                 $invoice = $invoiceRepo->getInvoice($invoiceId);
-                                $allowUnpaidConfig = (string) ($config['allow_manual_unpaid'] ?? '0') === '1';
-$invoiceStatus = strtolower(trim((string) ($invoice['status'] ?? '')));
-$allowUnpaid = $allowUnpaidConfig
-&& $invoiceStatus === 'unpaid'
-&& (($job['allow_unpaid'] ?? null) === null || (int) $job['allow_unpaid'] === 1);
+                // Item da geração com a fatura ainda Unpaid: reavalia a política com os dados atuais
+                // (gatilho, grupo, custom field e gateway podem ter mudado desde o enfileiramento).
+                if (EmissionPolicyService::queueItemNeedsGeradaRecheck($job, $invoice)) {
+                    $ctx = (new EmissionPolicyContextLoader())->load($invoiceId, $config);
+                    $invoice = $ctx['invoice'];
+                    $recheck = (new EmissionPolicyService())->recheckQueuedGerada(
+                        $job,
+                        $invoice,
+                        $ctx['client'],
+                        $config,
+                        $ctx['gateway'],
+                        $notaBefore
+                    );
+                    if ($recheck !== null && !$recheck->emit) {
+                        $queueRepo->markDone($id);
+                        $logRepo->insert(
+                            null,
+                            'QUEUE_SKIP_POLICY',
+                            json_encode([
+                                'queue_id' => $id,
+                                'invoiceid' => $invoiceId,
+                                'evento' => EmissionPolicyService::EVENT_GERADA,
+                                'origem' => EmissionPolicyService::QUEUE_ORIGEM_GERADA,
+                            ] + $recheck->toLogContext(), JSON_UNESCAPED_UNICODE),
+                            $recheck->message,
+                            $correlationId
+                        );
+                        continue;
+                    }
+                }
+                // Item da geração: a política autorizou a fatura Unpaid (no enfileiramento e acima).
+                $allowUnpaid = EmissionPolicyService::queueAllowsUnpaid($job, $invoice, $config);
                 $eligibility = $eligibilityChecker->check($invoice, $allowUnpaid);
                 if ($eligibility !== null) {
                     $queueRepo->markDone($id);
@@ -252,6 +279,15 @@ $allowUnpaid = $allowUnpaidConfig
                                 null,
                                 'QUEUE_SKIP_GATEWAY_DISABLED',
                                 json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId, 'paymentmethod' => $eligibility['paymentMethod']], JSON_UNESCAPED_UNICODE),
+                                null,
+                                $correlationId
+                            );
+                            break;
+                        case EmissionEligibilityService::SKIP_ZERO_VALUE:
+                            $logRepo->insert(
+                                null,
+                                'QUEUE_SKIP_ZERO_VALUE',
+                                json_encode(['queue_id' => $id, 'invoiceid' => $invoiceId, 'total' => $eligibility['total'] ?? 0.0], JSON_UNESCAPED_UNICODE),
                                 null,
                                 $correlationId
                             );

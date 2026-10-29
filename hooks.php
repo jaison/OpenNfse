@@ -32,6 +32,10 @@ add_hook('InvoicePaid', 1, static function (array $vars) {
     Module::invoicePaidHook()->handle($vars);
 });
 
+add_hook('InvoiceCreated', 1, static function (array $vars) {
+    Module::invoiceCreatedHook()->handle($vars);
+});
+
 // Alertas de NFS-e (só observam; nunca cancelam nota nem bloqueiam o fluxo do WHMCS).
 add_hook('InvoicePaid', 2, static function (array $vars) {
     Module::invoiceAlertHook()->onPaid($vars);

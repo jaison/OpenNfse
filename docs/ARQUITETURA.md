@@ -17,7 +17,8 @@ Todos ficam em `modules/addons/OpenNfse/`:
 - [`OpenNfse.php`](../OpenNfse.php): registro do addon (`opennfse_config`), ativação (roda as migrations), saída do admin (`opennfse_output` → `AdminController`) e área do cliente (`opennfse_clientarea` → `ClientController`).
 - [`hooks.php`](../hooks.php): registra os hooks do WHMCS:
   - `AdminInvoicesControlsOutput`: botões e status da NFS-e na fatura do admin (`InvoiceHook`).
-  - `InvoicePaid`: enfileira a emissão automática (`InvoicePaidHook`, prioridade 1) e, num hook separado de prioridade 2, confere o alerta de crédito após a emissão (`InvoiceAlertHook::onPaid()`).
+  - `InvoicePaid`: enfileira a emissão automática no pagamento (`InvoicePaidHook`, prioridade 1) e, num hook separado de prioridade 2, confere o alerta de crédito após a emissão (`InvoiceAlertHook::onPaid()`).
+  - `InvoiceCreated`: enfileira a emissão automática quando a fatura `Unpaid` é publicada (`InvoiceCreatedHook`).
   - `InvoiceCancelled`, `InvoiceRefunded`, `InvoiceUnpaid` e `AddTransaction`: abrem alertas de NFS-e quando a fatura já tem nota emitida (`InvoiceAlertHook`). O `AddTransaction` só age em transação de saída (estorno total ou parcial, reversão de pagamento).
   - `UpdateInvoiceTotal`, `AddInvoiceLateFee` e `InvoiceSplit`: só registram o pedido de conferência do total, que o cron faz depois (`InvoiceAlertHook::onTotalChanged()` e `onTotalChangedBy()` → `AlertCheckService`).
   - Os hooks de alerta só observam: não cancelam nota nem bloqueiam o fluxo do WHMCS.
@@ -34,8 +35,8 @@ Todos ficam em `modules/addons/OpenNfse/`:
 
 ### Controllers (`src/Controllers/`)
 
-- `AdminController`: roteador do admin. Cada action declara o método HTTP (`GET`/`POST`) e se exige token CSRF. Delega às classes abaixo e renderiza o dashboard.
-- `ConfigController`: configuração geral, certificado (validação e teste de conexão), DANFS-e, catálogo Serviço/NBS, mapeamento por grupo de produto, sincronização IBGE e verificação de atualização.
+- `AdminController`: roteador do admin. Cada action declara o método HTTP (`GET`/`POST`) e se exige token CSRF. Delega às classes abaixo e renderiza o dashboard, que avisa quando o custom field da emissão automática não existe mais.
+- `ConfigController`: configuração geral (inclusive a política de emissão automática, com a lista de `tblclientgroups` e dos custom fields de cliente em `tblcustomfields`, e o aviso quando o campo configurado foi apagado), certificado (validação e teste de conexão), DANFS-e, catálogo Serviço/NBS, mapeamento por grupo de produto, sincronização IBGE e verificação de atualização.
 - `QueueController`: tela da fila e ações `filaCheckNow`, `filaRetry` e `filaProcessNow`.
 - `NotasController`: emissão, reemissão, consulta de status, cancelamento, downloads e envio por e-mail a partir da fatura.
 - `ReportsController`: relatórios, auditorias, logs, exportações CSV/ZIP e cancelamento de XML órfão.
@@ -48,7 +49,8 @@ Todos ficam em `modules/addons/OpenNfse/`:
 ### Hooks (`src/Hooks/`)
 
 - `InvoiceHook`: monta o bloco da NFS-e na fatura do admin.
-- `InvoicePaidHook`: decide se a fatura paga entra na fila.
+- `InvoicePaidHook`: aplica a política de emissão no evento de pagamento e enfileira a fatura paga.
+- `InvoiceCreatedHook`: aplica a política de emissão no evento de geração e enfileira a fatura `Unpaid` publicada. Uma falha é logada e não interrompe a geração da fatura.
 - `InvoiceAlertHook`: observa cancelamento, estorno, transações de saída (estorno parcial e reversão de pagamento), reabertura e pagamento da fatura e abre alertas quando ela tem nota `EMITIDA`. Na alteração de total, `onTotalChanged()` só registra o pedido de conferência, e `checkTotalNow()`, chamado pelo cron, compara o total gravado com o `vServ` da nota. Erros vão só para o log (`NFSE_ALERTA_ERRO`).
 - `ClientInvoiceHook`: monta o resumo da NFS-e na fatura da área do cliente.
 
@@ -59,9 +61,11 @@ Emissão e fila:
 - `NfseService`: orquestra emissão, consulta de status e cancelamento (inclusive de XML órfão). Também reenvia a DPS após indisponibilidade da API e faz a reemissão controlada após E2404.
 - `DpsBuilderService`: monta o `DpsData` da SDK a partir da fatura, do cliente e da configuração.
 - `DpsLayoutService`: escolhe o leiaute da DPS (Pré-NT 009 ou NT 009) conforme a configuração **Leiaute da DPS**, o ambiente e a data, e gera a orientação para a rejeição E1235 por leiaute.
-- `QueueService`: enfileira e processa a fila (emissão sequencial e consultas `WAIT_STATUS`).
+- `QueueService`: enfileira e processa a fila (emissão sequencial e consultas `WAIT_STATUS`) e reavalia a política no item da geração da fatura antes de emitir.
 - `QueueErrorClassifierService`: identifica indisponibilidade transitória da API e decide se um erro admite nova tentativa.
-- `EmissionEligibilityService`: elegibilidade da fatura (status `Paid`, pagamento só com crédito, gateway habilitado).
+- `EmissionPolicyService`: política de emissão automática. Decide, para os eventos de geração, pagamento e manual, se a fatura entra na fila, com a precedência custom field do cliente > grupo de clientes > regra global, e diz se o processamento da fila aceita a fatura `Unpaid` de um item. O valor do custom field é comparado sem diferenciar maiúsculas, acentos e espaços extras. Não acessa o banco e devolve um `EmissionDecision` (`src/Dto/`).
+- `EmissionPolicyContextLoader`: lê fatura (inclusive os tipos dos itens, para identificar Mass Pay e Add Funds, e as notas das faturas originais da Mass Pay), grupo e custom field do cliente, ajustes do gateway e nota atual para a política, e grava o aviso de valor não reconhecido no custom field (`POLICY_CUSTOMFIELD_WARNING`). Se o campo configurado não existe mais em `tblcustomfields`, trata o cliente como "Não configurado".
+- `EmissionEligibilityService`: elegibilidade da fatura (status `Paid`, pagamento só com crédito, valor zero sem crédito aplicado, gateway habilitado).
 - `EmissionPreValidationService`: validação preventiva de configuração, fatura e tomador antes de montar a DPS.
 - `InvoiceFinancialsService`: total, crédito aplicado e detecção de pagamento só com crédito.
 - `CronService`: ciclo do cron (fila, consulta de notas `PROCESSANDO`, recuperação de chave, novas tentativas do e-mail automático, conferência diferida dos alertas, verificação de atualização e limpeza por retenção).
@@ -97,7 +101,7 @@ Auditoria e apoio:
 
 ### Adapter da SDK (`src/Api/`)
 
-- `SdkAdapterInterface` e `NfsePhpSdkAdapter` são os únicos pontos que instanciam a SDK. Convertem retornos e exceções nos DTOs de `src/Dto/`: `EmitirResult`, `ConsultarNfseResult`, `ConsultarDpsResult` e `CancelarResult`. Detalhes em [LEVANTAMENTO_SDK.md](LEVANTAMENTO_SDK.md).
+- `SdkAdapterInterface` e `NfsePhpSdkAdapter` são os únicos pontos que instanciam a SDK. Convertem retornos e exceções nos DTOs de `src/Dto/`: `EmitirResult`, `ConsultarNfseResult`, `ConsultarDpsResult` e `CancelarResult`. O mesmo diretório guarda o `EmissionDecision`, resultado da política de emissão. Detalhes em [LEVANTAMENTO_SDK.md](LEVANTAMENTO_SDK.md).
 
 ### Repositories (`src/Repositories/`)
 
@@ -137,7 +141,8 @@ O uso dos campos do WHMCS está em [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_
 ### Migrations
 
 - [`src/Migrations/Migrator.php`](../src/Migrations/Migrator.php) executa em ordem todos os arquivos de [`migrations/`](../migrations/). Erros de coluna, tabela ou índice já existentes são ignorados, então rodar de novo é seguro.
-- O migrator roda na ativação do addon e também no início do cron, da fila, da emissão, do hook `InvoicePaid` e da área do cliente. Por isso, ao atualizar os arquivos do addon, as migrations novas são aplicadas sozinhas. O `AlertService` também roda o migrator quando a tabela `mod_opennfse_alertas` ainda não existe na hora de abrir um alerta, e o `AlertCheckService` faz o mesmo com `mod_opennfse_alerta_checks` na hora de registrar um pedido de conferência.
+- O migrator é chamado na ativação do addon e também no início do cron, da fila, da emissão, do hook `InvoicePaid`, de cada enfileiramento (`QueueService::enqueueEmit()`), das telas do admin e da área do cliente. Por isso, ao atualizar os arquivos do addon, as migrations novas são aplicadas sozinhas. O `AlertService` também roda o migrator quando a tabela `mod_opennfse_alertas` ainda não existe na hora de abrir um alerta, e o `AlertCheckService` faz o mesmo com `mod_opennfse_alerta_checks` na hora de registrar um pedido de conferência.
+- Uma guarda estática faz o migrator rodar no máximo uma vez por processo PHP: as chamadas seguintes no mesmo processo (por exemplo, um enfileiramento por fatura na geração em lote) não repetem as migrations.
 
 ## Status internos
 

@@ -47,8 +47,9 @@ final class QueueRepository
     /**
      * Cria o item PENDING se a fatura não tiver item ativo. Retorna false quando já existe um.
      * O check-then-insert não é atômico: quem chama deve segurar o lock da fatura (InvoiceLockService).
+     * $origem identifica o gatilho (ex.: "gerada", "paga", "manual"); nulo mantém o DEFAULT do banco.
      */
-    public function enqueue(int $invoiceId, ?string $correlationId = null, ?bool $allowUnpaid = null): bool
+    public function enqueue(int $invoiceId, ?string $correlationId = null, ?bool $allowUnpaid = null, ?string $origem = null): bool
     {
         if ($invoiceId <= 0) {
             return false;
@@ -73,6 +74,9 @@ final class QueueRepository
         // Sem valor informado, a coluna fica com o DEFAULT do banco.
         if ($allowUnpaid !== null) {
             $row['allow_unpaid'] = $allowUnpaid ? 1 : 0;
+        }
+        if ($origem !== null && $origem !== '') {
+            $row['origem'] = substr($origem, 0, 16);
         }
         Capsule::table('mod_opennfse_queue')->insert($row);
 

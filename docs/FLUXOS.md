@@ -10,14 +10,20 @@ Todas ficam em `mod_opennfse_config` e são editadas em **Addons > OpenNfse > Co
 |---|---|---|
 | `dps_leiaute` | `auto` | Leiaute da DPS (seção Ambiente): `auto` segue a NT 009 (homologação já no leiaute novo; produção a partir de 01/12/2026 00:00, horário de Brasília), `pre_nt009` e `nt009` forçam um leiaute. Ver [LEVANTAMENTO_API_NACIONAL.md](LEVANTAMENTO_API_NACIONAL.md#leiaute-da-dps-nt-009). |
 | `queue_enabled` | `0` | Liga a fila. Com a fila desligada, o cron faz as novas tentativas do e-mail automático, a conferência diferida dos alertas, a limpeza e a checagem de atualização, e a emissão manual é síncrona. |
-| `auto_emit_on_payment` | `0` | Enfileira a emissão quando a fatura é paga (exige `queue_enabled`). |
-| `allow_manual_unpaid` | `0` | Permite enfileirar manualmente faturas `Unpaid` (exige `queue_enabled`). |
+| `auto_emit_trigger` | `nunca` | **Enfileirar emissão automaticamente quando?** `nunca`, `paga` (quando a fatura é paga) ou `gerada` (quando a fatura `Unpaid` é publicada e, se ainda não houver NFS-e, também no pagamento). Exige `queue_enabled`. Ver [Política de emissão automática](#política-de-emissão-automática). |
+| `auto_emit_scope` | `todos` | **Aplicar a regra a quais clientes?** `todos` ou `grupos` (só os clientes dos grupos de `auto_emit_group_ids`). |
+| `auto_emit_group_ids` | vazio | IDs de `tblclientgroups` separados por vírgula. Com `auto_emit_scope = grupos` e gatilho diferente de `nunca`, é preciso marcar pelo menos um grupo. |
+| `auto_emit_customfield_id` | `0` | Custom field de cliente que define a regra por cliente (`0` desliga). Exige `queue_enabled`. Ver [Custom field por cliente](#custom-field-por-cliente). |
+| `auto_emit_on_payment` | `0` | Configuração anterior a `auto_emit_trigger`. Fica gravada como espelho (`1` quando o gatilho não é `nunca`) e só é lida quando `auto_emit_trigger` não tem valor válido: `1` vale como `paga`, `0` como `nunca`. Não aparece mais na tela. |
+| `allow_manual_unpaid` | `0` | Permite enfileirar pelo botão **Emitir NFS-e** faturas `Unpaid` (exige `queue_enabled`). Vale independente do gatilho automático, do grupo e do custom field do cliente. |
 | `auto_send_nfse_email` | `0` | Envia XML e PDF ao cliente uma vez por nota, quando ela passa a `EMITIDA` com chave de acesso, com ou sem fila. Ver [Envio automático](#envio-automático). |
 | `queue_wait_status_interval_seconds` | `120` | Intervalo base entre consultas de itens em `WAIT_STATUS` (limitado entre 30 e 3600 s). |
 | `logs_retention_days` | `90` | Dias de retenção de `mod_opennfse_logs` (`0` desativa a limpeza). |
 | `queue_done_retention_days` | `30` | Dias de retenção dos itens `DONE` e `RESOLVIDO` da fila (`0` desativa a limpeza). |
 
 A habilitação por gateway fica em `mod_opennfse_payment_gateway_settings`. Sem nenhuma linha salva, todos os gateways são aceitos. Com pelo menos uma linha, ela vira uma lista de permitidos: o gateway precisa estar marcado, e um gateway ausente da lista fica bloqueado. Faturas sem `paymentmethod` não são bloqueadas por essa regra.
+
+A mesma tabela guarda `emit_on_create` (coluna **Emitir ao gerar a fatura** na aba **Integração com WHMCS**, padrão `0`). Só os gateways marcados ali emitem na geração da fatura, e o gateway também precisa estar com a emissão de NFS-e ativada. Gateway sem linha salva, ou fatura sem `paymentmethod`, não emite na geração. A coluna não altera a emissão no pagamento nem a manual.
 
 ## Estados
 
@@ -71,11 +77,13 @@ stateDiagram-v2
 - `PENDING`: aguardando processamento.
 - `RUNNING`: em execução (emissão ou consulta).
 - `WAIT_STATUS`: DPS enviada, aguardando a consulta. O próximo horário fica em `next_check_at`.
-- `DONE`: concluído. Inclui faturas descartadas por elegibilidade, como não paga, paga só com crédito ou gateway desabilitado. O motivo vai para o log (`QUEUE_SKIP_*`).
+- `DONE`: concluído. Inclui faturas descartadas por elegibilidade, como não paga (inclusive a fatura cancelada depois de enfileirada na geração), paga só com crédito, de valor zero (`QUEUE_SKIP_ZERO_VALUE`) ou com gateway desabilitado, e itens da geração que a política deixou de autorizar no processamento. O motivo vai para o log (`QUEUE_SKIP_*`).
 - `ERROR`: falha definitiva. A mensagem fica em `last_error`.
 - `RESOLVIDO`: item `ERROR` de uma fatura cuja nota foi emitida depois, por outro caminho. A troca é feita na emissão bem-sucedida e no início de cada lote da fila.
 
 Uma fatura só tem um item ativo (`PENDING`, `RUNNING` ou `WAIT_STATUS`) por vez: `QueueRepository::enqueue()` ignora o pedido se já houver um (log `QUEUE_ENQUEUE_SKIP_ACTIVE`). `QueueService::enqueueEmit()` faz essa checagem e a inclusão sob o lock da fatura (ver [Locks](#locks)).
+
+A coluna `origem` guarda quem criou o item: `gerada` (geração da fatura), `paga` (pagamento) ou `manual` (botão **Emitir NFS-e**). Fica nula nos itens anteriores à coluna e na reemissão. Ela muda o processamento só para o item da geração: a fila roda de novo a política antes de emitir (ver [Processamento sequencial de DPS](#processamento-sequencial-de-dps)) e aceita a fatura `Unpaid` (ver [Enfileiramento manual de fatura Unpaid](#enfileiramento-manual-de-fatura-unpaid)).
 
 ### Item preso em `RUNNING`
 
@@ -85,6 +93,139 @@ No início de cada processamento da fila (`processBatch`, sempre sob o lock do c
 - `ERROR`, se as tentativas automáticas já se esgotaram;
 - `PENDING`, nos demais casos. O claim seguinte reavalia a nota antes de emitir.
 
+## Política de emissão automática
+
+`EmissionPolicyService::decide()` decide se a fatura entra na fila em cada evento:
+
+| Evento | Origem | Hook ou tela |
+|---|---|---|
+| `GERADA` | fatura `Unpaid` publicada | `InvoiceCreated` → `InvoiceCreatedHook` |
+| `PAGA` | fatura paga | `InvoicePaid` → `InvoicePaidHook` |
+| `MANUAL` | botão **Emitir NFS-e** | `NotasController::emit()` |
+
+A classe não acessa o banco: `EmissionPolicyContextLoader` lê a fatura, o grupo e o custom field do cliente, os ajustes do gateway e a nota atual, e grava os avisos do custom field. A decisão volta como `EmissionDecision` (emite ou não, motivo, regra aplicada, gatilho efetivo e `allow_unpaid`).
+
+Os eventos `GERADA` e `PAGA` passam pelo gatilho. O evento `MANUAL` não: segue `allow_manual_unpaid`, como antes (ver [Emissão manual pelo admin](#emissão-manual-pelo-admin)).
+
+### Precedência
+
+Nos eventos automáticos, com a fila ligada, o gatilho efetivo vem da primeira regra que decidir:
+
+1. **Custom field do cliente**, quando `auto_emit_customfield_id` está configurado, o campo existe em `tblcustomfields` e o valor do cliente é uma opção diferente de "Não configurado" (regra `customfield`). Vale mesmo para cliente fora dos grupos selecionados.
+2. **Grupo de clientes**, quando `auto_emit_scope = grupos` e o gatilho global não é `nunca` (regra `grupo`). Cliente sem grupo, ou fora dos grupos de `auto_emit_group_ids`, não emite automaticamente (motivo `GROUP_NOT_SELECTED`). Cliente de um grupo selecionado segue o gatilho global.
+3. **Regra global**: `auto_emit_trigger` (regra `global`).
+
+```mermaid
+flowchart TD
+    A[Evento GERADA ou PAGA] --> Q{queue_enabled = 1?}
+    Q -- não --> X0[Não enfileira]
+    Q -- sim --> CF{Custom field com opção<br/>diferente de Não configurado?}
+    CF -- sim --> T[Gatilho efetivo]
+    CF -- não --> G{Escopo grupos e<br/>gatilho global diferente de nunca?}
+    G -- não --> T
+    G -- sim --> GI{Cliente em grupo<br/>selecionado?}
+    GI -- não --> X1[GROUP_NOT_SELECTED]
+    GI -- sim --> T
+    T --> N{Gatilho}
+    N -- nunca --> X2[TRIGGER_NEVER]
+    N -- paga, no evento GERADA --> X3[TRIGGER_ON_PAYMENT_ONLY]
+    N -- demais casos --> E{NFS-e EMITIDA<br/>com chave?}
+    E -- sim --> X4[ALREADY_ISSUED]
+    E -- não --> F{Fatura e gateway passam<br/>nas regras do evento?}
+    F -- não --> X5[Motivo do bloqueio]
+    F -- sim --> OK[Enfileira]
+```
+
+### Evento × gatilho
+
+| Gatilho efetivo | Geração da fatura | Pagamento da fatura |
+|---|---|---|
+| `nunca` | não enfileira | não enfileira |
+| `paga` | não enfileira | enfileira |
+| `gerada` | enfileira, se o gateway está marcado em **Emitir ao gerar a fatura** | enfileira, se ainda não há NFS-e `EMITIDA` com chave |
+
+Nos dois eventos, a fatura que já tem NFS-e `EMITIDA` com chave não é enfileirada (motivo `ALREADY_ISSUED`). Nota em `PROCESSANDO`, ou `EMITIDA` sem chave, não conta como emitida: o item é criado, e a fila só consulta o status.
+
+Regras da fatura em cada evento:
+
+- **Geração**: fatura `Unpaid` (não vale para `Draft`, `Paid` ou `Cancelled`), total maior que zero, sem pagamento só com crédito, sem item de Mass Pay ou Add Funds, gateway com a emissão de NFS-e ativada e marcado em **Emitir ao gerar a fatura**.
+
+  A fatura com item `type = 'Invoice'` em `tblinvoiceitems` é um pagamento em massa (Mass Pay): agrupa outras faturas, e emitir nela duplicaria a nota das faturas agrupadas (motivo `MASS_PAY`). A fatura com item `type = 'AddFunds'` é uma adição de crédito que ainda não foi recebida (motivo `ADD_FUNDS`). As duas não são enfileiradas na geração e seguem só pela regra do pagamento, sem mudança.
+- **Pagamento**: fatura `Paid`, sem pagamento só com crédito, com valor maior que zero e gateway com a emissão de NFS-e ativada.
+- **Pagamento e emissão manual**: a fatura de Mass Pay (com item `type = 'Invoice'`, cujo `relid` aponta a fatura original) não emite se qualquer fatura original já tem nota `EMITIDA` ou `PROCESSANDO` em `mod_opennfse_notas` (motivo `MASS_PAY_CHILD_ALREADY_ISSUED`). As faturas originais são quitadas com crédito pela Mass Pay e podem ter tido a nota emitida na geração; emitir também na agregadora, paga pelo gateway, duplicaria a nota do mesmo serviço. Se nenhuma fatura original tem nota, a agregadora emite como antes. Para emitir na agregadora mesmo assim, cancele antes as notas das faturas originais.
+
+A fatura de valor zero (total menor ou igual a zero, sem crédito aplicado) é descartada na elegibilidade (`EmissionEligibilityService::SKIP_ZERO_VALUE`, motivo `ZERO_VALUE`) no pagamento, na emissão manual e no processamento da fila, porque não há serviço a declarar. Com crédito aplicado e total zero, continua valendo a regra do pagamento só com crédito. Na geração, o motivo é `INVOICE_ZERO_TOTAL`.
+
+### Custom field por cliente
+
+O custom field permite definir a regra de cada cliente. Para criar:
+
+1. No WHMCS, abra **Setup > Custom Client Fields** (Configurações > Campos personalizados do cliente).
+2. Crie o campo com **Field Type: Drop Down** e marque **Admin Only**, para o cliente não alterar o valor.
+3. Em **Select Options**, informe exatamente estas opções, separadas por vírgula:
+
+   ```text
+   Não configurado,Não emitir automaticamente,Emitir apenas manualmente,Emitir apenas de faturas pagas,Emitir de todas as faturas
+   ```
+
+4. Em **Addons > OpenNfse > Configuração**, aba **Processamento Automático**, selecione o campo em **Enfileirar emissão de acordo com o custom field do cliente**.
+
+| Opção | Gatilho efetivo |
+|---|---|
+| Não configurado | segue o grupo e a regra global |
+| Não emitir automaticamente | `nunca`: sem emissão automática na geração e no pagamento |
+| Emitir apenas manualmente | `nunca`: mesmo efeito da opção anterior |
+| Emitir apenas de faturas pagas | `paga` |
+| Emitir de todas as faturas | `gerada` (a geração ainda depende de **Emitir ao gerar a fatura** no gateway) |
+
+O valor é comparado com as opções sem diferenciar maiúsculas de minúsculas e ignorando acentos e espaços extras, dos dois lados: "Nao emitir automaticamente" e "NÃO EMITIR AUTOMATICAMENTE" valem como "Não emitir automaticamente".
+
+Valor vazio, ou cliente sem valor gravado, é tratado como "Não configurado", sem log: é o caso normal de quem não tem regra própria. Valor preenchido que não corresponde a nenhuma opção também é tratado como "Não configurado" e gera o aviso `CUSTOMFIELD_UNKNOWN_VALUE` no log `POLICY_CUSTOMFIELD_WARNING` (com fatura, evento e código do aviso) a cada evento avaliado.
+
+Se o campo selecionado em `auto_emit_customfield_id` for apagado no WHMCS (não existe mais em `tblcustomfields` com `type = 'client'`), a regra por cliente é ignorada e todos os clientes seguem o grupo e a regra global, sem log por cliente nem por evento. A tela de configuração (seção **Emissão automática**) e o dashboard do addon mostram o aviso: "O custom field configurado para a emissão automática não existe mais; a regra por cliente está sendo ignorada."
+
+"Não emitir automaticamente" e "Emitir apenas manualmente" ficam como opções separadas por compatibilidade com o dropdown proposto na issue #3. As duas bloqueiam toda emissão automática do cliente, e nenhuma delas bloqueia o botão **Emitir NFS-e**: a emissão manual não depende de gatilho, grupo nem custom field.
+
+### Logs da política
+
+Quando a política não enfileira, o hook grava um log com o motivo:
+
+| Motivo | Evento | Quando | Log |
+|---|---|---|---|
+| `QUEUE_DISABLED` | ambos | fila desligada | nenhum |
+| `TRIGGER_NEVER` | ambos | gatilho `nunca` | nenhum na regra global; `QUEUE_SKIP_POLICY` quando vem do custom field |
+| `TRIGGER_ON_PAYMENT_ONLY` | geração | gatilho `paga` | nenhum, em qualquer regra: a decisão fica para o pagamento |
+| `GROUP_NOT_SELECTED` | ambos | cliente fora dos grupos selecionados | `QUEUE_SKIP_POLICY` |
+| `ALREADY_ISSUED` | ambos | NFS-e `EMITIDA` com chave | `QUEUE_SKIP_POLICY` |
+| `INVOICE_NOT_UNPAID` | geração | fatura não está `Unpaid` | nenhum quando a fatura já está `Paid` (o pagamento é tratado pelo `InvoicePaid`); `QUEUE_SKIP_POLICY` nos demais status, como `Cancelled` |
+| `INVOICE_ZERO_TOTAL` | geração | total zero | `QUEUE_SKIP_POLICY` |
+| `CREDIT_PAYMENT` | geração | pagamento só com crédito | `QUEUE_SKIP_POLICY` |
+| `GATEWAY_DISABLED` | geração | gateway com a emissão de NFS-e desativada | `QUEUE_SKIP_POLICY` |
+| `GATEWAY_NOT_ON_CREATE` | geração | gateway não marcado em **Emitir ao gerar a fatura** | `QUEUE_SKIP_POLICY` |
+| `MASS_PAY` | geração | fatura de pagamento em massa (item `type = 'Invoice'`) | `QUEUE_SKIP_POLICY` |
+| `ADD_FUNDS` | geração | adição de crédito (item `type = 'AddFunds'`) | `QUEUE_SKIP_POLICY` |
+| `NOT_PAID` | pagamento | fatura não está `Paid` | `QUEUE_SKIP_NOT_PAID` |
+| `ZERO_VALUE` | pagamento | total menor ou igual a zero, sem crédito aplicado | `QUEUE_SKIP_ZERO_VALUE` |
+| `MASS_PAY_CHILD_ALREADY_ISSUED` | pagamento | Mass Pay com fatura original que já tem nota `EMITIDA` ou `PROCESSANDO` | `QUEUE_SKIP_POLICY` |
+| `CREDIT_PAYMENT` | pagamento | pagamento só com crédito | `QUEUE_SKIP_CREDIT_PAYMENT` |
+| `GATEWAY_DISABLED` | pagamento | gateway com a emissão de NFS-e desativada | `QUEUE_SKIP_GATEWAY_DISABLED` |
+
+O `QUEUE_SKIP_POLICY` traz a fatura, o evento, o motivo, a regra aplicada (`customfield`, `grupo` ou `global`), o gatilho efetivo e `allow_unpaid`, com a explicação em texto. Quando a regra global desliga a automação, nada é logado, como antes.
+
+A fila também grava `QUEUE_SKIP_POLICY` quando reavalia o item da geração e a política não autoriza mais a emissão. Nesse caso, o log traz `queue_id`, a fatura, o evento `GERADA`, o motivo, a regra aplicada e o gatilho efetivo, e o item vai para `DONE` (ver [Processamento sequencial de DPS](#processamento-sequencial-de-dps)).
+
+### Atualização de versões anteriores
+
+A migration `040` cria `auto_emit_trigger`, `auto_emit_scope`, `auto_emit_group_ids` e `auto_emit_customfield_id`, e preenche o gatilho a partir de `auto_emit_on_payment`: `paga` quando estava `1`, `nunca` nos demais casos. O `UPDATE ... WHERE auto_emit_trigger IS NULL` só preenche o que está vazio, então rodar de novo não muda nada. As migrations `039` (coluna `origem` da fila) e `041` (`emit_on_create` dos gateways) criam as colunas com o valor nulo ou `0`.
+
+No upgrade, ninguém muda de comportamento: quem emitia no pagamento continua no pagamento, o escopo fica `todos`, o custom field fica desligado e nenhum gateway fica marcado para emitir na geração.
+
+Ao salvar a configuração, `auto_emit_on_payment` é gravado como `1` sempre que o gatilho não é `nunca`. Gatilho diferente de `nunca`, ou custom field configurado, exige a fila ligada.
+
+### Aviso fiscal
+
+Ao escolher o gatilho `gerada`, ou com o custom field configurado, a tela mostra um aviso: a NFS-e é emitida antes do pagamento, o ISS é devido mesmo que a fatura nunca seja paga, a competência é a data de emissão e o prazo do município para cancelar a NFS-e é curto. Se a fatura for cancelada ou alterada depois da emissão, o cancelamento da NFS-e continua manual (ver [Cancelamento](#cancelamento)).
+
 ## Emissão
 
 ### Emissão manual pelo admin
@@ -92,14 +233,14 @@ No início de cada processamento da fila (`processBatch`, sempre sob o lock do c
 Botão **Emitir NFS-e** na fatura (`InvoiceHook` → action `emit` → `NotasController::emit()`):
 
 1. Bloqueia se a fatura já tem nota vinculada: `id_dps` ou chave preenchidos, ou status `PROCESSANDO`, `EMITIDA`, `ERRO` ou `REJEITADA`. Nesses casos, use **Consultar Status**, a fila ou **Reemitir**. Nota `CANCELADA` permite nova emissão.
-2. Exige fatura `Paid`. A exceção é a fatura `Unpaid` com `allow_manual_unpaid = 1` e `queue_enabled = 1` (ver [Enfileiramento manual de fatura Unpaid](#enfileiramento-manual-de-fatura-unpaid)).
-3. Bloqueia pagamento só com crédito e gateway desabilitado.
-4. Com a fila ligada, cria um item `PENDING` (log `QUEUE_EMIT_MANUAL`), e a emissão acontece no próximo processamento. Com a fila desligada, chama `NfseService::emitir()` na hora.
+2. Aplica a política com o evento `MANUAL`, que não depende do gatilho automático, do grupo nem do custom field do cliente. Exige fatura `Paid`. A exceção é a fatura `Unpaid` com `allow_manual_unpaid = 1` e `queue_enabled = 1` (ver [Enfileiramento manual de fatura Unpaid](#enfileiramento-manual-de-fatura-unpaid)).
+3. Bloqueia pagamento só com crédito, gateway desabilitado e fatura de valor zero ("Fatura com valor zero: não há serviço a declarar na NFS-e."). Bloqueia também a fatura de Mass Pay cujas faturas originais já têm nota `EMITIDA` ou `PROCESSANDO` (motivo `MASS_PAY_CHILD_ALREADY_ISSUED`), com a mensagem "Esta fatura de pagamento em massa (Mass Pay) agrupa faturas que já têm NFS-e emitida ou em processamento. Emitir outra NFS-e aqui duplicaria a nota do mesmo serviço." Nesse caso, se for preciso emitir na agregadora, cancele antes as notas das faturas originais.
+4. Com a fila ligada, cria um item `PENDING` com origem `manual` (log `QUEUE_EMIT_MANUAL`), e a emissão acontece no próximo processamento. Com a fila desligada, chama `NfseService::emitir()` na hora.
 
 ### `NfseService::emitir()`
 
 0. Obtém o lock da fatura (espera até 5 s; sem ele, aborta com "emissão desta fatura já em andamento", log `EMISSAO_LOCK_BUSY`) e, com o lock, relê a nota: bloqueia se ela já está `EMITIDA`, se há outra DPS em `PROCESSANDO` ou, no reenvio da mesma DPS, se o `id_dps` mudou (log `EMISSAO_BLOCKED_STATUS`). O lock é liberado no fim da emissão.
-1. Revalida a elegibilidade (`EmissionEligibilityService`) e roda a validação preventiva (`EmissionPreValidationService`): regime especial de tributação (`7`, `8` e `10` bloqueiam a emissão com mensagem própria), certificado, CNPJ, código IBGE, série, código de serviço, IM, regime do Simples, total e itens da fatura, nome, e-mail, país e documento do tomador, e endereço do tomador no exterior. Os erros são reunidos numa mensagem única.
+1. Revalida a elegibilidade (`EmissionEligibilityService`) e roda a validação preventiva (`EmissionPreValidationService`): regime especial de tributação (`7`, `8` e `10` bloqueiam a emissão com mensagem própria), certificado, CNPJ, código IBGE, série, código de serviço, IM, regime do Simples, total e itens da fatura, nome, e-mail, país e documento do tomador, e endereço do tomador no exterior. Os erros são reunidos numa mensagem única. A fatura de valor zero sem crédito aplicado é descartada antes, na elegibilidade: na emissão direta (fila desligada) grava `EMISSAO_SKIP_ZERO_VALUE`, e na fila o item vai para `DONE` com `QUEUE_SKIP_ZERO_VALUE`, em vez de cair como `ERRO` na validação preventiva.
 2. Lê o CPF/CNPJ do tomador brasileiro no custom field configurado.
 3. Obtém o número da DPS em `mod_opennfse_sequences` (transação com `lockForUpdate`, por ambiente, CNPJ e série). No reenvio da mesma DPS, o número é extraído do `id_dps` existente.
 4. Monta a DPS (`DpsBuilderService`) no leiaute ativo (`DpsLayoutService`) e grava a nota como `PROCESSANDO` com `id_dps`, limpando chave, XML e erro anteriores.
@@ -119,13 +260,42 @@ Botão **Reemitir NFS-e** (`NotasController::reemitir()`), disponível quando a 
 - Quando a fatura já tem item ativo, inclusive se outro pedido o criou no instante do enfileiramento, a reemissão não é registrada: grava o log `ADMIN_REEMITIR_BLOCKED` com motivo `active_queue` e mostra ao admin o aviso de item já ativo na fila.
 - A reemissão gera uma DPS nova, com o próximo número da sequência.
 
+### Emissão automática na geração da fatura
+
+Hook `InvoiceCreated` → `InvoiceCreatedHook::handle()`. O WHMCS dispara o hook quando a fatura sai de `Draft` e fica disponível ao cliente, seja na geração automática, pelo admin ou pela API:
+
+1. Sai sem log quando o `status` informado pelo WHMCS no hook é `Draft`. Nos demais casos, a decisão usa o status relido no banco: com crédito automático, o `InvoicePaid` pode chegar antes do `InvoiceCreated`, e a fatura já estar `Paid`. Aí a política devolve `INVOICE_NOT_UNPAID` sem log, e o pagamento é tratado pelo `InvoicePaid`.
+2. Só lê fatura e cliente com `queue_enabled = 1` e alguma regra que possa emitir na geração: gatilho global `gerada` ou custom field configurado. Nos demais casos, sai sem log.
+3. Aplica a política com o evento `GERADA` (ver [Política de emissão automática](#política-de-emissão-automática)). Se a política não autorizar, grava `QUEUE_SKIP_POLICY` (salvo quando a regra global desliga a automação) e não enfileira.
+4. Enfileira com `allow_unpaid = 1` e origem `gerada` (log `QUEUE_ENQUEUE_AUTO_CREATED`).
+
+Qualquer falha é registrada em `QUEUE_ENQUEUE_AUTO_CREATED_ERROR` e não interrompe a geração da fatura no WHMCS. A emissão acontece no próximo processamento da fila, com a fatura ainda `Unpaid` (ver [Enfileiramento manual de fatura Unpaid](#enfileiramento-manual-de-fatura-unpaid)).
+
+No processamento, a fila roda de novo a política com o evento `GERADA` antes de emitir, com as mesmas regras do enfileiramento. Se algo mudou entre a geração e o processamento (o admin voltou o gatilho para `paga` ou `nunca`, desmarcou o gateway em **Emitir ao gerar a fatura**, o cliente trocou de gateway, mudou o custom field ou saiu do grupo), o item vai para `DONE` com `QUEUE_SKIP_POLICY` e a fatura segue a regra do pagamento.
+
+Se a fatura for paga antes do processamento, o item segue o caminho normal da fatura `Paid`, sem reavaliar a política da geração. Se for cancelada, o item vira `DONE` com `QUEUE_SKIP_NOT_PAID`. A emissão na geração não muda o tratamento do pagamento pelo gateway.
+
+No WHMCS 8.13, alguns caminhos de criação de fatura não têm o disparo do `InvoiceCreated` confirmado: publicar um rascunho sem enviar o e-mail (**Publish**), a fatura de Add Funds criada pelo admin e a divisão ou duplicação de fatura (`InvoiceSplit`). Se a nota não sair na geração nesses casos, ela sai no pagamento, porque o gatilho `gerada` também enfileira quando a fatura é paga.
+
+#### Valor da NFS-e e valor pago
+
+A NFS-e emitida na geração usa o valor da fatura naquele momento. Se o cliente pagar com um gateway que acrescenta taxa, juros ou multa, com desconto por antecipação, ou trocar de gateway, o valor final da fatura fica diferente do valor da nota, e o alerta "Fatura alterada com NFS-e" é aberto. Casos conhecidos:
+
+- **PagHiper** (`paghiper` e `paghiper_pix`): no pagamento, acrescenta à fatura o item "PAGHIPER: Juros e multa por atraso", que pode incluir a taxa repassada ao cliente, ou um item negativo de desconto por pagamento antecipado.
+- **MercadoPago**: não altera a fatura; desconta a taxa do valor recebido.
+- **Boleto legado** (`boleto`): só altera o valor impresso no boleto; a fatura não muda.
+
+Como não é possível saber de antemão qual gateway o cliente vai usar, a recomendação é não repassar taxas ao cliente nos gateways usados com a emissão na geração. No modo de emissão ao pagar, a nota já sai com o total final da fatura.
+
 ### Emissão automática ao pagar
 
 Hook `InvoicePaid` → `InvoicePaidHook::handle()`:
 
-1. Só age com `queue_enabled = 1` e `auto_emit_on_payment = 1`.
-2. Aplica a elegibilidade: fatura `Paid`, pagamento que não seja só com crédito e gateway habilitado. Se a fatura não passar, registra `QUEUE_SKIP_NOT_PAID`, `QUEUE_SKIP_CREDIT_PAYMENT` ou `QUEUE_SKIP_GATEWAY_DISABLED` e não enfileira.
-3. Enfileira com `allow_unpaid = 0` (log `QUEUE_ENQUEUE_AUTO_PAID`).
+1. Só age com `queue_enabled = 1` e alguma regra que possa emitir automaticamente: gatilho global diferente de `nunca` ou custom field configurado. Nos demais casos, sai sem log.
+2. Aplica a política com o evento `PAGA` (ver [Política de emissão automática](#política-de-emissão-automática)). A regra da fatura: fatura `Paid`, pagamento que não seja só com crédito, valor maior que zero e gateway habilitado. Se a fatura não passar, registra `QUEUE_SKIP_NOT_PAID`, `QUEUE_SKIP_CREDIT_PAYMENT`, `QUEUE_SKIP_ZERO_VALUE` ou `QUEUE_SKIP_GATEWAY_DISABLED` e não enfileira. Os bloqueios por grupo, custom field, NFS-e já emitida ou Mass Pay com fatura original já emitida (`MASS_PAY_CHILD_ALREADY_ISSUED`) vão para `QUEUE_SKIP_POLICY`.
+3. Enfileira com `allow_unpaid = 0` e origem `paga` (log `QUEUE_ENQUEUE_AUTO_PAID`).
+
+Com o gatilho `gerada`, o pagamento também enfileira, se a fatura ainda não tem NFS-e `EMITIDA` com chave. Assim, a fatura que não foi emitida na geração (gateway não marcado em **Emitir ao gerar a fatura**, por exemplo) é emitida no pagamento. Já a fatura emitida na geração não é enfileirada de novo (`QUEUE_SKIP_POLICY` com motivo `ALREADY_ISSUED`). Se o item da geração ainda está ativo na fila, o pedido é ignorado com `QUEUE_ENQUEUE_SKIP_ACTIVE`. A fatura paga só com crédito continua sem emissão (`QUEUE_SKIP_CREDIT_PAYMENT`).
 
 A emissão acontece no próximo processamento da fila (cron ou **Processar agora**).
 
@@ -133,7 +303,9 @@ O mesmo evento `InvoicePaid` tem um segundo hook, de prioridade 2, registrado à
 
 ### Enfileiramento manual de fatura Unpaid
 
-Com `allow_manual_unpaid = 1` e a fila ligada, o botão **Emitir NFS-e** aceita fatura `Unpaid` e cria o item com `allow_unpaid = 1`. Na hora de processar, a fila só ignora a exigência de `Paid` se as três condições continuarem verdadeiras: a configuração ainda ligada, a fatura ainda `Unpaid` e o item com `allow_unpaid` igual a `1` ou nulo. As demais regras (crédito e gateway) continuam valendo. A emissão automática ao pagar sempre grava `allow_unpaid = 0`.
+Com `allow_manual_unpaid = 1` e a fila ligada, o botão **Emitir NFS-e** aceita fatura `Unpaid` e cria o item com `allow_unpaid = 1`, independente do gatilho automático, do grupo e do custom field do cliente. Na hora de processar, a fila só ignora a exigência de `Paid` se as três condições continuarem verdadeiras: a configuração ainda ligada, a fatura ainda `Unpaid` e o item com `allow_unpaid` igual a `1` ou nulo. As demais regras (crédito e gateway) continuam valendo. A emissão automática ao pagar sempre grava `allow_unpaid = 0`.
+
+O item da geração da fatura (origem `gerada`) tem regra própria (`EmissionPolicyService::queueAllowsUnpaid()`): com a fatura ainda `Unpaid`, a fila roda de novo a política com o evento `GERADA` (gatilho, grupo, custom field, gateway habilitado e marcado em **Emitir ao gerar a fatura**, total, crédito, Mass Pay e Add Funds). Se a política autorizar, basta o item ter `allow_unpaid = 1`, mesmo com `allow_manual_unpaid = 0`; se não autorizar, o item vai para `DONE` com `QUEUE_SKIP_POLICY`. Os demais itens seguem a regra acima.
 
 ## Processamento da fila
 
@@ -156,7 +328,9 @@ Para cada item `PENDING`, do mais antigo para o mais novo:
 1. Passa para `RUNNING` e soma uma tentativa.
 2. Se a nota já está `EMITIDA` com chave, marca `DONE` (`QUEUE_SKIP_ALREADY_EMITIDA`).
 3. Se a nota ainda aguarda resultado, marca `WAIT_STATUS` e encerra o lote.
-4. Se a fatura não é elegível, marca `DONE` com log `QUEUE_SKIP_*`.
+4. Se a fatura não é elegível, marca `DONE` com log `QUEUE_SKIP_*`. A fatura `Unpaid` só passa nos casos de [Enfileiramento manual de fatura Unpaid](#enfileiramento-manual-de-fatura-unpaid). Para os itens de origem `paga`, `manual` ou nula, a fila confere a elegibilidade (status, crédito, valor zero e gateway habilitado): gatilho, grupo e custom field foram avaliados no enfileiramento.
+
+   O item de origem `gerada` com a fatura ainda `Unpaid` passa de novo pela política com o evento `GERADA`, com as mesmas regras do enfileiramento: gatilho, grupo, custom field, gateway habilitado e marcado em **Emitir ao gerar a fatura**, total, crédito, Mass Pay e Add Funds. Se a política negar, marca `DONE` com `QUEUE_SKIP_POLICY` (`queue_id`, fatura, evento `GERADA`, motivo, regra e gatilho). Se a fatura já está `Paid`, o item segue a regra da fatura paga, sem reavaliar a política da geração.
 5. Chama `NfseService::emitir()` e decide:
    - `EMITIDA` com chave → `DONE` (`QUEUE_DONE`);
    - em processamento → `WAIT_STATUS` e encerra o lote;

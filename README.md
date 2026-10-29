@@ -165,6 +165,8 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 3. Apague a pasta `modules/addons/OpenNfse/` da versão anterior (ou, no mínimo, a subpasta `vendor-scoped/`) e envie a pasta `OpenNfse` nova para `modules/addons/`. O módulo não guarda dados nessa pasta: a configuração fica no banco, os XML e PDF ficam em `attachments/` e o certificado A1 fica obrigatoriamente fora do webroot (`public_html`), conforme [docs/SEGURANCA.md](docs/SEGURANCA.md). Enviar por cima também funciona, mas deixa no servidor arquivos que a versão nova não usa mais.
 4. No admin do WHMCS, acesse `Addons > OpenNfse` e revise a configuração, se necessário.
 
+Para voltar à v0.1.24, revise antes a emissão automática: quem usa o gatilho "Quando a fatura for gerada" ou o escopo por grupos passa a emitir ao pagar para todos os clientes, porque a v0.1.24 só conhece `auto_emit_on_payment`, que fica `1` sempre que o gatilho não é "Nunca".
+
 ## Configuração Inicial
 
 - Configure ambiente, certificado digital e dados do prestador.
@@ -172,6 +174,7 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 - Configure a série DPS conforme a operação desejada.
 - Revise as opções de fila/processamento automático.
 - Em **Automação de E-mail**, configure **Enviar PDF/XML automaticamente por e-mail?** como `Sim` para enviar os anexos quando a nota for emitida; a opção vem desativada por padrão. Cada nota recebe um e-mail automático; uma reemissão gera nota nova e, portanto, um e-mail novo.
+- Se usar a emissão automática **Quando a fatura for gerada**, não repasse taxas ao cliente nos gateways marcados em **Emitir ao gerar a fatura**: a NFS-e sai com o valor da fatura na geração, e taxa, juros, multa ou desconto acrescentados no pagamento (ex.: PagHiper) fazem o valor final divergir da nota.
 - Emita manualmente faturas com status `Unpaid` somente quando a opção **Permitir enfileirar manualmente a emissão de faturas não pagas?** estiver configurada como `Sim`.
 - Salve a configuração antes de realizar testes de emissão.
 

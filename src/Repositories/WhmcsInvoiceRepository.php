@@ -18,6 +18,27 @@ final class WhmcsInvoiceRepository
         return (array) $row;
     }
 
+    /**
+     * Faturas originais referenciadas por uma fatura de Mass Pay (itens type Invoice, relid = fatura).
+     *
+     * @return array<int, int>
+     */
+    public function getMassPayChildInvoiceIds(array $items): array
+    {
+        $out = [];
+        foreach ($items as $item) {
+            if (strtolower(trim((string) ($item['type'] ?? ''))) !== 'invoice') {
+                continue;
+            }
+            $relid = (int) ($item['relid'] ?? 0);
+            if ($relid > 0 && !in_array($relid, $out, true)) {
+                $out[] = $relid;
+            }
+        }
+
+        return $out;
+    }
+
     public function getItems(int $invoiceId): array
     {
         $items = Capsule::table('tblinvoiceitems')->where('invoiceid', $invoiceId)->orderBy('id')->get();

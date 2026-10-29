@@ -9,6 +9,7 @@ use OpenNfse\Controllers\ClientController;
 use OpenNfse\Hooks\ClientInvoiceHook;
 use OpenNfse\Hooks\InvoiceAlertHook;
 use OpenNfse\Hooks\InvoiceHook;
+use OpenNfse\Hooks\InvoiceCreatedHook;
 use OpenNfse\Hooks\InvoicePaidHook;
 use OpenNfse\Migrations\Migrator;
 use OpenNfse\Services\CronService;
@@ -49,6 +50,11 @@ final class Module
     public static function invoicePaidHook(): InvoicePaidHook
     {
         return new InvoicePaidHook();
+    }
+
+    public static function invoiceCreatedHook(): InvoiceCreatedHook
+    {
+        return new InvoiceCreatedHook();
     }
 
     public static function invoiceAlertHook(): InvoiceAlertHook

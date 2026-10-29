@@ -17,6 +17,8 @@ use OpenNfse\Repositories\ServiceNbsCatalogRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
 use OpenNfse\Repositories\WhmcsPaymentGatewayRepository;
 use OpenNfse\Services\CryptoService;
+use OpenNfse\Services\EmissionPolicyContextLoader;
+use OpenNfse\Services\EmissionPolicyService;
 use OpenNfse\Services\InvoiceEmailService;
 use OpenNfse\Services\NfseService;
 use OpenNfse\Services\QueueErrorClassifierService;
@@ -387,6 +389,11 @@ final class AdminController
 
         Module::ui()->renderHeader('Dashboard - OpenNfse');
         $this->renderTabs('dashboard');
+        if (EmissionPolicyContextLoader::configuredCustomFieldMissing($config)) {
+            echo '<div class="alert alert-warning" style="margin:10px 0;">'
+                . htmlspecialchars(EmissionPolicyService::MSG_CUSTOMFIELD_MISSING, ENT_QUOTES, 'UTF-8')
+                . ' <a href="addonmodules.php?module=OpenNfse&amp;action=config&amp;tab=processamento">Revisar a configuração</a></div>';
+        }
 
         $rangeStart = $this->formatDate((string) ($metrics['range_start'] ?? ''), 'd/m/Y');
         $rangeEnd = $this->formatDate((string) ($metrics['range_end'] ?? ''), 'd/m/Y');
