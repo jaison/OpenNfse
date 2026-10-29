@@ -263,11 +263,11 @@ Botão **Reemitir NFS-e** (`NotasController::reemitir()`), disponível quando a 
 
 ### Emissão automática na geração da fatura
 
-No WHMCS 8.13, a fatura publicada chega ao addon por caminhos diferentes, conforme a origem:
+A fatura publicada chega ao addon por caminhos diferentes, conforme a origem. Observado no WHMCS 9 (ambiente de testes):
 
 | Origem | Hooks chamados pelo WHMCS | Como o addon detecta |
 |---|---|---|
-| Geração automática (cron) e API | `InvoiceCreation` e `InvoiceCreated` (pela documentação) | `InvoiceCreated` → `InvoiceCreatedHook::handle()` |
+| Geração automática (cron), Mass Pay da área do cliente (`source = autogen`) e API | `InvoiceCreation` (ainda `Draft`) e `InvoiceCreated` (já `Unpaid`) | `InvoiceCreated` → `InvoiceCreatedHook::handle()` |
 | Admin, **Publish and Send Email** | `InvoiceCreation` (ainda `Draft`) e `InvoiceCreationPreEmail` (já `Unpaid`) | `InvoiceCreationPreEmail` → `InvoiceCreatedHook::handle()` |
 | Admin, **Publish** sem e-mail | só `InvoiceCreation` (ainda `Draft`) | conferência de criação, tratada pelo cron |
 
@@ -278,7 +278,7 @@ Conferência de criação: no `InvoiceCreation`, com `queue_enabled = 1` e algum
 - outro status (`Paid`, `Cancelled` etc.) ou fatura apagada: o registro é apagado sem ação (o pagamento cuida da fatura `Paid`);
 - fatura já tratada, com item na fila em qualquer status ou nota `EMITIDA`/`PROCESSANDO`: o registro é apagado em silêncio, sem log.
 
-Assim, no **Publish** sem e-mail a emissão na geração entra na fila na próxima execução do cron. O caminho imediato e o cron usam o mesmo tratamento (`InvoiceCreatedHook::processGenerated()`) e, juntos, geram no máximo um item na fila e uma decisão logada por fatura.
+O **Publish** do admin sem chamar o `InvoiceCreated` foi observado no WHMCS 9; o desenho (hooks imediatos mais a conferência pelo cron) cobre qualquer versão, chame ela o `InvoiceCreated` ou não. No **Publish** sem e-mail, a emissão na geração entra na fila na próxima execução do cron. O caminho imediato e o cron usam o mesmo tratamento (`InvoiceCreatedHook::processGenerated()`) e, juntos, geram no máximo um item na fila e uma decisão logada por fatura.
 
 O tratamento da geração:
 
@@ -293,7 +293,7 @@ No processamento, a fila roda de novo a política com o evento `GERADA` antes de
 
 Se a fatura for paga antes do processamento, o item segue o caminho normal da fatura `Paid`, sem reavaliar a política da geração. Se for cancelada, o item vira `DONE` com `QUEUE_SKIP_NOT_PAID`. A emissão na geração não muda o tratamento do pagamento pelo gateway.
 
-Os caminhos de criação ainda não observados no dev (geração automática e API, fatura de Add Funds criada pelo admin, divisão ou duplicação de fatura com `InvoiceSplit`) também passam pelo `InvoiceCreation` e, portanto, pela conferência do cron. Se, mesmo assim, a nota não sair na geração, ela sai no pagamento, porque o gatilho `gerada` também enfileira quando a fatura é paga.
+Os caminhos de criação ainda não observados (fatura de Add Funds criada pelo admin, divisão ou duplicação de fatura com `InvoiceSplit`) também passam pelo `InvoiceCreation` e, portanto, pela conferência do cron. Se, mesmo assim, a nota não sair na geração, ela sai no pagamento, porque o gatilho `gerada` também enfileira quando a fatura é paga.
 
 #### Valor da NFS-e e valor pago
 
@@ -327,24 +327,27 @@ O item da geração da fatura (origem `gerada`) tem regra própria (`EmissionPol
 
 ### Mass Pay
 
-A fatura de pagamento em massa (Mass Pay, a agregadora M) tem itens `type = 'Invoice'` em `tblinvoiceitems`, cada um com o `relid` de uma fatura original (filha). Quando M é paga pelo gateway, o WHMCS quita as filhas com o crédito gerado pelo pagamento. No addon, crédito é valor coberto por outra nota, aqui a de M, então as filhas pagas só com crédito continuam sem nota própria (`CREDIT_PAYMENT`). Uma filha com parte paga pelo gateway antes do Mass Pay emite essa parte, como antes.
+A fatura de pagamento em massa (Mass Pay, a agregadora M) tem itens `type = 'Invoice'` em `tblinvoiceitems`, cada um com o `relid` de uma fatura original (filha). Quando M é paga, o WHMCS quita as filhas de um destes dois jeitos, e o addon trata os dois:
+
+- **(a) cada filha como um pagamento normal**: confirmado no WHMCS 9 (ambiente de testes). O total da filha continua cheio, e o `InvoicePaid` de cada filha chega antes do de M. Cada filha recebe a própria NFS-e no pagamento (uma filha que já tinha nota cai em `ALREADY_ISSUED`), e M fica sem nota, porque o valor dela já está coberto: ao processar M, a fila vê as filhas cobertas e grava `QUEUE_SKIP_POLICY` com `MASS_PAY_CHILD_ALREADY_ISSUED` e as filhas descontadas. O que garante isso é a ordem da fila: os itens das filhas entram antes do item de M e são processados primeiro, sequencialmente. Na v0.1.24, sem regra de Mass Pay, esse caso gerava a nota das filhas e também a de M, em duplicidade.
+- **(b) filhas quitadas com o crédito gerado pelo pagamento de M**: comportamento esperado em versões anteriores, não confirmado no WHMCS 8.13. No addon, crédito é valor coberto por outra nota, aqui a de M, então as filhas pagas só com crédito ficam sem nota própria (`CREDIT_PAYMENT`) e M emite. Uma filha com parte paga pelo gateway antes do Mass Pay emite essa parte, como antes.
 
 O valor e a descrição da nota de M vêm de um ponto único, `NfseValueResolver::resolve()`, usado pelo `DpsBuilderService`, pela política (via `EmissionPolicyContextLoader`), pela fila e pela emissão direta:
 
-- **Nenhuma filha com nota** (caso comum): valor = total da fatura e descrição com todos os itens, como na v0.1.24.
-- **Parte das filhas com nota** (emitida antes do pagamento, na geração ou na emissão manual de fatura não paga): valor = total de M menos a soma dos itens das filhas com nota `EMITIDA` ou `PROCESSANDO`, arredondado em centavos e nunca negativo. A descrição traz só os itens das filhas sem nota e os itens que não são de fatura, como uma multa. O código de serviço segue a regra de sempre. A emissão grava `MASS_PAY_PARTIAL` com a fatura, o valor e as filhas descontadas.
-- **Todas as filhas com nota**: valor zero, e M não emite (`MASS_PAY_CHILD_ALREADY_ISSUED`): no pagamento grava `QUEUE_SKIP_POLICY`, na emissão manual mostra a mensagem ao admin, e na fila o item vai para `DONE` com `QUEUE_SKIP_POLICY`.
+- **Nenhuma filha com nota**: valor = total da fatura e descrição com todos os itens, como na v0.1.24. É o caso (b) quando nenhuma filha foi emitida antes.
+- **Parte das filhas com nota**: valor = total de M menos a soma dos itens das filhas com nota `EMITIDA` ou `PROCESSANDO`, arredondado em centavos e nunca negativo. A descrição traz só os itens das filhas sem nota e os itens que não são de fatura, como uma multa. O código de serviço segue a regra de sempre. A emissão grava `MASS_PAY_PARTIAL` com a fatura, o valor e as filhas descontadas. Vale para quando alguma filha não emite no pagamento (por exemplo, gateway desabilitado para emissão, ou nota com falha) e para a quitação por crédito com filhas emitidas antes (na geração ou na emissão manual de fatura não paga).
+- **Todas as filhas com nota**: valor zero, e M não emite (`MASS_PAY_CHILD_ALREADY_ISSUED`): no pagamento grava `QUEUE_SKIP_POLICY`, na emissão manual mostra a mensagem ao admin, e na fila o item vai para `DONE` com `QUEUE_SKIP_POLICY`. É o resultado normal do caso (a).
 
 O valor é recalculado na hora de emitir (fila, emissão manual, reemissão), porque uma filha pode ter ganhado nota depois do enfileiramento de M. Na emissão direta (fila desligada), M sem valor a declarar grava `EMISSAO_SKIP_POLICY` e mostra a mesma mensagem.
 
 Se as filhas com nota não cobrem todas as filhas, mas o crédito aplicado em M zerou o valor restante, M também não emite, com o motivo `MASS_PAY_NO_REMAINING_VALUE` e a mensagem "Não há valor a emitir nesta fatura de pagamento em massa (Mass Pay): descontadas as NFS-e das faturas agrupadas e o crédito aplicado, o valor restante é zero."
 
-Uma filha com nota `PROCESSANDO` conta como coberta. Se essa nota terminar `REJEITADA` ou em `ERRO` depois que M saiu com o valor reduzido, o serviço da filha fica sem nota. Para corrigir:
+Uma filha com nota `PROCESSANDO` conta como coberta; item ativo na fila não conta. Se a nota da filha terminar `REJEITADA` ou em `ERRO` depois que M saiu com o valor reduzido (ou ficou sem nota), o serviço da filha fica sem nota. Para corrigir:
 
-1. Cancele a NFS-e de M.
+1. Cancele a NFS-e de M, se houver.
 2. Reemita M. O valor é recalculado e passa a incluir a filha.
 
-Pendente de confirmação no dev: se o WHMCS quitar as filhas pelo gateway, e não com crédito, cada filha emite a própria nota pelo pagamento, e a de M só desconta as filhas que já têm nota naquele momento. Item ativo na fila não conta como nota.
+O alerta `CREDITO_APOS_EMISSAO` não abre para a filha quitada por um Mass Pay já pago (log `ALERT_SKIP_MASS_PAY_CHILD`). Essa exceção protege o caso (b), da quitação por crédito.
 
 ## Processamento da fila
 
@@ -558,7 +561,7 @@ Os hooks ficam em `InvoiceAlertHook`, e as decisões em `InvoiceAlertPolicy`, se
 | `FATURA_ESTORNADA_COM_NFSE` | `AddTransaction` | Transação de saída registrada na fatura com a nota emitida (`amountout` maior que zero ou `refundid` preenchido): estorno total ou parcial e reversão de pagamento. |
 | `FATURA_REABERTA_COM_NFSE` | `InvoiceUnpaid` | Fatura voltou para `Unpaid` e tem pagamento registrado (soma de `amountin` menos `amountout` em `tblaccounts`, por `WhmcsInvoiceRepository::sumPayments()`) ou crédito aplicado. Fatura que nunca teve pagamento nem crédito não gera alerta. |
 | `FATURA_ALTERADA_COM_NFSE` | `UpdateInvoiceTotal`, `AddInvoiceLateFee` e `InvoiceSplit`, conferido no cron | O valor cobrado da fatura (o mesmo usado no `vServ` da DPS) passa a diferir em 1 centavo ou mais do `vServ` da nota. Fatura quitada só com crédito não entra nessa conferência. Ver [Conferência diferida do total](#conferência-diferida-do-total). |
-| `CREDITO_APOS_EMISSAO` | `InvoicePaid` (prioridade 2) | Fatura `Paid` quitada só com crédito que já tem a nota `EMITIDA` quando o hook roda. Não há comparação de datas: a emissão automática ao pagar só enfileira a nota (ver [Emissão automática ao pagar](#emissão-automática-ao-pagar)), então uma nota que já está `EMITIDA` no `InvoicePaid` foi emitida antes desse pagamento. Não abre quando a fatura foi quitada por uma fatura de Mass Pay já paga (item `type = 'Invoice'` com `relid` = fatura), porque a nota da agregadora exclui as faturas originais que já têm nota (ver [Mass Pay](#mass-pay)). Esse caso grava o log `ALERT_SKIP_MASS_PAY_CHILD` com a fatura e a agregadora. A agregadora só é procurada quando a fatura tem nota emitida e foi paga só com crédito. |
+| `CREDITO_APOS_EMISSAO` | `InvoicePaid` (prioridade 2) | Fatura `Paid` quitada só com crédito que já tem a nota `EMITIDA` quando o hook roda. Não há comparação de datas: a emissão automática ao pagar só enfileira a nota (ver [Emissão automática ao pagar](#emissão-automática-ao-pagar)), então uma nota que já está `EMITIDA` no `InvoicePaid` foi emitida antes desse pagamento. Não abre quando a fatura foi quitada com crédito por uma fatura de Mass Pay já paga (item `type = 'Invoice'` com `relid` = fatura), porque a nota da agregadora exclui as faturas originais que já têm nota (ver [Mass Pay](#mass-pay)). É uma proteção para a quitação das filhas por crédito; no WHMCS 9 (ambiente de testes), as filhas são quitadas como pagamento normal. Esse caso grava o log `ALERT_SKIP_MASS_PAY_CHILD` com a fatura e a agregadora. A agregadora só é procurada quando a fatura tem nota emitida e foi paga só com crédito. |
 
 O `AddTransaction` cobre o que o `InvoiceRefunded` não vê: o estorno parcial, em que a fatura não muda para `Refunded`, e a reversão de pagamento (chargeback de Stripe, PayPal ou GoCardless, ou reversão manual), que no WHMCS 8.13 leva a fatura para `Collections`. Não há hook próprio para a mudança de status para `Collections`, então o sinal é a transação de saída que o WHMCS registra na reversão. Transações de entrada (pagamentos comuns) saem antes de qualquer consulta. A fatura vem do parâmetro `invoiceid` ou da grafia `invocieid`, que aparece na documentação do WHMCS (`InvoiceAlertPolicy::transactionInvoiceId()`). Os detalhes do alerta trazem o valor da saída e, quando existem, o gateway e o ID da transação. O tipo é o mesmo do `InvoiceRefunded`, com o rótulo "Estorno ou reversão com NFS-e": num estorno total os dois hooks disparam, e a [idempotência](#idempotência) mantém um único alerta aberto. A fatura em `Collections` também aparece no relatório [NFS-e de faturas não pagas](#nfs-e-de-faturas-não-pagas).
 

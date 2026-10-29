@@ -18,7 +18,7 @@ Todos ficam em `modules/addons/OpenNfse/`:
 - [`hooks.php`](../hooks.php): registra os hooks do WHMCS:
   - `AdminInvoicesControlsOutput`: botões e status da NFS-e na fatura do admin (`InvoiceHook`).
   - `InvoicePaid`: enfileira a emissão automática no pagamento (`InvoicePaidHook`, prioridade 1) e, num hook separado de prioridade 2, confere o alerta de crédito após a emissão (`InvoiceAlertHook::onPaid()`).
-  - `InvoiceCreated` e `InvoiceCreationPreEmail`: enfileiram a emissão automática quando a fatura `Unpaid` é publicada (`InvoiceCreatedHook::handle()`). O admin do WHMCS 8.13 não chama `InvoiceCreated`: o **Publish and Send Email** chama `InvoiceCreationPreEmail`.
+  - `InvoiceCreated` e `InvoiceCreationPreEmail`: enfileiram a emissão automática quando a fatura `Unpaid` é publicada (`InvoiceCreatedHook::handle()`). No WHMCS 9 (ambiente de testes), o admin não chama `InvoiceCreated`: o **Publish and Send Email** chama `InvoiceCreationPreEmail`. A geração automática, o Mass Pay da área do cliente e a API chamam `InvoiceCreated`.
   - `InvoiceCreation`: registra a conferência de criação (`InvoiceCreatedHook::registerCreation()` → `GenerationCheckService`), que o cron trata depois. Cobre o **Publish** sem e-mail, que não chama outro hook útil.
   - `InvoiceCancelled`, `InvoiceRefunded`, `InvoiceUnpaid` e `AddTransaction`: abrem alertas de NFS-e quando a fatura já tem nota emitida (`InvoiceAlertHook`). O `AddTransaction` só age em transação de saída (estorno total ou parcial, reversão de pagamento).
   - `UpdateInvoiceTotal`, `AddInvoiceLateFee` e `InvoiceSplit`: só registram o pedido de conferência do total, que o cron faz depois (`InvoiceAlertHook::onTotalChanged()` e `onTotalChangedBy()` → `AlertCheckService`).
