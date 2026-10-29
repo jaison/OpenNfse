@@ -416,6 +416,15 @@ final class EmissionPolicyServiceTest extends TestCase
         $this->assertSame([], $d->warnings);
     }
 
+    public function testCustomFieldMatchHandlesDecomposedAccentsAndNbsp(): void
+    {
+        $this->assertSame(P::CF_NAO_EMITIR, P::matchCustomFieldOption("Na\u{0303}o emitir automaticamente"));
+        $this->assertSame(P::CF_APENAS_PAGAS, P::matchCustomFieldOption("Emitir\u{00A0}apenas de faturas pagas"));
+        $this->assertSame(P::CF_NAO_CONFIGURADO, P::matchCustomFieldOption("N\u{00C3}O\u{00A0}\u{00A0}CONFIGURADO"));
+        // UTF-8 inválido não quebra: só não casa.
+        $this->assertNull(P::matchCustomFieldOption("Emitir \xC3\x28 todas"));
+    }
+
     public function testDeletedCustomFieldIsIgnoredWithoutWarnings(): void
     {
         $config = $this->config(['auto_emit_trigger' => P::TRIGGER_PAGA, 'auto_emit_customfield_id' => 12]);
@@ -664,7 +673,17 @@ final class EmissionPolicyServiceTest extends TestCase
         $this->assertFalse(InvoiceCreatedHook::onCreateMayApply(['queue_enabled' => '1', 'auto_emit_on_payment' => '1']));
         $this->assertFalse(InvoiceCreatedHook::onCreateMayApply(['queue_enabled' => '0', 'auto_emit_trigger' => 'gerada']));
         $this->assertTrue(InvoiceCreatedHook::onCreateMayApply(['queue_enabled' => '1', 'auto_emit_trigger' => 'gerada']));
+        Capsule::$rows['tblcustomfields'] = [(object) ['id' => 3, 'type' => 'client']];
         $this->assertTrue(InvoiceCreatedHook::onCreateMayApply(['queue_enabled' => '1', 'auto_emit_trigger' => 'paga', 'auto_emit_customfield_id' => 3]));
+    }
+
+    public function testOnCreateIgnoresDeletedCustomField(): void
+    {
+        // Campo 9001 não existe em tblcustomfields (stub vazio): não é motivo para avaliar.
+        Capsule::$rows['tblcustomfields'] = [];
+        $this->assertFalse(InvoiceCreatedHook::onCreateMayApply(['queue_enabled' => '1', 'auto_emit_trigger' => 'paga', 'auto_emit_customfield_id' => 9001]));
+        // Com gatilho global "gerada", avalia do mesmo jeito.
+        $this->assertTrue(InvoiceCreatedHook::onCreateMayApply(['queue_enabled' => '1', 'auto_emit_trigger' => 'gerada', 'auto_emit_customfield_id' => 9001]));
     }
 
     // ---- Ajustes do gateway ----

@@ -101,7 +101,12 @@ final class InvoiceCreatedHook
             return false;
         }
 
-        return EmissionPolicyService::resolveGlobalTrigger($config) === EmissionPolicyService::TRIGGER_GERADA
-            || (int) ($config['auto_emit_customfield_id'] ?? 0) > 0;
+        if (EmissionPolicyService::resolveGlobalTrigger($config) === EmissionPolicyService::TRIGGER_GERADA) {
+            return true;
+        }
+
+        // Custom field apagado no WHMCS não conta: a regra por cliente está sendo ignorada.
+        return (int) ($config['auto_emit_customfield_id'] ?? 0) > 0
+            && !EmissionPolicyContextLoader::configuredCustomFieldMissing($config);
     }
 }

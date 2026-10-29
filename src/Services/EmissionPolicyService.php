@@ -538,15 +538,19 @@ final class EmissionPolicyService
 
     /**
      * Texto para comparação: sem acentos, minúsculo e com um espaço entre as palavras.
-     * Não depende de mbstring nem de intl: os acentos do português saem por mapa e as
-     * maiúsculas viram minúsculas só na faixa ASCII, sem influência do locale.
+     * Não depende de mbstring nem de intl: as marcas combinantes (acento decomposto, NFD) saem por
+     * PCRE /u, os acentos compostos do português saem por mapa e as maiúsculas viram minúsculas só
+     * na faixa ASCII, sem influência do locale. O espaço não separável (U+00A0) conta como espaço.
+     * Com UTF-8 inválido, o preg_* devolve null e a etapa é pulada, sem quebrar.
      */
     private static function normalizeText(string $value): string
     {
+        $value = preg_replace('/\p{Mn}+/u', '', $value) ?? $value;
         $value = strtr($value, self::ACCENT_MAP);
         $value = strtr($value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz');
+        $value = preg_replace('/[\s\x{00A0}]+/u', ' ', $value) ?? $value;
 
-        return trim((string) preg_replace('/\s+/', ' ', $value));
+        return trim($value);
     }
 
     /**

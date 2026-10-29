@@ -279,13 +279,13 @@ No WHMCS 8.13, alguns caminhos de criação de fatura não têm o disparo do `In
 
 #### Valor da NFS-e e valor pago
 
-A NFS-e emitida na geração usa o valor da fatura naquele momento. Se o cliente pagar com um gateway que acrescenta taxa, juros ou multa, com desconto por antecipação, ou trocar de gateway, o valor final da fatura fica diferente do valor da nota, e o alerta "Fatura alterada com NFS-e" é aberto. Casos conhecidos:
+A NFS-e emitida na geração usa o valor da fatura naquele momento. Se o valor da fatura mudar depois, por taxa, juros ou multa acrescentados no pagamento (ex.: o PagHiper inclui a taxa na fatura só depois do pagamento) ou por desconto de antecipação, ele fica diferente do valor da NFS-e, e o alerta "Fatura alterada com NFS-e" é aberto. Casos conhecidos:
 
 - **PagHiper** (`paghiper` e `paghiper_pix`): no pagamento, acrescenta à fatura o item "PAGHIPER: Juros e multa por atraso", que pode incluir a taxa repassada ao cliente, ou um item negativo de desconto por pagamento antecipado.
 - **MercadoPago**: não altera a fatura; desconta a taxa do valor recebido.
 - **Boleto legado** (`boleto`): só altera o valor impresso no boleto; a fatura não muda.
 
-Como não é possível saber de antemão qual gateway o cliente vai usar, a recomendação é não repassar taxas ao cliente nos gateways usados com a emissão na geração. No modo de emissão ao pagar, a nota já sai com o total final da fatura.
+Como não é possível saber de antemão qual gateway o cliente vai usar, e cada gateway pode ter uma taxa diferente, a recomendação é não repassar taxas ao cliente nos gateways usados com a emissão na geração. No modo de emissão ao pagar, a nota já sai com o total final da fatura.
 
 ### Emissão automática ao pagar
 
