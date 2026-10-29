@@ -74,6 +74,9 @@ final class CronService
                 $this->processAutomationBatch();
             }
 
+            // Novas tentativas do e-mail automático: valem também com a fila desligada (emissão direta).
+            (new AutoEmailService())->processRetries();
+
             (new UpdateCheckService())->autoCheckIfDue($config);
             $this->cleanup($config);
         } catch (\Throwable $e) {

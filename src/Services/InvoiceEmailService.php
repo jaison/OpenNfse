@@ -113,6 +113,7 @@ final class InvoiceEmailService
                     json_encode(['result' => 'success', 'invoiceid' => $invoiceId, 'transport' => $transport], JSON_UNESCAPED_UNICODE)
                 );
                 (new InvoiceHistoryService())->append($invoiceId, 'E-mail da NFS-e enviado ao cliente com XML e PDF anexados.');
+                $this->cancelPendingAutomaticRetry($notaRepo, $invoiceId);
                 return;
             }
 
@@ -201,6 +202,19 @@ final class InvoiceEmailService
             json_encode(['result' => 'success', 'invoiceid' => $invoiceId, 'transport' => 'sendmessage'], JSON_UNESCAPED_UNICODE)
         );
         (new InvoiceHistoryService())->append($invoiceId, 'E-mail da NFS-e enviado ao cliente com XML e PDF anexados.');
+        $this->cancelPendingAutomaticRetry($notaRepo, $invoiceId);
+    }
+
+    /**
+     * Depois de um envio bem-sucedido, a nova tentativa automática pendente da mesma nota
+     * não é mais necessária. Uma falha aqui não afeta o envio já feito.
+     */
+    private function cancelPendingAutomaticRetry(NotaRepository $notaRepo, int $invoiceId): void
+    {
+        try {
+            $notaRepo->cancelAutomaticEmailRetryAfterManualSend($invoiceId);
+        } catch (\Throwable $e) {
+        }
     }
 
     private function ensureNativeEmailTemplate(): void

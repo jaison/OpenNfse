@@ -53,12 +53,12 @@ Emissão e fila:
 - `NfseService`: orquestra emissão, consulta de status e cancelamento (inclusive de XML órfão). Também reenvia a DPS após indisponibilidade da API e faz a reemissão controlada após E2404.
 - `DpsBuilderService`: monta o `DpsData` da SDK a partir da fatura, do cliente e da configuração.
 - `DpsLayoutService`: escolhe o leiaute da DPS (Pré-NT 009 ou NT 009) conforme a configuração **Leiaute da DPS**, o ambiente e a data, e gera a orientação para a rejeição E1235 por leiaute.
-- `QueueService`: enfileira e processa a fila (emissão sequencial e consultas `WAIT_STATUS`) e dispara o envio automático de e-mail após `DONE`.
+- `QueueService`: enfileira e processa a fila (emissão sequencial e consultas `WAIT_STATUS`).
 - `QueueErrorClassifierService`: identifica indisponibilidade transitória da API e decide se um erro admite nova tentativa.
 - `EmissionEligibilityService`: elegibilidade da fatura (status `Paid`, pagamento só com crédito, gateway habilitado).
 - `EmissionPreValidationService`: validação preventiva de configuração, fatura e tomador antes de montar a DPS.
 - `InvoiceFinancialsService`: total, crédito aplicado e detecção de pagamento só com crédito.
-- `CronService`: ciclo do cron (fila, consulta de notas `PROCESSANDO`, recuperação de chave, verificação de atualização e limpeza por retenção).
+- `CronService`: ciclo do cron (fila, consulta de notas `PROCESSANDO`, recuperação de chave, novas tentativas do e-mail automático, verificação de atualização e limpeza por retenção).
 - `CronLockService`: lock nomeado no MySQL (`GET_LOCK`/`RELEASE_LOCK`) que impede duas execuções simultâneas do cron.
 
 Arquivos, PDF e e-mail:
@@ -68,6 +68,9 @@ Arquivos, PDF e e-mail:
 - `LocalNfsePdfGenerator`: desenha o layout do DANFS-e (TCPDF).
 - `InvoiceEmailService`: monta os anexos (XML salvo e PDF gerado) e envia ao cliente pelo módulo de e-mail do WHMCS (`whmcs_provider`) ou, sem ele, pelo `sendmessage()`.
 - `EmailTemplateService`: monta assunto e corpo do e-mail da NFS-e.
+- `AutoEmailService`: envio automático do e-mail da NFS-e, uma vez por chave de acesso, disparado quando a nota passa a `EMITIDA`, e novas tentativas depois de falha (pelo cron).
+- `AutoEmailTrigger`: avalia o disparo do e-mail automático ao fim da emissão e da consulta do `NfseService`, inclusive quando elas terminam com exceção, sem disparo duplo quando a consulta reenvia a DPS por `emitir()`.
+- `AutomaticEmailPolicy`: regras puras do envio automático (transição para `EMITIDA`, motivos para não enviar e agenda das novas tentativas).
 - `InvoiceHistoryService`: registra eventos da NFS-e nas notas da fatura (`tblinvoices.notes`).
 
 Auditoria e apoio:

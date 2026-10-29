@@ -9,11 +9,6 @@ use PHPUnit\Framework\TestCase;
 
 final class NfseServiceTest extends TestCase
  {
- public function testAutomaticEmailIsNotPartOfNfseStatusFlow(): void
- {
- $this->assertFalse(method_exists(NfseService::class, 'sendAutomaticEmailIfEnabled'));
- }
-
  public function testCanAttemptE2404SameDpsReemitWhenUnderLimit(): void
     {
         $service = new NfseService();

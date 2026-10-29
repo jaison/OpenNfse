@@ -14,43 +14,140 @@ final class NotaRepository
         return $row ? (array) $row : null;
     }
 
-    public function claimAutomaticEmail(int $invoiceId): bool
- {
-  $updated = Capsule::table('mod_opennfse_notas')
-   ->where('invoiceid', $invoiceId)
-   ->whereNull('email_automatico_processado_at')
-   ->update([
-    'email_automatico_processado_at' => date('Y-m-d H:i:s'),
-    'email_automatico_status' => 'PROCESSANDO',
-    'updated_at' => date('Y-m-d H:i:s'),
-   ]);
+    /**
+     * Claim atômico do e-mail automático da nota para a chave atual. Só um processo consegue:
+     * o UPDATE exige a nota EMITIDA com essa chave e que o e-mail ainda não tenha sido disparado
+     * para ela. Uma reemissão (chave nova) libera um novo e-mail; a mesma chave nunca duplica.
+     */
+    public function claimAutomaticEmail(int $notaId, string $chave): bool
+    {
+        $chave = trim($chave);
+        if ($notaId <= 0 || $chave === '') {
+            return false;
+        }
 
-  return $updated === 1;
- }
+        $now = date('Y-m-d H:i:s');
+        $updated = Capsule::table('mod_opennfse_notas')
+            ->where('id', $notaId)
+            ->where('status', 'EMITIDA')
+            ->where('chave_acesso', $chave)
+            ->where(static function ($q) use ($chave) {
+                $q->whereNull('email_automatico_chave')->orWhere('email_automatico_chave', '<>', $chave);
+            })
+            ->update([
+                'email_automatico_chave' => $chave,
+                'email_automatico_processado_at' => $now,
+                'email_automatico_status' => 'PROCESSANDO',
+                'email_automatico_tentativas' => 1,
+                'email_automatico_proxima_tentativa_at' => null,
+                'updated_at' => $now,
+            ]);
 
- public function markAutomaticEmailSent(int $invoiceId): void
- {
-  Capsule::table('mod_opennfse_notas')
-   ->where('invoiceid', $invoiceId)
-   ->update([
-    'email_automatico_status' => 'ENVIADO',
-    'updated_at' => date('Y-m-d H:i:s'),
-   ]);
- }
+        return $updated === 1;
+    }
 
- public function markAutomaticEmailFailed(int $invoiceId): void
- {
-  Capsule::table('mod_opennfse_notas')
-   ->where('invoiceid', $invoiceId)
-   ->update([
-    'email_automatico_status' => 'FALHOU',
-    'updated_at' => date('Y-m-d H:i:s'),
-   ]);
- }
+    /**
+     * Claim atômico de uma nova tentativa depois de falha. Exige que a falha seja da chave atual
+     * e que a próxima tentativa já esteja vencida, para que só um processo a execute.
+     */
+    public function claimAutomaticEmailRetry(int $notaId, string $chave, string $now): bool
+    {
+        $chave = trim($chave);
+        if ($notaId <= 0 || $chave === '') {
+            return false;
+        }
 
- public function upsert(array $data, array $options = []): void
- {
-  $invoiceId = (int) $data['invoiceid'];
+        $updated = Capsule::table('mod_opennfse_notas')
+            ->where('id', $notaId)
+            ->where('status', 'EMITIDA')
+            ->where('chave_acesso', $chave)
+            ->where('email_automatico_chave', $chave)
+            ->where('email_automatico_status', 'FALHOU')
+            ->whereNotNull('email_automatico_proxima_tentativa_at')
+            ->where('email_automatico_proxima_tentativa_at', '<=', $now)
+            ->update([
+                'email_automatico_processado_at' => $now,
+                'email_automatico_status' => 'PROCESSANDO',
+                'email_automatico_tentativas' => Capsule::raw('email_automatico_tentativas + 1'),
+                'email_automatico_proxima_tentativa_at' => null,
+                'updated_at' => $now,
+            ]);
+
+        return $updated === 1;
+    }
+
+    /**
+     * Notas com nova tentativa de e-mail automático vencida, das mais antigas para as mais novas.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function findAutomaticEmailRetriesDue(string $now, int $limit): array
+    {
+        $rows = Capsule::table('mod_opennfse_notas')
+            ->where('email_automatico_status', 'FALHOU')
+            ->whereNotNull('email_automatico_proxima_tentativa_at')
+            ->where('email_automatico_proxima_tentativa_at', '<=', $now)
+            ->where('status', 'EMITIDA')
+            ->whereColumn('email_automatico_chave', 'chave_acesso')
+            ->orderBy('email_automatico_proxima_tentativa_at', 'asc')
+            ->limit(max(1, $limit))
+            ->get();
+
+        $result = [];
+        foreach ($rows as $row) {
+            $result[] = (array) $row;
+        }
+
+        return $result;
+    }
+
+    public function markAutomaticEmailSent(int $notaId, string $chave): void
+    {
+        Capsule::table('mod_opennfse_notas')
+            ->where('id', $notaId)
+            ->where('email_automatico_chave', $chave)
+            ->update([
+                'email_automatico_status' => 'ENVIADO',
+                'email_automatico_proxima_tentativa_at' => null,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+    }
+
+    /**
+     * @param string|null $nextRetryAt próxima tentativa, ou null quando as tentativas acabaram
+     */
+    public function markAutomaticEmailFailed(int $notaId, string $chave, ?string $nextRetryAt): void
+    {
+        Capsule::table('mod_opennfse_notas')
+            ->where('id', $notaId)
+            ->where('email_automatico_chave', $chave)
+            ->update([
+                'email_automatico_status' => 'FALHOU',
+                'email_automatico_proxima_tentativa_at' => $nextRetryAt,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+    }
+
+    /**
+     * Envio manual bem-sucedido da nota atual: cancela a nova tentativa automática pendente
+     * dessa chave, para o cliente não receber o mesmo e-mail duas vezes. O status FALHOU fica.
+     */
+    public function cancelAutomaticEmailRetryAfterManualSend(int $invoiceId): void
+    {
+        Capsule::table('mod_opennfse_notas')
+            ->where('invoiceid', $invoiceId)
+            ->where('email_automatico_status', 'FALHOU')
+            ->whereNotNull('email_automatico_proxima_tentativa_at')
+            ->whereColumn('email_automatico_chave', 'chave_acesso')
+            ->update([
+                'email_automatico_proxima_tentativa_at' => null,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+    }
+
+    public function upsert(array $data, array $options = []): void
+    {
+        $invoiceId = (int) $data['invoiceid'];
         $now = date('Y-m-d H:i:s');
         $existing = $this->findByInvoiceId($invoiceId);
         $touchLastStatusCheckedAt = (bool) ($options['touch_last_status_checked_at'] ?? false);
