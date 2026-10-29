@@ -40,6 +40,9 @@ final class AutoEmailService
             }
 
             if ($reason !== null) {
+                if (!AutomaticEmailPolicy::shouldLogSkip($reason)) {
+                    return;
+                }
                 $logRepo->insert(
                     $notaId > 0 ? $notaId : null,
                     'EMAIL_NFSE_AUTO_SKIPPED',

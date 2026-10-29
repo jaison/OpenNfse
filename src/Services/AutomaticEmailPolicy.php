@@ -76,6 +76,15 @@ final class AutomaticEmailPolicy
     }
 
     /**
+     * Só vira log EMAIL_NFSE_AUTO_SKIPPED quando o envio está ligado e houve tentativa real de disparo.
+     * Com a opção desligada (padrão), não há log: seria uma linha a mais por emissão.
+     */
+    public static function shouldLogSkip(string $reason): bool
+    {
+        return $reason !== self::SKIP_CONFIG_DISABLED;
+    }
+
+    /**
      * O e-mail automático já foi disparado para esta chave (enviado, em envio ou falho).
      * A mesma regra está no WHERE do claim atômico (NotaRepository::claimAutomaticEmail).
      */

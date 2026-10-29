@@ -69,6 +69,24 @@ final class AutomaticEmailPolicyTest extends TestCase
         $this->assertSame($disabled, AutomaticEmailPolicy::skipReason(false, null));
     }
 
+    public function testConfigDisabledSkipIsNotLogged(): void
+    {
+        $this->assertFalse(AutomaticEmailPolicy::shouldLogSkip(AutomaticEmailPolicy::SKIP_CONFIG_DISABLED));
+    }
+
+    public function testOtherSkipReasonsAreLogged(): void
+    {
+        foreach (
+            [
+                AutomaticEmailPolicy::SKIP_ALREADY_SENT,
+                AutomaticEmailPolicy::SKIP_NOT_EMITIDA,
+                AutomaticEmailPolicy::SKIP_NO_KEY,
+            ] as $reason
+        ) {
+            $this->assertTrue(AutomaticEmailPolicy::shouldLogSkip($reason), $reason);
+        }
+    }
+
     public function testSkipWhenNotaIsNotEmitida(): void
     {
         $this->assertSame(AutomaticEmailPolicy::SKIP_NOT_EMITIDA, AutomaticEmailPolicy::skipReason(true, null));
