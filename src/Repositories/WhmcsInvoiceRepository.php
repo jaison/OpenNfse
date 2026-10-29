@@ -27,4 +27,21 @@ final class WhmcsInvoiceRepository
         }
         return $out;
     }
+
+    /**
+     * Soma líquida dos pagamentos registrados para a fatura (entradas menos saídas em tblaccounts).
+     */
+    public function sumPayments(int $invoiceId): float
+    {
+        if ($invoiceId <= 0) {
+            return 0.0;
+        }
+
+        $row = Capsule::table('tblaccounts')
+            ->where('invoiceid', $invoiceId)
+            ->selectRaw('COALESCE(SUM(amountin), 0) - COALESCE(SUM(amountout), 0) as net')
+            ->first();
+
+        return $row ? (float) ($row->net ?? 0) : 0.0;
+    }
 }

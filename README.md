@@ -221,7 +221,7 @@ Emitidas para Estrangeiros/
 - O addon possui integração com o cron do próprio WHMCS.
 - Quando o cron principal do WHMCS roda a cada minuto, o processamento automático do módulo é disparado junto.
 - O processamento respeita a configuração interna do addon e possui proteção contra execução duplicada no mesmo minuto.
-- A automação de emissão depende da fila ligada (**Habilitar fila/cron?** = `Sim`): processamento da fila, consultas automáticas de status e emissão automática ao pagar. Com a fila desligada, a emissão manual passa a ser feita na hora e o cron só faz as novas tentativas do e-mail automático, a limpeza por retenção e a checagem de atualização. Esse comportamento é intencional.
+- A automação de emissão depende da fila ligada (**Habilitar fila/cron?** = `Sim`): processamento da fila, consultas automáticas de status e emissão automática ao pagar. Com a fila desligada, o cron faz as novas tentativas do e-mail automático, a conferência diferida dos alertas, a limpeza e a checagem de atualização, e a emissão manual passa a ser feita na hora. Esse comportamento é intencional.
 - O envio automático de e-mail vale com ou sem fila: sai quando a nota é emitida e, em caso de falha, o cron faz até 3 novas tentativas (15 minutos, 1 hora e 6 horas depois).
 - Em falhas transitórias da API nacional, o cron mantém a nota em processamento e tenta reconciliar a emissão automaticamente nos ciclos seguintes.
 - O arquivo `cron.php` do módulo permanece disponível para compatibilidade, mas a recomendação é usar o cron principal do WHMCS como origem oficial.

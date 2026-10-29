@@ -40,6 +40,8 @@ final class AdminController
 
     private QueueController $queueController;
 
+    private AlertasController $alertasController;
+
     public function __construct()
     {
         $this->sequenciaisController = new SequenciaisController();
@@ -47,6 +49,7 @@ final class AdminController
         $this->reportsController = new ReportsController();
         $this->notasController = new NotasController();
         $this->queueController = new QueueController();
+        $this->alertasController = new AlertasController();
     }
 
     public function handle(string $action): void
@@ -304,6 +307,17 @@ final class AdminController
                     $this->notasController->sendEmail($invoiceId);
                 },
             ],
+            'alertas' => [
+                'method' => 'GET',
+                'requiresToken' => false,
+                'handler' => [$this->alertasController, 'showAlertas'],
+            ],
+            'alertaResolver' => [
+                'method' => 'POST',
+                'requiresToken' => true,
+                'requiresTokenMessage' => 'Método inválido para resolver alerta de NFS-e.',
+                'handler' => [$this->alertasController, 'resolveAlerta'],
+            ],
             'saveConfig' => [
                 'method' => 'POST',
                 'requiresToken' => true,
@@ -368,6 +382,8 @@ final class AdminController
             (string) ($metrics['range_start'] ?? ''),
             (string) ($metrics['range_end'] ?? '')
         );
+
+        $alertasAbertos = $this->alertasController->countOpen();
 
         Module::ui()->renderHeader('Dashboard - OpenNfse');
         $this->renderTabs('dashboard');
@@ -817,6 +833,13 @@ final class AdminController
                 'href' => $auditoriaUrl,
                 'color' => '#c0392b',
                 'desc' => $auditoriaDescription,
+            ],
+            [
+                'label' => 'Alertas de NFS-e',
+                'count' => $alertasAbertos,
+                'href' => 'addonmodules.php?module=OpenNfse&action=alertas',
+                'color' => '#d35400',
+                'desc' => 'Revisão manual (abertos, qualquer período)',
             ],
         ];
         foreach ($attentionItems as $item) {

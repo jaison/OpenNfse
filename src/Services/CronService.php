@@ -77,6 +77,7 @@ final class CronService
             // Novas tentativas do e-mail automático: valem também com a fila desligada (emissão direta).
             (new AutoEmailService())->processRetries();
 
+            $this->runAlertChecks();
             (new UpdateCheckService())->autoCheckIfDue($config);
             $this->cleanup($config);
         } catch (\Throwable $e) {
@@ -147,6 +148,22 @@ final class CronService
             'cron_last_source' => $source,
             'cron_last_minute_key' => $this->getCurrentMinuteKey(),
         ]);
+    }
+
+    /**
+     * Conferência diferida dos alertas de NFS-e (total da fatura x valor da nota).
+     * Roda sob o lock do cron, independe da fila e nunca interrompe o ciclo.
+     */
+    private function runAlertChecks(): void
+    {
+        try {
+            (new AlertCheckService())->processDue();
+        } catch (\Throwable $e) {
+            try {
+                (new LogRepository())->insert(null, 'NFSE_ALERTA_ERRO', json_encode(['origem' => 'cron'], JSON_UNESCAPED_UNICODE), $e->getMessage());
+            } catch (\Throwable $loggingError) {
+            }
+        }
     }
 
     private function processAutomationBatch(): void

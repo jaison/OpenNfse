@@ -84,6 +84,13 @@ final class ReportsController
                 'badge_color' => '#23527c',
                 'summary' => 'Lista faturas pagas em gateways ativos que não geraram NFS-e e também não entraram na fila.',
             ],
+            NfseNaoPagasReportController::TAB => [
+                'label' => 'NFS-e de faturas não pagas',
+                'badge' => 'Revisão',
+                'badge_bg' => '#fdf0e6',
+                'badge_color' => '#a04000',
+                'summary' => 'Lista notas emitidas cuja fatura não está paga (Unpaid, Cancelled, Refunded, Collections) e notas emitidas antes do pagamento.',
+            ],
             'xml_auditoria' => [
                 'label' => 'Auditoria XML',
                 'badge' => 'Técnico',
@@ -200,6 +207,8 @@ final class ReportsController
             $this->showRelatorioCancelamentos(true);
         } elseif ($active === 'auditoria') {
             $this->showRelatorioAuditoria(true);
+        } elseif ($active === NfseNaoPagasReportController::TAB) {
+            (new NfseNaoPagasReportController())->render();
         } elseif ($active === 'xml_auditoria') {
             $this->showRelatorioXmlAuditoria(true);
         } elseif ($active === 'historico_fiscal') {
@@ -2209,7 +2218,7 @@ final class ReportsController
     public function exportRelatoriosCsv(): void
     {
         $tab = trim((string) ($_REQUEST['tab'] ?? 'emitidas'));
-        $allowed = ['emitidas' => true, 'falhas' => true, 'cancelamentos' => true, 'auditoria' => true, 'logs' => true];
+        $allowed = ['emitidas' => true, 'falhas' => true, 'cancelamentos' => true, 'auditoria' => true, 'logs' => true, NfseNaoPagasReportController::TAB => true];
         if (!isset($allowed[$tab])) {
             $tab = 'emitidas';
         }
@@ -2224,6 +2233,12 @@ final class ReportsController
         }
 
         fwrite($out, "\xEF\xBB\xBF");
+
+        if ($tab === NfseNaoPagasReportController::TAB) {
+            (new NfseNaoPagasReportController())->writeCsv($out);
+            fclose($out);
+            exit;
+        }
 
         if ($tab === 'auditoria') {
             [$selectedMonth, $dataInicial, $dataFinal] = $this->resolveAuditoriaMonthRange(trim((string) ($_REQUEST['mes'] ?? '')));
