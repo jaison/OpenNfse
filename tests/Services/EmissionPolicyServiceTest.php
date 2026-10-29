@@ -246,6 +246,7 @@ final class EmissionPolicyServiceTest extends TestCase
         $paga = $this->config(['auto_emit_trigger' => P::TRIGGER_PAGA, 'auto_emit_scope' => P::SCOPE_GRUPOS, 'auto_emit_group_ids' => '2']);
         $d = $this->policy->decide(P::EVENT_GERADA, $this->unpaid(), $this->client(2), $paga, $this->gw());
         $this->assertSame(P::CODE_TRIGGER_ON_PAYMENT_ONLY, $d->code);
+        $this->assertTrue($d->silent, 'Esperar o pagamento não é bloqueio: sem log.');
         $this->assertTrue($this->policy->decide(P::EVENT_PAGA, $this->paid(), $this->client(2), $paga, $this->gw())->emit);
     }
 
@@ -299,8 +300,11 @@ final class EmissionPolicyServiceTest extends TestCase
         $this->assertSame($code, $d->code);
         $this->assertSame($source, $d->source);
         $this->assertSame([], $d->warnings);
-        if ($source === P::SOURCE_CUSTOMFIELD && !$emit) {
+        if ($source === P::SOURCE_CUSTOMFIELD && $code === P::CODE_TRIGGER_NEVER) {
             $this->assertFalse($d->silent, 'Bloqueio pelo custom field deve ir para o log.');
+        }
+        if ($code === P::CODE_TRIGGER_ON_PAYMENT_ONLY) {
+            $this->assertTrue($d->silent, 'Esperar o pagamento não é bloqueio: sem log.');
         }
     }
 

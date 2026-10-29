@@ -151,6 +151,7 @@ final class EmissionPolicyService
             );
         }
 
+        // Regra "só no pagamento" na geração não é um bloqueio: a decisão vem no pagamento. Sem log.
         if ($event === self::EVENT_GERADA && $trigger !== self::TRIGGER_GERADA) {
             return new EmissionDecision(
                 false,
@@ -159,7 +160,7 @@ final class EmissionPolicyService
                 false,
                 $source,
                 $trigger,
-                $silent,
+                true,
                 $warnings
             );
         }
