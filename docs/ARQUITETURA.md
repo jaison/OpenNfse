@@ -18,7 +18,8 @@ Todos ficam em `modules/addons/OpenNfse/`:
 - [`hooks.php`](../hooks.php): registra os hooks do WHMCS:
   - `AdminInvoicesControlsOutput`: botões e status da NFS-e na fatura do admin (`InvoiceHook`).
   - `InvoicePaid`: enfileira a emissão automática no pagamento (`InvoicePaidHook`, prioridade 1) e, num hook separado de prioridade 2, confere o alerta de crédito após a emissão (`InvoiceAlertHook::onPaid()`).
-  - `InvoiceCreated`: enfileira a emissão automática quando a fatura `Unpaid` é publicada (`InvoiceCreatedHook`).
+  - `InvoiceCreated` e `InvoiceCreationPreEmail`: enfileiram a emissão automática quando a fatura `Unpaid` é publicada (`InvoiceCreatedHook::handle()`). O admin do WHMCS 8.13 não chama `InvoiceCreated`: o **Publish and Send Email** chama `InvoiceCreationPreEmail`.
+  - `InvoiceCreation`: registra a conferência de criação (`InvoiceCreatedHook::registerCreation()` → `GenerationCheckService`), que o cron trata depois. Cobre o **Publish** sem e-mail, que não chama outro hook útil.
   - `InvoiceCancelled`, `InvoiceRefunded`, `InvoiceUnpaid` e `AddTransaction`: abrem alertas de NFS-e quando a fatura já tem nota emitida (`InvoiceAlertHook`). O `AddTransaction` só age em transação de saída (estorno total ou parcial, reversão de pagamento).
   - `UpdateInvoiceTotal`, `AddInvoiceLateFee` e `InvoiceSplit`: só registram o pedido de conferência do total, que o cron faz depois (`InvoiceAlertHook::onTotalChanged()` e `onTotalChangedBy()` → `AlertCheckService`).
   - Os hooks de alerta só observam: não cancelam nota nem bloqueiam o fluxo do WHMCS.
@@ -50,7 +51,8 @@ Todos ficam em `modules/addons/OpenNfse/`:
 
 - `InvoiceHook`: monta o bloco da NFS-e na fatura do admin.
 - `InvoicePaidHook`: aplica a política de emissão no evento de pagamento e enfileira a fatura paga.
-- `InvoiceCreatedHook`: aplica a política de emissão no evento de geração e enfileira a fatura `Unpaid` publicada. Uma falha é logada e não interrompe a geração da fatura.
+- `InvoiceCreatedHook`: aplica a política de emissão no evento de geração e enfileira a fatura `Unpaid` publicada (`processGenerated()`, comum aos hooks e ao cron). Uma falha é logada em `QUEUE_AUTO_CREATED_ERROR` e não interrompe a geração da fatura.
+- `GenerationCheckService`: conferências de criação de fatura. O `InvoiceCreation` registra, o caminho imediato apaga, e o cron trata o que sobrou antes de processar a fila (`Unpaid` passa pela emissão na geração, `Draft` fica até 30 dias, outros status são descartados).
 - `InvoiceAlertHook`: observa cancelamento, estorno, transações de saída (estorno parcial e reversão de pagamento), reabertura e pagamento da fatura e abre alertas quando ela tem nota `EMITIDA`. Na alteração de total, `onTotalChanged()` só registra o pedido de conferência, e `checkTotalNow()`, chamado pelo cron, compara o total gravado com o `vServ` da nota. Erros vão só para o log (`NFSE_ALERTA_ERRO`).
 - `ClientInvoiceHook`: monta o resumo da NFS-e na fatura da área do cliente.
 
@@ -69,7 +71,7 @@ Emissão e fila:
 - `EmissionEligibilityService`: elegibilidade da fatura (status `Paid`, pagamento só com crédito, valor zero sem crédito aplicado, gateway habilitado).
 - `EmissionPreValidationService`: validação preventiva de configuração, fatura e tomador antes de montar a DPS.
 - `InvoiceFinancialsService`: total, crédito aplicado e detecção de pagamento só com crédito.
-- `CronService`: ciclo do cron (fila, consulta de notas `PROCESSANDO`, recuperação de chave, novas tentativas do e-mail automático, conferência diferida dos alertas, verificação de atualização e limpeza por retenção).
+- `CronService`: ciclo do cron (conferências de criação de fatura antes da fila, fila, consulta de notas `PROCESSANDO`, recuperação de chave, novas tentativas do e-mail automático, conferência diferida dos alertas, verificação de atualização e limpeza por retenção).
 - `CronLockService`: lock nomeado no MySQL (`GET_LOCK`/`RELEASE_LOCK`) que impede duas execuções simultâneas do cron.
 
 Arquivos, PDF e e-mail:
@@ -122,6 +124,7 @@ Auditoria e apoio:
 | `DpsApiAuditRepository` | `mod_opennfse_dps_audit_runs`, `mod_opennfse_dps_audit_results` |
 | `AlertRepository` (`AlertRepositoryInterface`) | `mod_opennfse_alertas` |
 | `AlertCheckRepository` (`AlertCheckRepositoryInterface`) | `mod_opennfse_alerta_checks` (pedidos de conferência diferida do total, uma linha por fatura) |
+| `GenerationCheckRepository` (`GenerationCheckRepositoryInterface`) | `mod_opennfse_geracao_checks` (conferências de criação de fatura para a emissão na geração, uma linha por fatura; migration 046) |
 | `ReportRepository` | consultas dos relatórios e do dashboard |
 | `UnpaidNfseReportRepository` | consultas do relatório "NFS-e de faturas não pagas" |
 | `WhmcsInvoiceRepository` | `tblinvoices`, `tblinvoiceitems`, `tblaccounts` (soma dos pagamentos da fatura) |
@@ -142,7 +145,7 @@ O uso dos campos do WHMCS está em [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_
 ### Migrations
 
 - [`src/Migrations/Migrator.php`](../src/Migrations/Migrator.php) executa em ordem todos os arquivos de [`migrations/`](../migrations/). Erros de coluna, tabela ou índice já existentes são ignorados, então rodar de novo é seguro.
-- O migrator é chamado na ativação do addon e também no início do cron, da fila, da emissão, do hook `InvoicePaid`, de cada enfileiramento (`QueueService::enqueueEmit()`), das telas do admin e da área do cliente. Por isso, ao atualizar os arquivos do addon, as migrations novas são aplicadas sozinhas. O `AlertService` também roda o migrator quando a tabela `mod_opennfse_alertas` ainda não existe na hora de abrir um alerta, e o `AlertCheckService` faz o mesmo com `mod_opennfse_alerta_checks` na hora de registrar um pedido de conferência.
+- O migrator é chamado na ativação do addon e também no início do cron, da fila, da emissão, do hook `InvoicePaid`, de cada enfileiramento (`QueueService::enqueueEmit()`), das telas do admin e da área do cliente. Por isso, ao atualizar os arquivos do addon, as migrations novas são aplicadas sozinhas. O `AlertService` também roda o migrator quando a tabela `mod_opennfse_alertas` ainda não existe na hora de abrir um alerta, e o `AlertCheckService` faz o mesmo com `mod_opennfse_alerta_checks` na hora de registrar um pedido de conferência. O `GenerationCheckService` faz o mesmo com `mod_opennfse_geracao_checks`.
 - Uma guarda estática faz o migrator rodar no máximo uma vez por processo PHP: as chamadas seguintes no mesmo processo (por exemplo, um enfileiramento por fatura na geração em lote) não repetem as migrations.
 
 ## Status internos

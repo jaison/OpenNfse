@@ -14,6 +14,16 @@ final class QueueRepository
         return $row ? (array) $row : null;
     }
 
+    /** Se a fatura tem algum item na fila, em qualquer status. */
+    public function hasAnyItem(int $invoiceId): bool
+    {
+        if ($invoiceId <= 0) {
+            return false;
+        }
+
+        return Capsule::table('mod_opennfse_queue')->where('invoiceid', $invoiceId)->first() !== null;
+    }
+
     public function hasActive(int $invoiceId): bool
     {
         $row = Capsule::table('mod_opennfse_queue')

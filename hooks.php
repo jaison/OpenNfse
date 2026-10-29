@@ -32,8 +32,19 @@ add_hook('InvoicePaid', 1, static function (array $vars) {
     Module::invoicePaidHook()->handle($vars);
 });
 
+// Emissão na geração da fatura. No WHMCS 8.13 o admin não chama InvoiceCreated: o "Publish and Send
+// Email" chama InvoiceCreationPreEmail e o "Publish" sem e-mail não chama hook útil (o InvoiceCreation
+// registra uma conferência, e o cron trata a fatura depois).
 add_hook('InvoiceCreated', 1, static function (array $vars) {
     Module::invoiceCreatedHook()->handle($vars);
+});
+
+add_hook('InvoiceCreationPreEmail', 1, static function (array $vars) {
+    Module::invoiceCreatedHook()->handle($vars);
+});
+
+add_hook('InvoiceCreation', 1, static function (array $vars) {
+    Module::invoiceCreatedHook()->registerCreation($vars);
 });
 
 // Alertas de NFS-e (só observam; nunca cancelam nota nem bloqueiam o fluxo do WHMCS).

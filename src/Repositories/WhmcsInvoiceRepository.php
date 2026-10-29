@@ -29,6 +29,17 @@ final class WhmcsInvoiceRepository
         return NfseValueResolver::massPayChildIds($items);
     }
 
+    /** Status da fatura em tblinvoices, ou null se ela não existe. */
+    public function getStatus(int $invoiceId): ?string
+    {
+        if ($invoiceId <= 0) {
+            return null;
+        }
+        $row = Capsule::table('tblinvoices')->where('id', $invoiceId)->first();
+
+        return $row ? (string) ($row->status ?? '') : null;
+    }
+
     public function getItems(int $invoiceId): array
     {
         $items = Capsule::table('tblinvoiceitems')->where('invoiceid', $invoiceId)->orderBy('id')->get();

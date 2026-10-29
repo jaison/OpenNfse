@@ -263,20 +263,37 @@ Botão **Reemitir NFS-e** (`NotasController::reemitir()`), disponível quando a 
 
 ### Emissão automática na geração da fatura
 
-Hook `InvoiceCreated` → `InvoiceCreatedHook::handle()`. O WHMCS dispara o hook quando a fatura sai de `Draft` e fica disponível ao cliente, seja na geração automática, pelo admin ou pela API:
+No WHMCS 8.13, a fatura publicada chega ao addon por caminhos diferentes, conforme a origem:
 
-1. Sai sem log quando o `status` informado pelo WHMCS no hook é `Draft`. Nos demais casos, a decisão usa o status relido no banco: com crédito automático, o `InvoicePaid` pode chegar antes do `InvoiceCreated`, e a fatura já estar `Paid`. Aí a política devolve `INVOICE_NOT_UNPAID` sem log, e o pagamento é tratado pelo `InvoicePaid`.
+| Origem | Hooks chamados pelo WHMCS | Como o addon detecta |
+|---|---|---|
+| Geração automática (cron) e API | `InvoiceCreation` e `InvoiceCreated` (pela documentação) | `InvoiceCreated` → `InvoiceCreatedHook::handle()` |
+| Admin, **Publish and Send Email** | `InvoiceCreation` (ainda `Draft`) e `InvoiceCreationPreEmail` (já `Unpaid`) | `InvoiceCreationPreEmail` → `InvoiceCreatedHook::handle()` |
+| Admin, **Publish** sem e-mail | só `InvoiceCreation` (ainda `Draft`) | conferência de criação, tratada pelo cron |
+
+Conferência de criação: no `InvoiceCreation`, com `queue_enabled = 1` e alguma regra que possa emitir na geração, o addon grava a fatura em `mod_opennfse_geracao_checks` (`GenerationCheckService::register()`; registrar de novo não muda nada). O caminho imediato (`InvoiceCreated` ou `InvoiceCreationPreEmail`) apaga o registro ao tratar a fatura. O cron trata o que sobrou antes de processar a fila (até 200 por execução, das verificadas há mais tempo para as mais recentes):
+
+- fatura `Unpaid`: passa pelo mesmo tratamento da geração (política, enfileiramento ou `QUEUE_SKIP_POLICY`) e o registro é apagado;
+- fatura `Draft`: o registro fica para o próximo cron e é apagado sem ação depois de 30 dias;
+- outro status (`Paid`, `Cancelled` etc.) ou fatura apagada: o registro é apagado sem ação (o pagamento cuida da fatura `Paid`);
+- fatura já tratada, com item na fila em qualquer status ou nota `EMITIDA`/`PROCESSANDO`: o registro é apagado em silêncio, sem log.
+
+Assim, no **Publish** sem e-mail a emissão na geração entra na fila na próxima execução do cron. O caminho imediato e o cron usam o mesmo tratamento (`InvoiceCreatedHook::processGenerated()`) e, juntos, geram no máximo um item na fila e uma decisão logada por fatura.
+
+O tratamento da geração:
+
+1. Sai sem log quando o `status` informado pelo WHMCS no hook é `Draft`. A fatura que ainda está `Draft` no banco também não é tratada (a conferência continua pendente). Nos demais casos, a decisão usa o status relido no banco: com crédito automático, o `InvoicePaid` pode chegar antes do `InvoiceCreated`, e a fatura já estar `Paid`. Aí a política devolve `INVOICE_NOT_UNPAID` sem log, e o pagamento é tratado pelo `InvoicePaid`.
 2. Só lê fatura e cliente com `queue_enabled = 1` e alguma regra que possa emitir na geração: gatilho global `gerada` ou custom field configurado. Nos demais casos, sai sem log.
 3. Aplica a política com o evento `GERADA` (ver [Política de emissão automática](#política-de-emissão-automática)). Se a política não autorizar, grava `QUEUE_SKIP_POLICY` (salvo quando a regra global desliga a automação) e não enfileira.
 4. Enfileira com `allow_unpaid = 1` e origem `gerada` (log `QUEUE_ENQUEUE_AUTO_CREATED`).
 
-Qualquer falha é registrada em `QUEUE_ENQUEUE_AUTO_CREATED_ERROR` e não interrompe a geração da fatura no WHMCS. A emissão acontece no próximo processamento da fila, com a fatura ainda `Unpaid` (ver [Enfileiramento manual de fatura Unpaid](#enfileiramento-manual-de-fatura-unpaid)).
+Qualquer falha é registrada em `QUEUE_AUTO_CREATED_ERROR` e não interrompe a geração da fatura no WHMCS. Na conferência pelo cron, a falha também é logada, e a fatura é tentada de novo no próximo cron (até 30 dias). A emissão acontece no próximo processamento da fila, com a fatura ainda `Unpaid` (ver [Enfileiramento manual de fatura Unpaid](#enfileiramento-manual-de-fatura-unpaid)).
 
 No processamento, a fila roda de novo a política com o evento `GERADA` antes de emitir, com as mesmas regras do enfileiramento. Se algo mudou entre a geração e o processamento (o admin voltou o gatilho para `paga` ou `nunca`, desmarcou o gateway em **Emitir ao gerar a fatura**, o cliente trocou de gateway, mudou o custom field ou saiu do grupo), o item vai para `DONE` com `QUEUE_SKIP_POLICY` e a fatura segue a regra do pagamento.
 
 Se a fatura for paga antes do processamento, o item segue o caminho normal da fatura `Paid`, sem reavaliar a política da geração. Se for cancelada, o item vira `DONE` com `QUEUE_SKIP_NOT_PAID`. A emissão na geração não muda o tratamento do pagamento pelo gateway.
 
-No WHMCS 8.13, alguns caminhos de criação de fatura não têm o disparo do `InvoiceCreated` confirmado: publicar um rascunho sem enviar o e-mail (**Publish**), a fatura de Add Funds criada pelo admin e a divisão ou duplicação de fatura (`InvoiceSplit`). Se a nota não sair na geração nesses casos, ela sai no pagamento, porque o gatilho `gerada` também enfileira quando a fatura é paga.
+Os caminhos de criação ainda não observados no dev (geração automática e API, fatura de Add Funds criada pelo admin, divisão ou duplicação de fatura com `InvoiceSplit`) também passam pelo `InvoiceCreation` e, portanto, pela conferência do cron. Se, mesmo assim, a nota não sair na geração, ela sai no pagamento, porque o gatilho `gerada` também enfileira quando a fatura é paga.
 
 #### Valor da NFS-e e valor pago
 
@@ -427,6 +444,7 @@ A origem recomendada é o cron do WHMCS, pelo hook `AfterCronJob`. `cron.php` co
 2. Tenta o lock MySQL `<banco>.mod_opennfse_cron` sem esperar (`CronLockService`). Se outro processo está com o lock, sai e grava o log `CRON_LOCK_BUSY`, no máximo um a cada 15 minutos (`cron_lock_busy_at` na configuração).
 3. **Proteção por minuto**: compara `cron_last_minute_key` (formato `YmdHi`) com o minuto atual e sai se o cron já rodou neste minuto. Depois grava `cron_last_run_at`, `cron_last_source` (`whmcs_cron` ou `standalone`) e a chave do minuto.
 4. Com `queue_enabled = 1`:
+   - trata as conferências de criação pendentes (`GenerationCheckService::processPending()`, até 200; ver [Emissão automática na geração da fatura](#emissão-automática-na-geração-da-fatura)). Uma falha nessa etapa vai para o log `QUEUE_AUTO_CREATED_ERROR` e não interrompe o ciclo;
    - processa a fila (`processBatch(20)`);
    - consulta até 50 notas `PROCESSANDO` (as consultadas há mais tempo primeiro), pulando faturas com item ativo na fila para não haver consulta paralela da mesma nota. Exceção na consulta marca a nota como `ERRO` (log `CRON_ERROR`);
    - consulta até 50 notas `EMITIDA` sem chave para recuperar a chave, com a mesma exclusão.
