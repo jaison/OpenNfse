@@ -223,13 +223,16 @@ final class GenerationCheckServiceTest extends TestCase
         $this->assertArrayHasKey(70, $this->repo->rows);
     }
 
-    public function testMigrationIsIdempotentAndUpgradesTheFirstSchema(): void
+    public function testMigrationIsASingleIdempotentCreateWithAllColumns(): void
     {
-        $sql = (string) file_get_contents(dirname(__DIR__, 2) . '/migrations/046_create_geracao_checks.sql');
+        $sql = trim((string) file_get_contents(dirname(__DIR__, 2) . '/migrations/046_create_geracao_checks.sql'));
         $this->assertStringStartsWith('CREATE TABLE IF NOT EXISTS mod_opennfse_geracao_checks', $sql);
-        foreach (['proxima_em', 'tentativas', 'erro_logado_em'] as $column) {
-            $this->assertStringContainsString('ADD COLUMN ' . $column, $sql);
+        foreach (['registrado_em', 'verificado_em', 'proxima_em', 'tentativas', 'erro_logado_em', 'PRIMARY KEY (invoiceid)', 'KEY idx_nfse_geracao_check_proxima (proxima_em)'] as $part) {
+            $this->assertStringContainsString($part, $sql);
         }
-        $this->assertStringContainsString('WHERE proxima_em IS NULL', $sql);
+        // Um único comando: o Migrator roda todo .sql a cada requisição.
+        $this->assertSame(1, substr_count($sql, ';'));
+        $this->assertStringNotContainsString('ALTER TABLE', $sql);
+        $this->assertStringNotContainsString('UPDATE ', $sql);
     }
 }
