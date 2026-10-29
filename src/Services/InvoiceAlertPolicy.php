@@ -78,8 +78,12 @@ final class InvoiceAlertPolicy
      * $expectedValue é o valor que a nota deveria ter (NfseValueResolver), usado na fatura de
      * Mass Pay que desconta faturas originais com nota própria. Null compara com o total cobrado.
      */
-    public static function onTotalChanged(?array $nota, ?float $notaValue, array $invoice, ?float $expectedValue = null): ?array
-    {
+    public static function onTotalChanged(
+        ?array $nota,
+        ?float $notaValue,
+        array $invoice,
+        ?float $expectedValue = null
+    ): ?array {
         if (!self::hasEmittedNota($nota) || $notaValue === null) {
             return null;
         }

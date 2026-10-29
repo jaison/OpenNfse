@@ -118,7 +118,8 @@ final class InvoiceAlertPolicyTest extends TestCase
     public function testMassPayPartialWithNewLateFeeAlerts(): void
     {
         $invoice = ['total' => '165.00', 'credit' => '0.00'];
-        $items = array_merge(self::massPayPartialItems(), [['type' => 'LateFee', 'relid' => 0, 'amount' => '10.00', 'description' => 'Multa']]);
+        $lateFee = ['type' => 'LateFee', 'relid' => 0, 'amount' => '10.00', 'description' => 'Multa'];
+        $items = array_merge(self::massPayPartialItems(), [$lateFee]);
         $expected = NfseValueResolver::compute($invoice, $items, [101])['value'];
 
         $decision = InvoiceAlertPolicy::onTotalChanged(self::EMITIDA, 55.0, $invoice, $expected);
@@ -224,7 +225,8 @@ final class InvoiceAlertPolicyTest extends TestCase
         $this->assertFalse(InvoiceAlertPolicy::isCreditAfterEmissionCandidate(self::EMITIDA, $gateway));
         $this->assertFalse(InvoiceAlertPolicy::isCreditAfterEmissionCandidate(self::EMITIDA, $unpaid));
         $this->assertFalse(InvoiceAlertPolicy::isCreditAfterEmissionCandidate(null, $creditOnly));
-        $this->assertFalse(InvoiceAlertPolicy::isCreditAfterEmissionCandidate(['status' => 'CANCELADA'] + self::EMITIDA, $creditOnly));
+        $cancelada = ['status' => 'CANCELADA'] + self::EMITIDA;
+        $this->assertFalse(InvoiceAlertPolicy::isCreditAfterEmissionCandidate($cancelada, $creditOnly));
     }
 
     public function testNoCreditAlertWhenInvoiceIsNotPaid(): void
