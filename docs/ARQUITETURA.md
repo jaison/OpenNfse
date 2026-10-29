@@ -18,7 +18,9 @@ Todos ficam em `modules/addons/OpenNfse/`:
 - [`hooks.php`](../hooks.php): registra os hooks do WHMCS:
   - `AdminInvoicesControlsOutput`: botões e status da NFS-e na fatura do admin (`InvoiceHook`).
   - `InvoicePaid`: enfileira a emissão automática (`InvoicePaidHook`, prioridade 1) e, num hook separado de prioridade 2, confere o alerta de crédito após a emissão (`InvoiceAlertHook::onPaid()`).
-  - `InvoiceCancelled`, `InvoiceRefunded`, `InvoiceUnpaid` e `UpdateInvoiceTotal`: abrem alertas de NFS-e quando a fatura já tem nota emitida (`InvoiceAlertHook`). Só observam: não cancelam nota nem bloqueiam o fluxo do WHMCS.
+  - `InvoiceCancelled`, `InvoiceRefunded`, `InvoiceUnpaid` e `AddTransaction`: abrem alertas de NFS-e quando a fatura já tem nota emitida (`InvoiceAlertHook`). O `AddTransaction` só age em transação de saída (estorno total ou parcial, reversão de pagamento).
+  - `UpdateInvoiceTotal`: só registra o pedido de conferência do total, que o cron faz depois (`InvoiceAlertHook::onTotalChanged()` → `AlertCheckService`).
+  - Os hooks de alerta só observam: não cancelam nota nem bloqueiam o fluxo do WHMCS.
   - `AfterCronJob`: roda o cron do módulo junto com o cron do WHMCS (`CronService::runFromWhmcsCron()`).
   - `ClientAreaPageViewInvoice`: resumo da NFS-e na fatura da área do cliente (`ClientInvoiceHook`).
   - `ClientAreaPrimaryNavbar`: item "Notas Fiscais" no menu Billing.
@@ -47,7 +49,7 @@ Todos ficam em `modules/addons/OpenNfse/`:
 
 - `InvoiceHook`: monta o bloco da NFS-e na fatura do admin.
 - `InvoicePaidHook`: decide se a fatura paga entra na fila.
-- `InvoiceAlertHook`: observa cancelamento, estorno, reabertura, alteração de total e pagamento da fatura e abre alertas quando ela tem nota `EMITIDA`. Erros vão só para o log (`NFSE_ALERTA_ERRO`).
+- `InvoiceAlertHook`: observa cancelamento, estorno, transações de saída (estorno parcial e reversão de pagamento), reabertura e pagamento da fatura e abre alertas quando ela tem nota `EMITIDA`. Na alteração de total, `onTotalChanged()` só registra o pedido de conferência, e `checkTotalNow()`, chamado pelo cron, compara o total gravado com o `vServ` da nota. Erros vão só para o log (`NFSE_ALERTA_ERRO`).
 - `ClientInvoiceHook`: monta o resumo da NFS-e na fatura da área do cliente.
 
 ### Services (`src/Services/`)
@@ -62,7 +64,7 @@ Emissão e fila:
 - `EmissionEligibilityService`: elegibilidade da fatura (status `Paid`, pagamento só com crédito, gateway habilitado).
 - `EmissionPreValidationService`: validação preventiva de configuração, fatura e tomador antes de montar a DPS.
 - `InvoiceFinancialsService`: total, crédito aplicado e detecção de pagamento só com crédito.
-- `CronService`: ciclo do cron (fila, consulta de notas `PROCESSANDO`, recuperação de chave, verificação de atualização e limpeza por retenção).
+- `CronService`: ciclo do cron (fila, consulta de notas `PROCESSANDO`, recuperação de chave, conferência diferida dos alertas, verificação de atualização e limpeza por retenção).
 - `CronLockService`: lock nomeado no MySQL (`GET_LOCK`/`RELEASE_LOCK`) que impede duas execuções simultâneas do cron.
 
 Arquivos, PDF e e-mail:
@@ -77,7 +79,8 @@ Arquivos, PDF e e-mail:
 Alertas:
 
 - `AlertService`: abre alertas de NFS-e (idempotente enquanto o alerta está aberto) e os marca como resolvidos, com log (`NFSE_ALERTA_CRIADO`, `NFSE_ALERTA_RESOLVIDO`) e histórico na fatura.
-- `InvoiceAlertPolicy`: decide, sem acesso ao banco, se um evento da fatura gera alerta e de qual tipo.
+- `InvoiceAlertPolicy`: decide, sem acesso ao banco, se um evento da fatura gera alerta e de qual tipo, inclusive se uma transação é de saída (`isOutgoingTransaction()`).
+- `AlertCheckService`: conferência diferida do total da fatura. Registra o pedido no `UpdateInvoiceTotal` e, no cron, processa os pedidos com 30 s ou mais (até 200 por ciclo), chamando `InvoiceAlertHook::checkTotalNow()`.
 
 Auditoria e apoio:
 
@@ -110,6 +113,7 @@ Auditoria e apoio:
 | `ApiAuditRepository` | `mod_opennfse_nsu_sync`, `mod_opennfse_distribuicao_dfe` |
 | `DpsApiAuditRepository` | `mod_opennfse_dps_audit_runs`, `mod_opennfse_dps_audit_results` |
 | `AlertRepository` (`AlertRepositoryInterface`) | `mod_opennfse_alertas` |
+| `AlertCheckRepository` (`AlertCheckRepositoryInterface`) | `mod_opennfse_alerta_checks` (pedidos de conferência diferida do total, uma linha por fatura) |
 | `ReportRepository` | consultas dos relatórios e do dashboard |
 | `UnpaidNfseReportRepository` | consultas do relatório "NFS-e de faturas não pagas" |
 | `WhmcsInvoiceRepository` | `tblinvoices`, `tblinvoiceitems`, `tblaccounts` (soma dos pagamentos da fatura) |
@@ -121,6 +125,7 @@ O uso dos campos do WHMCS está em [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_
 ### Helpers (`src/Helpers/`)
 
 - `NfseXmlExtractor`: extrai número, competência, data de emissão, chave e valor do serviço (`vServ`, por `extractValorServico()`) do XML da NFS-e.
+- `BrasiliaTime`: converte o horário de Brasília do `emitida_em` (vindo do `dhEmi`, UTC-03:00) para o fuso do PHP do servidor, usado pelo relatório "NFS-e de faturas não pagas" para comparar com o `datepaid`.
 - `CsvSanitizer`: neutraliza fórmulas nas células do CSV (valor que começa com `=`, `+`, `-`, `@`, TAB ou CR recebe um apóstrofo na frente). Números simples ficam como estão.
 - `CorrelationIdGenerator`: gera o `correlation_id` que liga fila e logs de uma mesma operação.
 - `ActionFormRenderer`: formulários `POST` com token para as ações das telas.
@@ -129,7 +134,7 @@ O uso dos campos do WHMCS está em [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_
 ### Migrations
 
 - [`src/Migrations/Migrator.php`](../src/Migrations/Migrator.php) executa em ordem todos os arquivos de [`migrations/`](../migrations/). Erros de coluna, tabela ou índice já existentes são ignorados, então rodar de novo é seguro.
-- O migrator roda na ativação do addon e também no início do cron, da fila, da emissão, do hook `InvoicePaid` e da área do cliente. Por isso, ao atualizar os arquivos do addon, as migrations novas são aplicadas sozinhas. O `AlertService` também roda o migrator quando a tabela `mod_opennfse_alertas` ainda não existe na hora de abrir um alerta.
+- O migrator roda na ativação do addon e também no início do cron, da fila, da emissão, do hook `InvoicePaid` e da área do cliente. Por isso, ao atualizar os arquivos do addon, as migrations novas são aplicadas sozinhas. O `AlertService` também roda o migrator quando a tabela `mod_opennfse_alertas` ainda não existe na hora de abrir um alerta, e o `AlertCheckService` faz o mesmo com `mod_opennfse_alerta_checks` na hora de registrar um pedido de conferência.
 
 ## Status internos
 
