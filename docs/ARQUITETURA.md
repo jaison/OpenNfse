@@ -17,7 +17,8 @@ Todos ficam em `modules/addons/OpenNfse/`:
 - [`OpenNfse.php`](../OpenNfse.php): registro do addon (`opennfse_config`), ativação (roda as migrations), saída do admin (`opennfse_output` → `AdminController`) e área do cliente (`opennfse_clientarea` → `ClientController`).
 - [`hooks.php`](../hooks.php): registra os hooks do WHMCS:
   - `AdminInvoicesControlsOutput`: botões e status da NFS-e na fatura do admin (`InvoiceHook`).
-  - `InvoicePaid`: enfileira a emissão automática (`InvoicePaidHook`).
+  - `InvoicePaid`: enfileira a emissão automática (`InvoicePaidHook`, prioridade 1) e, num hook separado de prioridade 2, confere o alerta de crédito após a emissão (`InvoiceAlertHook::onPaid()`).
+  - `InvoiceCancelled`, `InvoiceRefunded`, `InvoiceUnpaid` e `UpdateInvoiceTotal`: abrem alertas de NFS-e quando a fatura já tem nota emitida (`InvoiceAlertHook`). Só observam: não cancelam nota nem bloqueiam o fluxo do WHMCS.
   - `AfterCronJob`: roda o cron do módulo junto com o cron do WHMCS (`CronService::runFromWhmcsCron()`).
   - `ClientAreaPageViewInvoice`: resumo da NFS-e na fatura da área do cliente (`ClientInvoiceHook`).
   - `ClientAreaPrimaryNavbar`: item "Notas Fiscais" no menu Billing.
@@ -36,6 +37,8 @@ Todos ficam em `modules/addons/OpenNfse/`:
 - `QueueController`: tela da fila e ações `filaCheckNow`, `filaRetry` e `filaProcessNow`.
 - `NotasController`: emissão, reemissão, consulta de status, cancelamento, downloads e envio por e-mail a partir da fatura.
 - `ReportsController`: relatórios, auditorias, logs, exportações CSV/ZIP e cancelamento de XML órfão.
+- `NfseNaoPagasReportController`: aba "NFS-e de faturas não pagas" dos relatórios (`nfse_nao_pagas`) e o CSV dela.
+- `AlertasController`: lista de alertas de NFS-e (action `alertas`), ação "Marcar como resolvido" (`alertaResolver`) e contagem de alertas abertos para o dashboard.
 - `SequenciaisController`: consulta e ajuste manual dos sequenciais de DPS.
 - `ClientController`: área do cliente (lista de notas emitidas, download de XML/PDF e envio por e-mail).
 - `Support/AdminHelpersTrait`: utilitários compartilhados pelos controllers do admin.
@@ -44,6 +47,7 @@ Todos ficam em `modules/addons/OpenNfse/`:
 
 - `InvoiceHook`: monta o bloco da NFS-e na fatura do admin.
 - `InvoicePaidHook`: decide se a fatura paga entra na fila.
+- `InvoiceAlertHook`: observa cancelamento, estorno, reabertura, alteração de total e pagamento da fatura e abre alertas quando ela tem nota `EMITIDA`. Erros vão só para o log (`NFSE_ALERTA_ERRO`).
 - `ClientInvoiceHook`: monta o resumo da NFS-e na fatura da área do cliente.
 
 ### Services (`src/Services/`)
@@ -69,6 +73,11 @@ Arquivos, PDF e e-mail:
 - `InvoiceEmailService`: monta os anexos (XML salvo e PDF gerado) e envia ao cliente pelo módulo de e-mail do WHMCS (`whmcs_provider`) ou, sem ele, pelo `sendmessage()`.
 - `EmailTemplateService`: monta assunto e corpo do e-mail da NFS-e.
 - `InvoiceHistoryService`: registra eventos da NFS-e nas notas da fatura (`tblinvoices.notes`).
+
+Alertas:
+
+- `AlertService`: abre alertas de NFS-e (idempotente enquanto o alerta está aberto) e os marca como resolvidos, com log (`NFSE_ALERTA_CRIADO`, `NFSE_ALERTA_RESOLVIDO`) e histórico na fatura.
+- `InvoiceAlertPolicy`: decide, sem acesso ao banco, se um evento da fatura gera alerta e de qual tipo.
 
 Auditoria e apoio:
 
@@ -100,8 +109,10 @@ Auditoria e apoio:
 | `IbgeMunicipioRepository` | `mod_opennfse_ibge_municipios` |
 | `ApiAuditRepository` | `mod_opennfse_nsu_sync`, `mod_opennfse_distribuicao_dfe` |
 | `DpsApiAuditRepository` | `mod_opennfse_dps_audit_runs`, `mod_opennfse_dps_audit_results` |
+| `AlertRepository` (`AlertRepositoryInterface`) | `mod_opennfse_alertas` |
 | `ReportRepository` | consultas dos relatórios e do dashboard |
-| `WhmcsInvoiceRepository` | `tblinvoices`, `tblinvoiceitems` |
+| `UnpaidNfseReportRepository` | consultas do relatório "NFS-e de faturas não pagas" |
+| `WhmcsInvoiceRepository` | `tblinvoices`, `tblinvoiceitems`, `tblaccounts` (soma dos pagamentos da fatura) |
 | `WhmcsCustomerRepository` | `tblclients`, `tblcustomfieldsvalues` |
 | `WhmcsPaymentGatewayRepository` | `tblpaymentgateways` |
 
@@ -109,7 +120,8 @@ O uso dos campos do WHMCS está em [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_
 
 ### Helpers (`src/Helpers/`)
 
-- `NfseXmlExtractor`: extrai número, competência, data de emissão e chave do XML da NFS-e.
+- `NfseXmlExtractor`: extrai número, competência, data de emissão, chave e valor do serviço (`vServ`, por `extractValorServico()`) do XML da NFS-e.
+- `CsvSanitizer`: neutraliza fórmulas nas células do CSV (valor que começa com `=`, `+`, `-`, `@`, TAB ou CR recebe um apóstrofo na frente). Números simples ficam como estão.
 - `CorrelationIdGenerator`: gera o `correlation_id` que liga fila e logs de uma mesma operação.
 - `ActionFormRenderer`: formulários `POST` com token para as ações das telas.
 - `NameNormalizer` e `UfNormalizer`: normalização de nomes de município e UF.
@@ -117,7 +129,7 @@ O uso dos campos do WHMCS está em [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_
 ### Migrations
 
 - [`src/Migrations/Migrator.php`](../src/Migrations/Migrator.php) executa em ordem todos os arquivos de [`migrations/`](../migrations/). Erros de coluna, tabela ou índice já existentes são ignorados, então rodar de novo é seguro.
-- O migrator roda na ativação do addon e também no início do cron, da fila, da emissão, do hook `InvoicePaid` e da área do cliente. Por isso, ao atualizar os arquivos do addon, as migrations novas são aplicadas sozinhas.
+- O migrator roda na ativação do addon e também no início do cron, da fila, da emissão, do hook `InvoicePaid` e da área do cliente. Por isso, ao atualizar os arquivos do addon, as migrations novas são aplicadas sozinhas. O `AlertService` também roda o migrator quando a tabela `mod_opennfse_alertas` ainda não existe na hora de abrir um alerta.
 
 ## Status internos
 

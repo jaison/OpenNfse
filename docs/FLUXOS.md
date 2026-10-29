@@ -129,6 +129,8 @@ Hook `InvoicePaid` → `InvoicePaidHook::handle()`:
 
 A emissão acontece no próximo processamento da fila (cron ou **Processar agora**).
 
+O mesmo evento `InvoicePaid` tem um segundo hook, de prioridade 2, registrado à parte: `InvoiceAlertHook::onPaid()`, que só confere se cabe o alerta `CREDITO_APOS_EMISSAO` (ver [Alertas de NFS-e](#alertas-de-nfs-e)). Os dois hooks são independentes, e o de alerta não interfere no enfileiramento.
+
 ### Enfileiramento manual de fatura Unpaid
 
 Com `allow_manual_unpaid = 1` e a fila ligada, o botão **Emitir NFS-e** aceita fatura `Unpaid` e cria o item com `allow_unpaid = 1`. Na hora de processar, a fila só ignora a exigência de `Paid` se as três condições continuarem verdadeiras: a configuração ainda ligada, a fatura ainda `Unpaid` e o item com `allow_unpaid` igual a `1` ou nulo. As demais regras (crédito e gateway) continuam valendo. A emissão automática ao pagar sempre grava `allow_unpaid = 0`.
@@ -291,6 +293,46 @@ Botão **Cancelar NFS-e** na fatura → formulário (`cancelForm`) → `cancel` 
 
 No relatório **Auditoria XML**, um XML de NFS-e salvo em disco mas sem vínculo com a nota atual da fatura pode ser cancelado (`cancelOrphanXml` → `NfseService::cancelarNfseOrfaPorXmlPath()`). A chave vem do XML ou, se faltar, da consulta da DPS. O módulo recusa o cancelamento se o histórico fiscal já tiver cancelamento para aquela chave. O resultado vai para o histórico fiscal e para as notas da fatura, sem alterar a nota atual.
 
+## Alertas de NFS-e
+
+Uma NFS-e pode ficar emitida para uma fatura que depois é cancelada, estornada, reaberta ou alterada, ou que é quitada só com crédito. Nesses casos o módulo abre um **alerta** para revisão manual, em `mod_opennfse_alertas` (`AlertService`). O alerta não cancela a nota, não bloqueia emissão e não interrompe o fluxo do WHMCS. O cancelamento da NFS-e, quando cabível, continua manual, pelo [Cancelamento](#cancelamento), dentro do prazo do município.
+
+### Quando um alerta é aberto
+
+Os hooks ficam em `InvoiceAlertHook`, e as decisões em `InvoiceAlertPolicy`, sem acesso ao banco. Todos leem a nota atual da fatura em `mod_opennfse_notas` e só seguem se ela está `EMITIDA`. Nota `CANCELADA`, `PROCESSANDO`, `ERRO` ou `REJEITADA`, ou fatura sem nota, não geram alerta.
+
+| Tipo | Hook do WHMCS | Condição |
+|---|---|---|
+| `FATURA_CANCELADA_COM_NFSE` | `InvoiceCancelled` | Fatura cancelada com a nota emitida. |
+| `FATURA_ESTORNADA_COM_NFSE` | `InvoiceRefunded` | Fatura estornada com a nota emitida. |
+| `FATURA_REABERTA_COM_NFSE` | `InvoiceUnpaid` | Fatura voltou para `Unpaid` e tem pagamento registrado (soma de `amountin` menos `amountout` em `tblaccounts`, por `WhmcsInvoiceRepository::sumPayments()`) ou crédito aplicado. Fatura que nunca teve pagamento nem crédito não gera alerta. |
+| `FATURA_ALTERADA_COM_NFSE` | `UpdateInvoiceTotal` | O valor cobrado da fatura (o mesmo usado no `vServ` da DPS) passa a diferir em 1 centavo ou mais do `vServ` da nota. Fatura quitada só com crédito não entra nessa conferência. |
+| `CREDITO_APOS_EMISSAO` | `InvoicePaid` (prioridade 2) | Fatura `Paid` quitada só com crédito, com a nota emitida antes do `datepaid`. Sem `datepaid` válido, vale o momento do hook. Sem `emitida_em` na nota, ela conta como emitida antes. |
+
+No `UpdateInvoiceTotal`, o valor da nota vem do `vServ` do XML salvo (`NfseXmlExtractor::extractValorServico()`). O XML é localizado pelo `xml_path` da nota ou, se ele não resolver, por `StorageService::findLatestXmlAbsolutePath()` (ver [Localização do XML](#localização-do-xml-para-pdf-e-e-mail)), com limite de 5 MB. Sem o valor, não há alerta, e o log `NFSE_ALERTA_SEM_VALOR` registra que a alteração não foi conferida.
+
+Qualquer exceção nos hooks de alerta vai só para o log `NFSE_ALERTA_ERRO`, com a fatura e o hook.
+
+### Idempotência
+
+Cada alerta aberto guarda em `chave_aberto` o `sha1(invoiceid|tipo|chave_acesso)`, com índice único. `AlertService::raise()` não abre um segundo alerta igual enquanto o primeiro estiver aberto. Se outro pedido gravar o mesmo alerta no mesmo instante, o erro de chave duplicada é ignorado. Ao resolver, `chave_aberto` volta a `NULL`, e o mesmo evento pode abrir um alerta novo depois.
+
+Se a tabela `mod_opennfse_alertas` ainda não existir na hora de gravar, o `AlertService` roda o migrator e tenta de novo uma vez.
+
+### Onde o alerta aparece
+
+- **Dashboard**: card **Alertas de NFS-e** no bloco "Exigem atenção", com o total de alertas abertos de qualquer período. O card leva à lista.
+- **Lista de alertas** (action `alertas`, `AlertasController`): filtros por situação (abertos, que é o padrão, resolvidos ou todos), tipo e fatura, com até 500 alertas, do mais novo para o mais antigo. Mostra data, fatura e status dela, cliente, número e chave da NFS-e, tipo, detalhes e, nos resolvidos, quando e por quem. Se a nota atual da fatura não é mais a do alerta, a linha avisa "A nota atual da fatura é outra.". Se é a mesma nota, mas fora de `EMITIDA`, mostra o status atual.
+- **Log**: `NFSE_ALERTA_CRIADO` na abertura e `NFSE_ALERTA_RESOLVIDO` na resolução.
+- **Histórico da fatura**: uma linha em `tblinvoices.notes` (`InvoiceHistoryService`) na abertura ("Alerta: <tipo>. <detalhes>") e outra na resolução, com o admin.
+
+### Como resolver
+
+Na lista de alertas, cada alerta aberto tem duas ações:
+
+- **Cancelar NFS-e**: atalho para o formulário de cancelamento existente (`cancelForm`), exibido quando a nota do alerta ainda é a nota atual da fatura e está `EMITIDA` com chave. O cancelamento segue o fluxo normal e não fecha o alerta.
+- **Marcar como resolvido** (`alertaResolver`, `POST` com token CSRF e confirmação): grava `resolvido_em` e `resolvido_por` (o `adminid` da sessão), limpa `chave_aberto`, registra o log e o histórico e volta à lista com os mesmos filtros. Um alerta já resolvido não é alterado de novo.
+
 ## Área do cliente
 
 - **Menu**: item **Notas Fiscais** no menu Billing (`index.php?m=OpenNfse`). Lista até 50 notas `EMITIDA` com XML das faturas do cliente logado, com aviso configurável no topo (`client_area_notice_*`).
@@ -304,10 +346,22 @@ Em **Addons > OpenNfse > Relatórios** (`ReportsController`), por abas:
 - **NFS-e Emitidas**: notas emitidas e canceladas no período, com totais, ações por nota (consultar, reemitir, cancelar) e ZIP dos XMLs. O ZIP por competência separa os arquivos em `Emitidas/`, `Canceladas/` e `Emitidas para Estrangeiros/`.
 - **Falhas** e **Cancelamentos**.
 - **Auditoria Emissão**: faturas pagas em gateways ativos que não geraram NFS-e nem entraram na fila.
+- **NFS-e de faturas não pagas**: notas `EMITIDA` de faturas não pagas ou pagas depois da emissão (ver [abaixo](#nfs-e-de-faturas-não-pagas)).
 - **Auditoria XML**: compara a pasta mensal de XMLs com o `xml_path` das notas para achar órfãos e referências inconsistentes.
 - **Auditoria DPS > API**: confere na API as DPS da competência e procura lacunas na sequência (`DpsApiAuditService`, processada em lotes).
 - **Auditoria API** (distribuição por NSU, `ApiAuditService`): a tela existe no `ReportsController`, mas a aba `auditoria_api` não está na lista de abas do relatório, e uma URL com `tab=auditoria_api` abre **NFS-e Emitidas**.
 - **Histórico Fiscal**: emissões, cancelamentos e snapshots de cada fatura ao longo do tempo.
 - **Logs**: logs técnicos com visualização detalhada (`logView`).
 
-Exportação CSV disponível para as abas Emitidas, Falhas, Cancelamentos, Auditoria Emissão e Logs (`relatoriosExport`), e ZIP de XMLs pela aba Emitidas (`relatoriosExportZip`).
+Exportação CSV disponível para as abas Emitidas, Falhas, Cancelamentos, Auditoria Emissão, NFS-e de faturas não pagas e Logs (`relatoriosExport`), e ZIP de XMLs pela aba Emitidas (`relatoriosExportZip`).
+
+### NFS-e de faturas não pagas
+
+Aba `nfse_nao_pagas` (`NfseNaoPagasReportController`, com as consultas em `UnpaidNfseReportRepository`). Lista as notas `EMITIDA` em duas situações:
+
+- **Fatura não paga**: a fatura está em qualquer status diferente de `Paid` (`Unpaid`, `Cancelled`, `Refunded`, `Collections` etc.);
+- **Paga após a emissão**: a fatura está `Paid`, e o `datepaid` é posterior ao `emitida_em` da nota.
+
+Filtros: período de emissão (**Emitida de** e **Emitida até**, sobre `emitida_em`), situação (todas, fatura não paga ou paga após a emissão) e cliente (ID ou parte do nome, do sobrenome ou da empresa). A tela mostra até 500 notas, da emissão mais recente para a mais antiga, com data de emissão, fatura, cliente, número e chave da NFS-e, status da fatura, data de pagamento, valor e situação. Abaixo vêm os totais de notas, de cada situação e do valor das faturas. A tela também leva à lista de [alertas de NFS-e](#alertas-de-nfs-e).
+
+**Exportar CSV** usa os mesmos filtros, com até 5.000 linhas separadas por `;` e as colunas `emitida_em`, `invoiceid`, `cliente`, `numero_nf`, `chave_acesso`, `status_fatura`, `data_pagamento`, `valor`, `credito_aplicado` e `situacao`. Cada célula passa pelo `CsvSanitizer`: um valor que começa com `=`, `+`, `-`, `@`, TAB ou CR recebe um apóstrofo na frente, para a planilha tratá-lo como texto e não como fórmula. Números simples, inclusive negativos, ficam como estão.
