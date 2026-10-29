@@ -12,7 +12,7 @@ Tabelas e campos do WHMCS lidos pelo OpenNfse e como cada um entra na emissão, 
 | Código de serviço e NBS por grupo de produto | `tblhosting` → `tblproducts.gid` → `mod_opennfse_group_service_codes` |
 | Moeda do tomador no exterior | `tblcurrencies` |
 | Gateways habilitados | `tblpaymentgateways` + `mod_opennfse_payment_gateway_settings` |
-| Política de emissão automática | `tblclients.groupid` + `tblclientgroups`, `tblcustomfields` + `tblcustomfieldsvalues` |
+| Política de emissão automática | `tblclients.groupid` + `tblclientgroups`, `tblcustomfields` + `tblcustomfieldsvalues`, `tblinvoiceitems.type` |
 
 ## Tomador (`tblclients`)
 
@@ -53,6 +53,8 @@ Código: `WhmcsCustomerRepository::getCustomFieldValue()` e [`EmissionPolicyServ
 
 - Lido de `tblcustomfieldsvalues` com `relid = tblclients.id` e `fieldid = mod_opennfse_config.auto_emit_customfield_id` (`0` desliga).
 - Campo de cliente do tipo Drop Down, marcado como Admin Only. A tela de configuração lista os custom fields de cliente de `tblcustomfields` (`type = 'client'`).
+- Se o campo configurado não existe mais em `tblcustomfields` (`type = 'client'`), a regra por cliente é ignorada, e a configuração e o dashboard mostram um aviso.
+- O valor é comparado com as opções sem diferenciar maiúsculas de minúsculas e ignorando acentos e espaços extras. Valor vazio, ou cliente sem linha em `tblcustomfieldsvalues`, vale como "Não configurado".
 - O valor define o gatilho da emissão automática do cliente e vale antes do grupo e da regra global. Opções, como criar o campo e avisos em [FLUXOS.md](FLUXOS.md#custom-field-por-cliente).
 
 ## Fatura (`tblinvoices`)
@@ -64,7 +66,7 @@ Código: [`WhmcsInvoiceRepository`](../src/Repositories/WhmcsInvoiceRepository.p
 | `id` | Chave de integração (botões, fila, nota) e referência na descrição do serviço ("Serviços referentes à fatura #id"). O módulo não usa `invoicenum`. |
 | `userid` | Liga a fatura ao cliente e confere a posse da fatura na área do cliente. |
 | `status` | Emissão só com `Paid`. Exceções: `Unpaid` enfileirada manualmente com `allow_manual_unpaid` ligado e `Unpaid` enfileirada na geração da fatura pela política de emissão (ver [FLUXOS.md](FLUXOS.md#enfileiramento-manual-de-fatura-unpaid)). |
-| `total` | `valores/vServPrest/vServ`. Precisa ser maior que zero. |
+| `total` | `valores/vServPrest/vServ`. Precisa ser maior que zero: sem crédito aplicado, total zero é descartado na elegibilidade (`ZERO_VALUE`). |
 | `paymentmethod` | Regra de gateway e detecção de pagamento com crédito. |
 | `credit` | Detecção de pagamento só com crédito. |
 | `datepaid` | Data de pagamento exibida (e usada na ordenação) na auditoria de emissão. |
@@ -78,7 +80,7 @@ Pagamento só com crédito (`InvoiceFinancialsService::isCreditOnlyPayment()`): 
 |---|---|
 | `invoiceid` | Liga o item à fatura. |
 | `description` | Compõe `serv/cServ/xDescServ` (itens separados por ` \| `, texto limitado a 1900 caracteres). |
-| `type`, `relid` | Itens `Hosting` identificam o grupo do produto (`relid` = `tblhosting.id`). |
+| `type`, `relid` | Itens `Hosting` identificam o grupo do produto (`relid` = `tblhosting.id`). Na emissão ao gerar a fatura, item `Invoice` (pagamento em massa, Mass Pay) ou `AddFunds` (adição de crédito) impede o enfileiramento (motivos `MASS_PAY` e `ADD_FUNDS`). Essas faturas seguem só pela regra do pagamento. No pagamento e na emissão manual, o `relid` do item `Invoice` aponta a fatura original da Mass Pay: se alguma tem nota `EMITIDA` ou `PROCESSANDO` em `mod_opennfse_notas`, a agregadora não emite (`MASS_PAY_CHILD_ALREADY_ISSUED`). |
 
 A fatura precisa ter pelo menos um item.
 

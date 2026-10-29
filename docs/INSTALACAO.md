@@ -26,6 +26,8 @@ O release já traz as dependências em `vendor-scoped/`, com namespaces prefixad
 3. Revise a configuração em **Addons > OpenNfse** e clique em **Testar conexão**. Se o teste falhar com erro de certificado (por exemplo, `unable to get local issuer certificate`), atualize o pacote `ca-certificates` do servidor ou aponte `curl.cainfo` no `php.ini` para um bundle atualizado.
 4. No OpenLiteSpeed, faça um graceful restart para que os `.htaccess` sejam relidos (ver [SEGURANCA.md](SEGURANCA.md#5-acesso-web-direto-ao-diretório-do-addon)).
 
+Para voltar à v0.1.24, revise antes a emissão automática: quem usa o gatilho "Quando a fatura for gerada" ou o escopo por grupos passa a emitir ao pagar para todos os clientes, porque a v0.1.24 só conhece `auto_emit_on_payment`, que fica `1` sempre que o gatilho não é "Nunca" (ver [FLUXOS.md](FLUXOS.md#atualização-de-versões-anteriores)).
+
 O dashboard do addon avisa quando há versão nova. A checagem lê o `update.json` do repositório a cada 24 h, ou na hora, pelo botão **Verificar atualizações agora**.
 
 ## Configuração inicial

@@ -32,8 +32,8 @@ Todos ficam em `modules/addons/OpenNfse/`:
 
 ### Controllers (`src/Controllers/`)
 
-- `AdminController`: roteador do admin. Cada action declara o método HTTP (`GET`/`POST`) e se exige token CSRF. Delega às classes abaixo e renderiza o dashboard.
-- `ConfigController`: configuração geral (inclusive a política de emissão automática, com a lista de `tblclientgroups` e dos custom fields de cliente em `tblcustomfields`), certificado (validação e teste de conexão), DANFS-e, catálogo Serviço/NBS, mapeamento por grupo de produto, sincronização IBGE e verificação de atualização.
+- `AdminController`: roteador do admin. Cada action declara o método HTTP (`GET`/`POST`) e se exige token CSRF. Delega às classes abaixo e renderiza o dashboard, que avisa quando o custom field da emissão automática não existe mais.
+- `ConfigController`: configuração geral (inclusive a política de emissão automática, com a lista de `tblclientgroups` e dos custom fields de cliente em `tblcustomfields`, e o aviso quando o campo configurado foi apagado), certificado (validação e teste de conexão), DANFS-e, catálogo Serviço/NBS, mapeamento por grupo de produto, sincronização IBGE e verificação de atualização.
 - `QueueController`: tela da fila e ações `filaCheckNow`, `filaRetry` e `filaProcessNow`.
 - `NotasController`: emissão, reemissão, consulta de status, cancelamento, downloads e envio por e-mail a partir da fatura.
 - `ReportsController`: relatórios, auditorias, logs, exportações CSV/ZIP e cancelamento de XML órfão.
@@ -55,11 +55,11 @@ Emissão e fila:
 - `NfseService`: orquestra emissão, consulta de status e cancelamento (inclusive de XML órfão). Também reenvia a DPS após indisponibilidade da API e faz a reemissão controlada após E2404.
 - `DpsBuilderService`: monta o `DpsData` da SDK a partir da fatura, do cliente e da configuração.
 - `DpsLayoutService`: escolhe o leiaute da DPS (Pré-NT 009 ou NT 009) conforme a configuração **Leiaute da DPS**, o ambiente e a data, e gera a orientação para a rejeição E1235 por leiaute.
-- `QueueService`: enfileira e processa a fila (emissão sequencial e consultas `WAIT_STATUS`) e dispara o envio automático de e-mail após `DONE`.
+- `QueueService`: enfileira e processa a fila (emissão sequencial e consultas `WAIT_STATUS`), reavalia a política no item da geração da fatura antes de emitir e dispara o envio automático de e-mail após `DONE`.
 - `QueueErrorClassifierService`: identifica indisponibilidade transitória da API e decide se um erro admite nova tentativa.
-- `EmissionPolicyService`: política de emissão automática. Decide, para os eventos de geração, pagamento e manual, se a fatura entra na fila, com a precedência custom field do cliente > grupo de clientes > regra global, e diz se o processamento da fila aceita a fatura `Unpaid` de um item. Não acessa o banco e devolve um `EmissionDecision` (`src/Dto/`).
-- `EmissionPolicyContextLoader`: lê fatura, grupo e custom field do cliente, ajustes do gateway e nota atual para a política, e grava os avisos do custom field (`POLICY_CUSTOMFIELD_WARNING`).
-- `EmissionEligibilityService`: elegibilidade da fatura (status `Paid`, pagamento só com crédito, gateway habilitado).
+- `EmissionPolicyService`: política de emissão automática. Decide, para os eventos de geração, pagamento e manual, se a fatura entra na fila, com a precedência custom field do cliente > grupo de clientes > regra global, e diz se o processamento da fila aceita a fatura `Unpaid` de um item. O valor do custom field é comparado sem diferenciar maiúsculas, acentos e espaços extras. Não acessa o banco e devolve um `EmissionDecision` (`src/Dto/`).
+- `EmissionPolicyContextLoader`: lê fatura (inclusive os tipos dos itens, para identificar Mass Pay e Add Funds, e as notas das faturas originais da Mass Pay), grupo e custom field do cliente, ajustes do gateway e nota atual para a política, e grava o aviso de valor não reconhecido no custom field (`POLICY_CUSTOMFIELD_WARNING`). Se o campo configurado não existe mais em `tblcustomfields`, trata o cliente como "Não configurado".
+- `EmissionEligibilityService`: elegibilidade da fatura (status `Paid`, pagamento só com crédito, valor zero sem crédito aplicado, gateway habilitado).
 - `EmissionPreValidationService`: validação preventiva de configuração, fatura e tomador antes de montar a DPS.
 - `InvoiceFinancialsService`: total, crédito aplicado e detecção de pagamento só com crédito.
 - `CronService`: ciclo do cron (fila, consulta de notas `PROCESSANDO`, recuperação de chave, verificação de atualização e limpeza por retenção).
@@ -121,7 +121,8 @@ O uso dos campos do WHMCS está em [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_
 ### Migrations
 
 - [`src/Migrations/Migrator.php`](../src/Migrations/Migrator.php) executa em ordem todos os arquivos de [`migrations/`](../migrations/). Erros de coluna, tabela ou índice já existentes são ignorados, então rodar de novo é seguro.
-- O migrator roda na ativação do addon e também no início do cron, da fila, da emissão, do hook `InvoicePaid`, de cada enfileiramento (`QueueService::enqueueEmit()`) e da área do cliente. Por isso, ao atualizar os arquivos do addon, as migrations novas são aplicadas sozinhas.
+- O migrator é chamado na ativação do addon e também no início do cron, da fila, da emissão, do hook `InvoicePaid`, de cada enfileiramento (`QueueService::enqueueEmit()`), das telas do admin e da área do cliente. Por isso, ao atualizar os arquivos do addon, as migrations novas são aplicadas sozinhas.
+- Uma guarda estática faz o migrator rodar no máximo uma vez por processo PHP: as chamadas seguintes no mesmo processo (por exemplo, um enfileiramento por fatura na geração em lote) não repetem as migrations.
 
 ## Status internos
 
