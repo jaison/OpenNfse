@@ -131,6 +131,41 @@ final class InvoiceCreatedHookTest extends TestCase
         $this->assertSame([], $this->logTypes());
     }
 
+    public function testPreEmailDoesNotQueryChecksWhenGenerationIsOff(): void
+    {
+        $this->database(['auto_emit_trigger' => 'paga']);
+        $repo = new class () extends \stdClass implements \OpenNfse\Repositories\GenerationCheckRepositoryInterface {
+            public int $queries = 0;
+
+            public function register(int $invoiceId, string $at, string $dueAt): void
+            {
+            }
+
+            public function exists(int $invoiceId): bool
+            {
+                $this->queries++;
+                return true;
+            }
+
+            public function listDue(string $now, int $limit): array
+            {
+                return [];
+            }
+
+            public function reschedule(int $invoiceId, array $fields): void
+            {
+            }
+
+            public function delete(int $invoiceId): void
+            {
+            }
+        };
+        $hook = new InvoiceCreatedHook(fn (int $id): bool => true, new GenerationCheckService($repo));
+
+        $hook->handlePreEmail(['invoiceid' => 500, 'status' => 'Unpaid']);
+        $this->assertSame(0, $repo->queries, 'Sem a emissão na geração, nada de SELECT na tabela de conferências.');
+    }
+
     public function testConfigIsReadOncePerProcess(): void
     {
         $this->hook()->registerCreation(['invoiceid' => 500]);

@@ -99,7 +99,9 @@ final class InvoiceCreatedHook
         }
 
         try {
-            if (!$this->checks()->isPending($invoiceId)) {
+            // Quem não usa a emissão na geração não consulta a tabela de conferências.
+            $config = self::config();
+            if (empty($config) || !self::onCreateMayApply($config) || !$this->checks()->isPending($invoiceId)) {
                 return;
             }
         } catch (\Throwable $e) {

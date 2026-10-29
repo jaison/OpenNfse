@@ -105,6 +105,18 @@ final class GenerationCheckServiceTest extends TestCase
         $this->assertArrayHasKey(11, $this->repo->rows);
     }
 
+    public function testOldDraftPublishedLaterIsNotEmittedOnGeneration(): void
+    {
+        // Rascunho registrado há 31 dias e publicado agora: apaga sem rodar o tratamento da geração.
+        $this->register(13, 31);
+        $this->statuses[13] = 'Unpaid';
+
+        $this->assertSame(0, $this->service()->processPending(self::CONFIG, self::NOW));
+        $this->assertSame([], $this->handlerCalls);
+        $this->assertSame([], $this->repo->rows);
+        $this->assertSame([], $this->logTypes());
+    }
+
     public function testOtherStatusesAndMissingInvoiceAreDroppedWithoutAction(): void
     {
         foreach ([20 => 'Paid', 21 => 'Cancelled', 22 => 'Refunded', 23 => null] as $id => $status) {

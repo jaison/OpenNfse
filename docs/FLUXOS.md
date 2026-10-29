@@ -275,13 +275,14 @@ Conferência de criação: no `InvoiceCreation`, com `queue_enabled = 1` e algum
 
 O cron trata as conferências vencidas (`proxima_em` até agora) antes de processar a fila, até 200 por execução, das mais antigas para as mais novas. Sem fila ligada ou sem regra de geração, ele não consulta nada:
 
+- registro com mais de 30 dias, qualquer que seja o status: apagado sem ação (um rascunho antigo publicado depois não emite na geração e segue a regra do pagamento);
 - fatura `Unpaid`: passa pelo mesmo tratamento da geração (política, enfileiramento ou `QUEUE_SKIP_POLICY`) e o registro é apagado;
-- fatura `Draft`: confere de novo em 5 minutos, e o registro é apagado sem ação depois de 30 dias;
+- fatura `Draft`: confere de novo em 5 minutos;
 - outro status (`Paid`, `Cancelled` etc.) ou fatura apagada: o registro é apagado sem ação (o pagamento cuida da fatura `Paid`);
 - fatura já tratada, com item na fila em qualquer status ou nota `EMITIDA`/`PROCESSANDO`: o registro é apagado em silêncio, sem log;
 - falha no tratamento: tenta de novo com intervalo crescente (5 min, 15 min, 1 h, 6 h e depois 1 vez por dia, contado em `tentativas`), até 30 dias. O log `QUEUE_AUTO_CREATED_ERROR` sai na primeira falha e depois no máximo 1 vez por dia por fatura (`erro_logado_em`).
 
-O **Publish** do admin sem chamar o `InvoiceCreated` foi observado no WHMCS 9; o desenho (hooks imediatos mais a conferência pelo cron) cobre qualquer versão, chame ela o `InvoiceCreated` ou não. No **Publish** sem e-mail, a emissão na geração entra na fila no primeiro cron depois de 5 minutos da criação. O caminho imediato e o cron usam o mesmo tratamento (`InvoiceCreatedHook::processGenerated()`) e, juntos, geram no máximo um item na fila e uma decisão logada por fatura.
+O **Publish** do admin sem chamar o `InvoiceCreated` foi observado no WHMCS 9; o desenho (hooks imediatos mais a conferência pelo cron) cobre qualquer versão, chame ela o `InvoiceCreated` ou não. No **Publish** sem e-mail, a emissão na geração entra na fila em até cerca de 5 minutos depois da publicação. O caminho imediato e o cron usam o mesmo tratamento (`InvoiceCreatedHook::processGenerated()`) e, juntos, geram no máximo um item na fila e uma decisão logada por fatura.
 
 O tratamento da geração:
 

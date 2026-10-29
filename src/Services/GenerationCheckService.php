@@ -176,6 +176,13 @@ final class GenerationCheckService
                     continue;
                 }
 
+                // Registrada há mais de MAX_DAYS: apaga sem ação, qualquer que seja o status. Um
+                // rascunho antigo publicado depois não é emitido na geração (segue a regra do pagamento).
+                if ($expired) {
+                    $this->repository->delete($invoiceId);
+                    continue;
+                }
+
                 $status = ($this->statusReader)($invoiceId);
                 $status = $status === null ? null : strtolower(trim($status));
 
@@ -187,14 +194,10 @@ final class GenerationCheckService
 
                 if ($status === 'draft' || $status === 'unpaid') {
                     // Rascunho (ou o tratamento ainda viu rascunho): confere de novo no intervalo normal.
-                    if ($expired) {
-                        $this->repository->delete($invoiceId);
-                    } else {
-                        $this->repository->reschedule($invoiceId, [
-                            'verificado_em' => $nowAt,
-                            'proxima_em' => date('Y-m-d H:i:s', $now + self::INTERVAL_SECONDS),
-                        ]);
-                    }
+                    $this->repository->reschedule($invoiceId, [
+                        'verificado_em' => $nowAt,
+                        'proxima_em' => date('Y-m-d H:i:s', $now + self::INTERVAL_SECONDS),
+                    ]);
                     continue;
                 }
 
