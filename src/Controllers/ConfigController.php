@@ -34,11 +34,11 @@ final class ConfigController
     use AdminHelpersTrait;
 
     private const AUTO_EMIT_VALUE_WARNING = 'A NFS-e emitida na geração usa o valor da fatura naquele momento. '
-        . 'Se o cliente pagar com um gateway que acrescenta taxa, juros ou multa (ex.: PagHiper, que inclui a taxa '
-        . 'na fatura só depois do pagamento), ou com desconto por antecipação, ou trocar de gateway, o valor final '
-        . 'da fatura vai ser diferente do valor da NFS-e, e o alerta \'Fatura alterada com NFS-e\' será aberto. '
-        . 'Como não é possível saber de antemão qual gateway o cliente vai usar, recomendamos NÃO repassar taxas '
-        . 'ao cliente nos gateways usados com a emissão na geração.';
+        . 'Se o valor da fatura mudar depois, por taxa, juros ou multa acrescentados no pagamento (ex.: o PagHiper '
+        . 'inclui a taxa na fatura só depois do pagamento) ou por desconto de antecipação, ele vai ficar diferente '
+        . 'do valor da NFS-e, e o alerta "Fatura alterada com NFS-e" será aberto. Como não é possível saber de '
+        . 'antemão qual gateway o cliente vai usar, e cada gateway pode ter uma taxa diferente, recomendamos NÃO '
+        . 'repassar taxas ao cliente nos gateways usados com a emissão na geração.';
 
     /** Valores aceitos pelo TSRegEspTrib do leiaute nacional 1.01. */
     private const REG_ESP_TRIB_VALIDOS = ['0', '1', '2', '3', '4', '5', '6', '9'];

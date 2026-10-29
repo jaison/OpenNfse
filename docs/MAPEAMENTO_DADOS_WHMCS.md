@@ -80,7 +80,7 @@ Pagamento só com crédito (`InvoiceFinancialsService::isCreditOnlyPayment()`): 
 |---|---|
 | `invoiceid` | Liga o item à fatura. |
 | `description` | Compõe `serv/cServ/xDescServ` (itens separados por ` \| `, texto limitado a 1900 caracteres). |
-| `type`, `relid` | Itens `Hosting` identificam o grupo do produto (`relid` = `tblhosting.id`). Na emissão ao gerar a fatura, item `Invoice` (pagamento em massa, Mass Pay) ou `AddFunds` (adição de crédito) impede o enfileiramento (motivos `MASS_PAY` e `ADD_FUNDS`). Essas faturas seguem só pela regra do pagamento. No pagamento e na emissão manual, o `relid` do item `Invoice` aponta a fatura original da Mass Pay: se alguma tem nota `EMITIDA` ou `PROCESSANDO` em `mod_opennfse_notas`, a agregadora não emite (`MASS_PAY_CHILD_ALREADY_ISSUED`). |
+| `type`, `relid` | Itens `Hosting` identificam o grupo do produto (`relid` = `tblhosting.id`). Na emissão ao gerar a fatura, item `Invoice` (pagamento em massa, Mass Pay) ou `AddFunds` (adição de crédito) impede o enfileiramento (motivos `MASS_PAY` e `ADD_FUNDS`). Essas faturas seguem só pela regra do pagamento. O `relid` do item `Invoice` aponta a fatura original da Mass Pay: o `NfseValueResolver` desconta da nota da agregadora os itens das faturas originais com nota `EMITIDA` ou `PROCESSANDO` em `mod_opennfse_notas`; se todas têm nota, a agregadora não emite (`MASS_PAY_CHILD_ALREADY_ISSUED`). |
 
 A fatura precisa ter pelo menos um item.
 

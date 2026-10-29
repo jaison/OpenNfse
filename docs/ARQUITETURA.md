@@ -59,12 +59,13 @@ Todos ficam em `modules/addons/OpenNfse/`:
 Emissão e fila:
 
 - `NfseService`: orquestra emissão, consulta de status e cancelamento (inclusive de XML órfão). Também reenvia a DPS após indisponibilidade da API e faz a reemissão controlada após E2404.
-- `DpsBuilderService`: monta o `DpsData` da SDK a partir da fatura, do cliente e da configuração.
+- `DpsBuilderService`: monta o `DpsData` da SDK a partir da fatura, do cliente e da configuração. O valor do serviço e os itens da descrição vêm do `NfseValueResolver`.
+- `NfseValueResolver`: ponto único do valor da NFS-e (vServ) e dos itens descritos. Fatura comum: total pago pelo gateway. Agregadora de Mass Pay: desconta os itens das faturas originais que já têm nota `EMITIDA` ou `PROCESSANDO`.
 - `DpsLayoutService`: escolhe o leiaute da DPS (Pré-NT 009 ou NT 009) conforme a configuração **Leiaute da DPS**, o ambiente e a data, e gera a orientação para a rejeição E1235 por leiaute.
 - `QueueService`: enfileira e processa a fila (emissão sequencial e consultas `WAIT_STATUS`) e reavalia a política no item da geração da fatura antes de emitir.
 - `QueueErrorClassifierService`: identifica indisponibilidade transitória da API e decide se um erro admite nova tentativa.
 - `EmissionPolicyService`: política de emissão automática. Decide, para os eventos de geração, pagamento e manual, se a fatura entra na fila, com a precedência custom field do cliente > grupo de clientes > regra global, e diz se o processamento da fila aceita a fatura `Unpaid` de um item. O valor do custom field é comparado sem diferenciar maiúsculas, acentos e espaços extras. Não acessa o banco e devolve um `EmissionDecision` (`src/Dto/`).
-- `EmissionPolicyContextLoader`: lê fatura (inclusive os tipos dos itens, para identificar Mass Pay e Add Funds, e as notas das faturas originais da Mass Pay), grupo e custom field do cliente, ajustes do gateway e nota atual para a política, e grava o aviso de valor não reconhecido no custom field (`POLICY_CUSTOMFIELD_WARNING`). Se o campo configurado não existe mais em `tblcustomfields`, trata o cliente como "Não configurado".
+- `EmissionPolicyContextLoader`: lê fatura (inclusive os tipos dos itens, para identificar Mass Pay e Add Funds, e o valor da NFS-e pelo `NfseValueResolver`), grupo e custom field do cliente, ajustes do gateway e nota atual para a política, e grava o aviso de valor não reconhecido no custom field (`POLICY_CUSTOMFIELD_WARNING`). Se o campo configurado não existe mais em `tblcustomfields`, trata o cliente como "Não configurado".
 - `EmissionEligibilityService`: elegibilidade da fatura (status `Paid`, pagamento só com crédito, valor zero sem crédito aplicado, gateway habilitado).
 - `EmissionPreValidationService`: validação preventiva de configuração, fatura e tomador antes de montar a DPS.
 - `InvoiceFinancialsService`: total, crédito aplicado e detecção de pagamento só com crédito.
