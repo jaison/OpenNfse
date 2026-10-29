@@ -207,6 +207,7 @@ Quando a política não enfileira, o hook grava um log com o motivo:
 | `NOT_PAID` | pagamento | fatura não está `Paid` | `QUEUE_SKIP_NOT_PAID` |
 | `ZERO_VALUE` | pagamento | total menor ou igual a zero, sem crédito aplicado | `QUEUE_SKIP_ZERO_VALUE` |
 | `MASS_PAY_CHILD_ALREADY_ISSUED` | pagamento | Mass Pay em que todas as faturas originais já têm nota `EMITIDA` ou `PROCESSANDO` | `QUEUE_SKIP_POLICY` |
+| `MASS_PAY_NO_REMAINING_VALUE` | pagamento | Mass Pay em que o crédito aplicado zerou o valor que sobra depois de descontar as faturas originais com nota | `QUEUE_SKIP_POLICY` |
 | `CREDIT_PAYMENT` | pagamento | pagamento só com crédito | `QUEUE_SKIP_CREDIT_PAYMENT` |
 | `GATEWAY_DISABLED` | pagamento | gateway com a emissão de NFS-e desativada | `QUEUE_SKIP_GATEWAY_DISABLED` |
 
@@ -318,6 +319,13 @@ O valor e a descrição da nota de M vêm de um ponto único, `NfseValueResolver
 - **Todas as filhas com nota**: valor zero, e M não emite (`MASS_PAY_CHILD_ALREADY_ISSUED`): no pagamento grava `QUEUE_SKIP_POLICY`, na emissão manual mostra a mensagem ao admin, e na fila o item vai para `DONE` com `QUEUE_SKIP_POLICY`.
 
 O valor é recalculado na hora de emitir (fila, emissão manual, reemissão), porque uma filha pode ter ganhado nota depois do enfileiramento de M. Na emissão direta (fila desligada), M sem valor a declarar grava `EMISSAO_SKIP_POLICY` e mostra a mesma mensagem.
+
+Se as filhas com nota não cobrem todas as filhas, mas o crédito aplicado em M zerou o valor restante, M também não emite, com o motivo `MASS_PAY_NO_REMAINING_VALUE` e a mensagem "Não há valor a emitir nesta fatura de pagamento em massa (Mass Pay): descontadas as NFS-e das faturas agrupadas e o crédito aplicado, o valor restante é zero."
+
+Uma filha com nota `PROCESSANDO` conta como coberta. Se essa nota terminar `REJEITADA` ou em `ERRO` depois que M saiu com o valor reduzido, o serviço da filha fica sem nota. Para corrigir:
+
+1. Cancele a NFS-e de M.
+2. Reemita M. O valor é recalculado e passa a incluir a filha.
 
 Pendente de confirmação no dev: se o WHMCS quitar as filhas pelo gateway, e não com crédito, cada filha emite a própria nota pelo pagamento, e a de M só desconta as filhas que já têm nota naquele momento. Item ativo na fila não conta como nota.
 

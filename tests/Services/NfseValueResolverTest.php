@@ -72,6 +72,33 @@ final class NfseValueResolverTest extends TestCase
         $this->assertFalse($r['partial']);
     }
 
+    public function testCoverageFlagDistinguishesCreditZeroingFromAllCovered(): void
+    {
+        // total de M já vem líquido do crédito: 100 em itens, 40 de crédito, total 60.
+        $creditZero = R::compute(['total' => '60.00', 'credit' => '40.00'], $this->massPayItems(), [101]);
+        $this->assertSame(0.0, $creditZero['value']);
+        $this->assertFalse($creditZero['all_children_covered']);
+        $this->assertSame(
+            \OpenNfse\Services\EmissionPolicyService::CODE_MASS_PAY_NO_REMAINING_VALUE,
+            \OpenNfse\Services\EmissionPolicyService::massPayBlock($creditZero)[0]
+        );
+
+        $allCovered = R::compute(['total' => '100.00'], $this->massPayItems(), [101, 102]);
+        $this->assertTrue($allCovered['all_children_covered']);
+        $this->assertSame(
+            \OpenNfse\Services\EmissionPolicyService::CODE_MASS_PAY_CHILD_ALREADY_ISSUED,
+            \OpenNfse\Services\EmissionPolicyService::massPayBlock($allCovered)[0]
+        );
+
+        // Mesmo caminho da fila: resolve() lendo as notas.
+        Capsule::$rows['mod_opennfse_notas'] = [(object) ['invoiceid' => 101, 'status' => 'PROCESSANDO']];
+        $queuePath = (new R())->resolve(['id' => 500, 'total' => '60.00', 'credit' => '40.00'], $this->massPayItems());
+        $this->assertSame(
+            \OpenNfse\Services\EmissionPolicyService::CODE_MASS_PAY_NO_REMAINING_VALUE,
+            \OpenNfse\Services\EmissionPolicyService::massPayBlock($queuePath)[0]
+        );
+    }
+
     public function testLateFeeStaysInValueAndDescription(): void
     {
         $items = array_merge($this->massPayItems(), [['type' => 'LateFee', 'relid' => 0, 'amount' => '5.00', 'description' => 'Multa']]);

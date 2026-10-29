@@ -49,6 +49,7 @@ final class EmissionPolicyService
     public const CODE_MASS_PAY = 'MASS_PAY';
     public const CODE_ADD_FUNDS = 'ADD_FUNDS';
     public const CODE_MASS_PAY_CHILD_ALREADY_ISSUED = 'MASS_PAY_CHILD_ALREADY_ISSUED';
+    public const CODE_MASS_PAY_NO_REMAINING_VALUE = 'MASS_PAY_NO_REMAINING_VALUE';
     // Mesmos códigos do EmissionEligibilityService, para manter os logs QUEUE_SKIP_* de antes.
     public const CODE_NOT_PAID = EmissionEligibilityService::SKIP_NOT_PAID;
     public const CODE_CREDIT_PAYMENT = EmissionEligibilityService::SKIP_CREDIT_PAYMENT;
@@ -60,6 +61,8 @@ final class EmissionPolicyService
     public const MSG_CUSTOMFIELD_MISSING = 'O custom field configurado para a emissão automática não existe mais; '
         . 'a regra por cliente está sendo ignorada.';
 
+    public const MSG_MASS_PAY_NO_REMAINING_VALUE = 'Não há valor a emitir nesta fatura de pagamento em massa '
+        . '(Mass Pay): descontadas as NFS-e das faturas agrupadas e o crédito aplicado, o valor restante é zero.';
     public const MSG_ZERO_VALUE = 'Fatura com valor zero: não há serviço a declarar na NFS-e.';
     public const MSG_MASS_PAY_CHILD_ISSUED = 'Todas as faturas agrupadas nesta fatura de pagamento em massa '
         . '(Mass Pay) já têm NFS-e emitida ou em processamento. Emitir outra NFS-e aqui duplicaria a nota do '
@@ -403,12 +406,9 @@ final class EmissionPolicyService
         if (!$this->gatewayEnabled($gatewaySettings)) {
             return $this->skip(self::CODE_GATEWAY_DISABLED, 'Gateway desabilitado para emissão.', self::SOURCE_MANUAL);
         }
-        if ($this->massPayChildAlreadyIssued($invoice)) {
-            return $this->skip(
-                self::CODE_MASS_PAY_CHILD_ALREADY_ISSUED,
-                self::MSG_MASS_PAY_CHILD_ISSUED,
-                self::SOURCE_MANUAL
-            );
+        $massPayBlock = $this->massPayBlockFor($invoice);
+        if ($massPayBlock !== null) {
+            return $this->skip($massPayBlock[0], $massPayBlock[1], self::SOURCE_MANUAL);
         }
 
         return new EmissionDecision(
@@ -486,29 +486,46 @@ final class EmissionPolicyService
         if (!$this->gatewayEnabled($gatewaySettings)) {
             return [self::CODE_GATEWAY_DISABLED, 'Gateway desabilitado para emissão.'];
         }
-        if ($this->massPayChildAlreadyIssued($invoice)) {
-            return [self::CODE_MASS_PAY_CHILD_ALREADY_ISSUED, self::MSG_MASS_PAY_CHILD_ISSUED];
+        $massPayBlock = $this->massPayBlockFor($invoice);
+        if ($massPayBlock !== null) {
+            return $massPayBlock;
         }
 
         return null;
     }
 
     /**
-     * Fatura agregadora de Mass Pay (itens type Invoice) em que as filhas com nota EMITIDA ou
-     * PROCESSANDO cobrem todo o valor: o NfseValueResolver devolve valor <= 0 e não há o que emitir.
-     * Com parte das filhas coberta, a nota de M sai só com o restante (não bloqueia).
+     * Bloqueio da agregadora de Mass Pay a partir do resultado do NfseValueResolver: valor <= 0 depois
+     * de descontar as filhas com nota. Com todas as filhas cobertas, MASS_PAY_CHILD_ALREADY_ISSUED;
+     * se o crédito aplicado zerou o restante, MASS_PAY_NO_REMAINING_VALUE. Com parte das filhas
+     * coberta e valor restante, a nota de M sai só com o restante (null, não bloqueia).
+     * Usado pela política, pela fila e pela emissão direta.
+     *
+     * @return array{0: string, 1: string}|null código e mensagem
      */
-    private function massPayChildAlreadyIssued(array $invoice): bool
+    public static function massPayBlock(?array $resolved): ?array
     {
-        if (!in_array('invoice', self::normalizedItemTypes($invoice['item_types'] ?? []), true)) {
-            return false;
+        if ($resolved === null || ($resolved['excluded_children'] ?? []) === []) {
+            return null;
         }
-        $resolved = $invoice['nfse_value'] ?? null;
-        if (!is_array($resolved) || ($resolved['excluded_children'] ?? []) === []) {
-            return false;
+        if ((float) ($resolved['value'] ?? 0) > 0.00001) {
+            return null;
         }
 
-        return (float) ($resolved['value'] ?? 0) <= 0.00001;
+        return !empty($resolved['all_children_covered'])
+            ? [self::CODE_MASS_PAY_CHILD_ALREADY_ISSUED, self::MSG_MASS_PAY_CHILD_ISSUED]
+            : [self::CODE_MASS_PAY_NO_REMAINING_VALUE, self::MSG_MASS_PAY_NO_REMAINING_VALUE];
+    }
+
+    /** @return array{0: string, 1: string}|null */
+    private function massPayBlockFor(array $invoice): ?array
+    {
+        if (!in_array('invoice', self::normalizedItemTypes($invoice['item_types'] ?? []), true)) {
+            return null;
+        }
+        $resolved = $invoice['nfse_value'] ?? null;
+
+        return self::massPayBlock(is_array($resolved) ? $resolved : null);
     }
 
     /**

@@ -299,7 +299,8 @@ if (empty($config)) {
                 // Agregadora de Mass Pay: recalcula o valor na hora de emitir (uma filha pode ter ganhado
                 // nota depois do enfileiramento). Sem valor a declarar, o item vai para DONE.
                 $nfseValue = (new NfseValueResolver())->resolve($invoice, $invoiceRepo->getItems($invoiceId));
-                if ($nfseValue['excluded_children'] !== [] && $nfseValue['value'] <= 0) {
+                $massPayBlock = EmissionPolicyService::massPayBlock($nfseValue);
+                if ($massPayBlock !== null) {
                     $queueRepo->markDone($id);
                     $logRepo->insert(
                         null,
@@ -307,10 +308,10 @@ if (empty($config)) {
                         json_encode([
                             'queue_id' => $id,
                             'invoiceid' => $invoiceId,
-                            'motivo' => EmissionPolicyService::CODE_MASS_PAY_CHILD_ALREADY_ISSUED,
+                            'motivo' => $massPayBlock[0],
                             'excluded_children' => $nfseValue['excluded_children'],
                         ], JSON_UNESCAPED_UNICODE),
-                        EmissionPolicyService::MSG_MASS_PAY_CHILD_ISSUED,
+                        $massPayBlock[1],
                         $correlationId
                     );
                     continue;

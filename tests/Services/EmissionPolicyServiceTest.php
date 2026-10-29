@@ -577,9 +577,40 @@ final class EmissionPolicyServiceTest extends TestCase
 
     // ---- Mass Pay: nota de M só com as filhas sem nota ----
 
-    private function massPayValue(float $value, array $excluded): array
+    private function massPayValue(float $value, array $excluded, bool $allCovered = true): array
     {
-        return ['value' => $value, 'base' => 100.0, 'excluded_amount' => 100.0 - $value, 'excluded_children' => $excluded, 'items' => [], 'partial' => $value > 0 && $value < 100];
+        return [
+            'value' => $value, 'base' => 100.0, 'excluded_amount' => 100.0 - $value, 'excluded_children' => $excluded,
+            'items' => [], 'partial' => $value > 0 && $value < 100, 'all_children_covered' => $allCovered,
+        ];
+    }
+
+    public function testMassPayCreditZeroingRemainderHasOwnReason(): void
+    {
+        // C1 coberta, C2 sem nota, mas o crédito aplicado em M zerou o restante.
+        $config = $this->config(['allow_manual_unpaid' => '1']);
+        $massPay = $this->paid(['item_types' => ['Invoice'], 'nfse_value' => $this->massPayValue(0.0, [101], false)]);
+
+        $d = $this->policy->decide(P::EVENT_PAGA, $massPay, $this->client(), $config, $this->gw());
+        $this->assertFalse($d->emit);
+        $this->assertSame(P::CODE_MASS_PAY_NO_REMAINING_VALUE, $d->code);
+        $this->assertSame(P::MSG_MASS_PAY_NO_REMAINING_VALUE, $d->message);
+
+        $d = $this->policy->decide(P::EVENT_MANUAL, $massPay, [], $config, $this->gw());
+        $this->assertSame(P::CODE_MASS_PAY_NO_REMAINING_VALUE, $d->code);
+
+        // Fila e emissão direta usam o mesmo helper sobre o resultado do resolver.
+        $this->assertSame(
+            [P::CODE_MASS_PAY_NO_REMAINING_VALUE, P::MSG_MASS_PAY_NO_REMAINING_VALUE],
+            P::massPayBlock($this->massPayValue(0.0, [101], false))
+        );
+        $this->assertSame(
+            [P::CODE_MASS_PAY_CHILD_ALREADY_ISSUED, P::MSG_MASS_PAY_CHILD_ISSUED],
+            P::massPayBlock($this->massPayValue(0.0, [101, 102], true))
+        );
+        $this->assertNull(P::massPayBlock($this->massPayValue(40.0, [101], false)), 'Parcial com valor: emite.');
+        $this->assertNull(P::massPayBlock($this->massPayValue(100.0, [], false)), 'Nenhuma filha coberta.');
+        $this->assertNull(P::massPayBlock(null));
     }
 
     public function testMassPayAllChildrenIssuedDoesNotEmit(): void
