@@ -154,8 +154,8 @@ final class CronService
     }
 
     /**
-     * Conferência diferida dos alertas de NFS-e (total da fatura x valor da nota).
-     * Roda sob o lock do cron, independe da fila e nunca interrompe o ciclo.
+     * Conferências de criação de fatura (emissão na geração sem hook útil, ex.: "Publish" sem
+     * e-mail). Roda antes da fila, só com a fila ligada, e nunca interrompe o ciclo.
      */
     private function runGenerationChecks(array $config): void
     {
@@ -174,6 +174,10 @@ final class CronService
         }
     }
 
+    /**
+     * Conferência diferida dos alertas de NFS-e (total da fatura x valor da nota).
+     * Roda sob o lock do cron, independe da fila e nunca interrompe o ciclo.
+     */
     private function runAlertChecks(): void
     {
         try {

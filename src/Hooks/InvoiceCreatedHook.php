@@ -14,9 +14,11 @@ use OpenNfse\Services\GenerationCheckService;
 use OpenNfse\Services\QueueService;
 
 /**
- * Emissão na geração da fatura. No WHMCS 8.13, a fatura publicada chega por caminhos diferentes:
- * - InvoiceCreated (geração automática e API, pela documentação);
- * - InvoiceCreationPreEmail ("Publish and Send Email" no admin);
+ * Emissão na geração da fatura. A fatura publicada chega ao addon por caminhos diferentes
+ * (observado no WHMCS 9, ambiente de testes; o desenho cobre qualquer versão):
+ * - InvoiceCreated (geração automática do cron, Mass Pay da área do cliente e API);
+ * - InvoiceCreationPreEmail ("Publish and Send Email" no admin), só para fatura com conferência
+ *   registrada pelo InvoiceCreation (o reenvio do e-mail de fatura antiga não reavalia nada);
  * - nenhum hook útil no "Publish" sem e-mail: o InvoiceCreation (com a fatura ainda Draft) registra
  *   uma conferência, e o cron trata a fatura depois (GenerationCheckService).
  * Os caminhos imediatos e o cron usam o mesmo tratamento (processGenerated) e, juntos, geram no
@@ -34,6 +36,9 @@ final class InvoiceCreatedHook
     private $enqueue;
 
     private ?GenerationCheckService $checks;
+
+    /** Config lida uma vez por processo (lote de geração do cron: uma leitura). */
+    private static ?array $configCache = null;
 
     public function __construct(?callable $enqueue = null, ?GenerationCheckService $checks = null)
     {
@@ -68,7 +73,7 @@ final class InvoiceCreatedHook
         // padrão, a decisão sai só da config; o enqueueEmit já aplica as migrations antes de gravar.
         // Tudo fica dentro do try: uma falha do addon não pode interromper a geração da fatura.
         try {
-            $config = (new ConfigRepository())->get();
+            $config = self::config();
             if (empty($config) || !self::onCreateMayApply($config)) {
                 return;
             }
@@ -79,6 +84,30 @@ final class InvoiceCreatedHook
         } catch (\Throwable $e) {
             self::logError($invoiceId, $e);
         }
+    }
+
+    /**
+     * Hook InvoiceCreationPreEmail: só age na fatura com conferência registrada pelo InvoiceCreation
+     * (fatura recém-criada). O mesmo hook roda no reenvio do e-mail "Invoice Created" de uma fatura
+     * antiga, que não deve ser reavaliada.
+     */
+    public function handlePreEmail(array $vars): void
+    {
+        $invoiceId = (int) ($vars['invoiceid'] ?? 0);
+        if ($invoiceId <= 0) {
+            return;
+        }
+
+        try {
+            if (!$this->checks()->isPending($invoiceId)) {
+                return;
+            }
+        } catch (\Throwable $e) {
+            self::logError($invoiceId, $e);
+            return;
+        }
+
+        $this->handle($vars);
     }
 
     /**
@@ -93,7 +122,7 @@ final class InvoiceCreatedHook
         }
 
         try {
-            $config = (new ConfigRepository())->get();
+            $config = self::config();
             if (empty($config) || !self::onCreateMayApply($config)) {
                 return;
             }
@@ -179,6 +208,12 @@ final class InvoiceCreatedHook
     public static function resetForTests(): void
     {
         self::$handledInProcess = [];
+        self::$configCache = null;
+    }
+
+    private static function config(): array
+    {
+        return self::$configCache ??= (new ConfigRepository())->get();
     }
 
     public static function hookStatusIsDraft(array $vars): bool

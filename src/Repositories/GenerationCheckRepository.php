@@ -10,20 +10,28 @@ final class GenerationCheckRepository implements GenerationCheckRepositoryInterf
 {
     private const TABLE = 'mod_opennfse_geracao_checks';
 
-    public function register(int $invoiceId, string $at): void
+    private const RESCHEDULE_FIELDS = ['verificado_em', 'proxima_em', 'tentativas', 'erro_logado_em'];
+
+    public function register(int $invoiceId, string $at, string $dueAt): void
     {
         Capsule::statement(
-            'INSERT INTO ' . self::TABLE . ' (invoiceid, registrado_em, verificado_em) VALUES (?, ?, ?)'
-            . ' ON DUPLICATE KEY UPDATE invoiceid = invoiceid',
-            [$invoiceId, $at, $at]
+            'INSERT INTO ' . self::TABLE . ' (invoiceid, registrado_em, verificado_em, proxima_em, tentativas)'
+            . ' VALUES (?, ?, ?, ?, 0) ON DUPLICATE KEY UPDATE invoiceid = invoiceid',
+            [$invoiceId, $at, $at, $dueAt]
         );
     }
 
-    public function listPending(int $limit): array
+    public function exists(int $invoiceId): bool
+    {
+        return Capsule::table(self::TABLE)->where('invoiceid', $invoiceId)->first() !== null;
+    }
+
+    public function listDue(string $now, int $limit): array
     {
         $out = [];
         $rows = Capsule::table(self::TABLE)
-            ->orderBy('verificado_em')
+            ->where('proxima_em', '<=', $now)
+            ->orderBy('proxima_em')
             ->orderBy('invoiceid')
             ->limit(max(1, $limit))
             ->get();
@@ -34,9 +42,13 @@ final class GenerationCheckRepository implements GenerationCheckRepositoryInterf
         return $out;
     }
 
-    public function touch(int $invoiceId, string $at): void
+    public function reschedule(int $invoiceId, array $fields): void
     {
-        Capsule::table(self::TABLE)->where('invoiceid', $invoiceId)->update(['verificado_em' => $at]);
+        $fields = array_intersect_key($fields, array_flip(self::RESCHEDULE_FIELDS));
+        if ($fields === []) {
+            return;
+        }
+        Capsule::table(self::TABLE)->where('invoiceid', $invoiceId)->update($fields);
     }
 
     public function delete(int $invoiceId): void

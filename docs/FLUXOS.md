@@ -268,17 +268,20 @@ A fatura publicada chega ao addon por caminhos diferentes, conforme a origem. Ob
 | Origem | Hooks chamados pelo WHMCS | Como o addon detecta |
 |---|---|---|
 | Geração automática (cron), Mass Pay da área do cliente (`source = autogen`) e API | `InvoiceCreation` (ainda `Draft`) e `InvoiceCreated` (já `Unpaid`) | `InvoiceCreated` → `InvoiceCreatedHook::handle()` |
-| Admin, **Publish and Send Email** | `InvoiceCreation` (ainda `Draft`) e `InvoiceCreationPreEmail` (já `Unpaid`) | `InvoiceCreationPreEmail` → `InvoiceCreatedHook::handle()` |
+| Admin, **Publish and Send Email** | `InvoiceCreation` (ainda `Draft`) e `InvoiceCreationPreEmail` (já `Unpaid`) | `InvoiceCreationPreEmail` → `InvoiceCreatedHook::handlePreEmail()`, só com a conferência registrada |
 | Admin, **Publish** sem e-mail | só `InvoiceCreation` (ainda `Draft`) | conferência de criação, tratada pelo cron |
 
-Conferência de criação: no `InvoiceCreation`, com `queue_enabled = 1` e alguma regra que possa emitir na geração, o addon grava a fatura em `mod_opennfse_geracao_checks` (`GenerationCheckService::register()`; registrar de novo não muda nada). O caminho imediato (`InvoiceCreated` ou `InvoiceCreationPreEmail`) apaga o registro ao tratar a fatura. O cron trata o que sobrou antes de processar a fila (até 200 por execução, das verificadas há mais tempo para as mais recentes):
+Conferência de criação: no `InvoiceCreation`, com `queue_enabled = 1` e alguma regra que possa emitir na geração, o addon grava a fatura em `mod_opennfse_geracao_checks` (`GenerationCheckService::register()`; registrar de novo não muda nada), com a primeira conferência marcada para 5 minutos depois (`proxima_em`). O caminho imediato (`InvoiceCreated` ou `InvoiceCreationPreEmail`) apaga o registro ao tratar a fatura. O `InvoiceCreationPreEmail` só age na fatura que tem esse registro: o mesmo hook roda quando o admin reenvia o e-mail "Invoice Created" de uma fatura antiga, que não deve ser reavaliada.
+
+O cron trata as conferências vencidas (`proxima_em` até agora) antes de processar a fila, até 200 por execução, das mais antigas para as mais novas. Sem fila ligada ou sem regra de geração, ele não consulta nada:
 
 - fatura `Unpaid`: passa pelo mesmo tratamento da geração (política, enfileiramento ou `QUEUE_SKIP_POLICY`) e o registro é apagado;
-- fatura `Draft`: o registro fica para o próximo cron e é apagado sem ação depois de 30 dias;
+- fatura `Draft`: confere de novo em 5 minutos, e o registro é apagado sem ação depois de 30 dias;
 - outro status (`Paid`, `Cancelled` etc.) ou fatura apagada: o registro é apagado sem ação (o pagamento cuida da fatura `Paid`);
-- fatura já tratada, com item na fila em qualquer status ou nota `EMITIDA`/`PROCESSANDO`: o registro é apagado em silêncio, sem log.
+- fatura já tratada, com item na fila em qualquer status ou nota `EMITIDA`/`PROCESSANDO`: o registro é apagado em silêncio, sem log;
+- falha no tratamento: tenta de novo com intervalo crescente (5 min, 15 min, 1 h, 6 h e depois 1 vez por dia, contado em `tentativas`), até 30 dias. O log `QUEUE_AUTO_CREATED_ERROR` sai na primeira falha e depois no máximo 1 vez por dia por fatura (`erro_logado_em`).
 
-O **Publish** do admin sem chamar o `InvoiceCreated` foi observado no WHMCS 9; o desenho (hooks imediatos mais a conferência pelo cron) cobre qualquer versão, chame ela o `InvoiceCreated` ou não. No **Publish** sem e-mail, a emissão na geração entra na fila na próxima execução do cron. O caminho imediato e o cron usam o mesmo tratamento (`InvoiceCreatedHook::processGenerated()`) e, juntos, geram no máximo um item na fila e uma decisão logada por fatura.
+O **Publish** do admin sem chamar o `InvoiceCreated` foi observado no WHMCS 9; o desenho (hooks imediatos mais a conferência pelo cron) cobre qualquer versão, chame ela o `InvoiceCreated` ou não. No **Publish** sem e-mail, a emissão na geração entra na fila no primeiro cron depois de 5 minutos da criação. O caminho imediato e o cron usam o mesmo tratamento (`InvoiceCreatedHook::processGenerated()`) e, juntos, geram no máximo um item na fila e uma decisão logada por fatura.
 
 O tratamento da geração:
 

@@ -52,7 +52,7 @@ Todos ficam em `modules/addons/OpenNfse/`:
 - `InvoiceHook`: monta o bloco da NFS-e na fatura do admin.
 - `InvoicePaidHook`: aplica a política de emissão no evento de pagamento e enfileira a fatura paga.
 - `InvoiceCreatedHook`: aplica a política de emissão no evento de geração e enfileira a fatura `Unpaid` publicada (`processGenerated()`, comum aos hooks e ao cron). Uma falha é logada em `QUEUE_AUTO_CREATED_ERROR` e não interrompe a geração da fatura.
-- `GenerationCheckService`: conferências de criação de fatura. O `InvoiceCreation` registra, o caminho imediato apaga, e o cron trata o que sobrou antes de processar a fila (`Unpaid` passa pela emissão na geração, `Draft` fica até 30 dias, outros status são descartados).
+- `GenerationCheckService`: conferências de criação de fatura. O `InvoiceCreation` registra (primeira conferência em 5 minutos), o caminho imediato apaga, e o cron trata as vencidas antes de processar a fila: `Unpaid` passa pela emissão na geração, `Draft` é conferido de novo a cada 5 minutos até 30 dias, outros status são descartados, e uma falha é tentada de novo com intervalo crescente (5 min, 15 min, 1 h, 6 h, 1 dia), com log na primeira falha e no máximo 1 por dia. O `InvoiceCreationPreEmail` só age na fatura com conferência registrada.
 - `InvoiceAlertHook`: observa cancelamento, estorno, transações de saída (estorno parcial e reversão de pagamento), reabertura e pagamento da fatura e abre alertas quando ela tem nota `EMITIDA`. Na alteração de total, `onTotalChanged()` só registra o pedido de conferência, e `checkTotalNow()`, chamado pelo cron, compara o total gravado com o `vServ` da nota. Erros vão só para o log (`NFSE_ALERTA_ERRO`).
 - `ClientInvoiceHook`: monta o resumo da NFS-e na fatura da área do cliente.
 
@@ -124,7 +124,7 @@ Auditoria e apoio:
 | `DpsApiAuditRepository` | `mod_opennfse_dps_audit_runs`, `mod_opennfse_dps_audit_results` |
 | `AlertRepository` (`AlertRepositoryInterface`) | `mod_opennfse_alertas` |
 | `AlertCheckRepository` (`AlertCheckRepositoryInterface`) | `mod_opennfse_alerta_checks` (pedidos de conferência diferida do total, uma linha por fatura) |
-| `GenerationCheckRepository` (`GenerationCheckRepositoryInterface`) | `mod_opennfse_geracao_checks` (conferências de criação de fatura para a emissão na geração, uma linha por fatura; migration 046) |
+| `GenerationCheckRepository` (`GenerationCheckRepositoryInterface`) | `mod_opennfse_geracao_checks` (conferências de criação de fatura para a emissão na geração, uma linha por fatura, com `proxima_em`, `tentativas` e `erro_logado_em`; migration 046) |
 | `ReportRepository` | consultas dos relatórios e do dashboard |
 | `UnpaidNfseReportRepository` | consultas do relatório "NFS-e de faturas não pagas" |
 | `WhmcsInvoiceRepository` | `tblinvoices`, `tblinvoiceitems`, `tblaccounts` (soma dos pagamentos da fatura) |

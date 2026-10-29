@@ -10,18 +10,26 @@ namespace OpenNfse\Repositories;
  */
 interface GenerationCheckRepositoryInterface
 {
-    /** Registra a fatura. Registrar de novo não muda nada (mantém a data do primeiro registro). */
-    public function register(int $invoiceId, string $at): void;
+    /**
+     * Registra a fatura para conferência em $dueAt. Registrar de novo não muda nada (mantém a
+     * linha e as datas do primeiro registro).
+     */
+    public function register(int $invoiceId, string $at, string $dueAt): void;
+
+    public function exists(int $invoiceId): bool;
 
     /**
-     * Conferências pendentes, das verificadas há mais tempo para as mais recentes.
+     * Conferências vencidas (proxima_em <= $now), das mais antigas para as mais novas.
      *
-     * @return array<int, array{invoiceid: int|string, registrado_em: string, verificado_em: string}>
+     * @return array<int, array{invoiceid: int|string, registrado_em: string, proxima_em: string,
+     *                          tentativas: int|string, erro_logado_em: ?string}>
      */
-    public function listPending(int $limit): array;
+    public function listDue(string $now, int $limit): array;
 
-    /** Marca a conferência como verificada agora (rascunho que segue pendente vai para o fim da fila). */
-    public function touch(int $invoiceId, string $at): void;
+    /**
+     * Reagenda a conferência. $fields aceita verificado_em, proxima_em, tentativas e erro_logado_em.
+     */
+    public function reschedule(int $invoiceId, array $fields): void;
 
     public function delete(int $invoiceId): void;
 }

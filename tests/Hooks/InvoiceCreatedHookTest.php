@@ -40,6 +40,7 @@ final class InvoiceCreatedHookTest extends TestCase
 
     private function database(array $config = [], string $status = 'Unpaid', int $emitOnCreate = 1): void
     {
+        InvoiceCreatedHook::resetForTests();
         Capsule::$rows['mod_opennfse_config'] = [(object) ($config + [
             'id' => 1,
             'queue_enabled' => '1',
@@ -72,6 +73,12 @@ final class InvoiceCreatedHookTest extends TestCase
             Capsule::$rows['mod_opennfse_queue'][] = (object) ['id' => count($this->enqueued), 'invoiceid' => $invoiceId, 'status' => 'PENDING'];
             return true;
         }, $checks);
+    }
+
+    /** Primeiro ciclo do cron depois do vencimento das conferências registradas agora. */
+    private function later(): int
+    {
+        return time() + GenerationCheckService::INTERVAL_SECONDS + 1;
     }
 
     private function cron(): GenerationCheckService
@@ -109,10 +116,29 @@ final class InvoiceCreatedHookTest extends TestCase
     {
         $this->hook()->registerCreation(['invoiceid' => 500, 'status' => 'Draft']);
         // "Publish and Send Email": InvoiceCreationPreEmail com a fatura já Unpaid.
-        $this->hook()->handle(['invoiceid' => 500, 'status' => 'Unpaid', 'source' => 'adminarea']);
+        $this->hook()->handlePreEmail(['invoiceid' => 500, 'status' => 'Unpaid', 'source' => 'adminarea']);
 
         $this->assertSame([500], $this->enqueued);
         $this->assertSame([], $this->repo->rows);
+    }
+
+    public function testPreEmailWithoutCheckDoesNothing(): void
+    {
+        // Reenvio do e-mail "Invoice Created" de uma fatura antiga: não há conferência registrada.
+        $this->hook()->handlePreEmail(['invoiceid' => 500, 'status' => 'Unpaid', 'source' => 'adminarea']);
+
+        $this->assertSame([], $this->enqueued);
+        $this->assertSame([], $this->logTypes());
+    }
+
+    public function testConfigIsReadOncePerProcess(): void
+    {
+        $this->hook()->registerCreation(['invoiceid' => 500]);
+        // A config muda no banco, mas o processo continua com a que leu (lote de geração: 1 leitura).
+        Capsule::$rows['mod_opennfse_config'][0]->queue_enabled = '0';
+        $this->repo->rows = [];
+        $this->hook()->registerCreation(['invoiceid' => 500]);
+        $this->assertArrayHasKey(500, $this->repo->rows);
     }
 
     public function testDraftInDatabaseKeepsCheckPending(): void
@@ -133,7 +159,7 @@ final class InvoiceCreatedHookTest extends TestCase
         $this->hook()->registerCreation(['invoiceid' => 500, 'status' => 'Draft']);
         $this->database();
 
-        $this->assertSame(1, $this->cron()->processPending((array) Capsule::$rows['mod_opennfse_config'][0]));
+        $this->assertSame(1, $this->cron()->processPending((array) Capsule::$rows['mod_opennfse_config'][0], $this->later()));
         $this->assertSame([500], $this->enqueued);
         $this->assertSame([], $this->repo->rows);
     }
@@ -144,7 +170,7 @@ final class InvoiceCreatedHookTest extends TestCase
 
         // Cron primeiro, depois o caminho imediato em outra requisição.
         $this->hook()->registerCreation(['invoiceid' => 500]);
-        $this->cron()->processPending($config);
+        $this->cron()->processPending($config, $this->later());
         InvoiceCreatedHook::resetForTests();
         $this->hook()->handle(['invoiceid' => 500, 'status' => 'Unpaid']);
         $this->assertSame([500], $this->enqueued);
@@ -154,7 +180,7 @@ final class InvoiceCreatedHookTest extends TestCase
         $this->hook()->registerCreation(['invoiceid' => 500]);
         $this->hook()->handle(['invoiceid' => 500, 'status' => 'Unpaid']);
         $this->hook()->handle(['invoiceid' => 500, 'status' => 'Unpaid']);
-        $this->cron()->processPending($config);
+        $this->cron()->processPending($config, $this->later());
         $this->assertSame([500], $this->enqueued);
     }
 
@@ -165,7 +191,7 @@ final class InvoiceCreatedHookTest extends TestCase
         $this->hook()->registerCreation(['invoiceid' => 500]);
         $this->hook()->handle(['invoiceid' => 500, 'status' => 'Unpaid']);
         $this->hook()->handle(['invoiceid' => 500, 'status' => 'Unpaid']);
-        $this->cron()->processPending((array) Capsule::$rows['mod_opennfse_config'][0]);
+        $this->cron()->processPending((array) Capsule::$rows['mod_opennfse_config'][0], $this->later());
 
         $this->assertSame([], $this->enqueued);
         $this->assertSame(['QUEUE_SKIP_POLICY'], $this->logTypes());
@@ -176,7 +202,7 @@ final class InvoiceCreatedHookTest extends TestCase
     {
         Capsule::$rows['mod_opennfse_queue'] = [(object) ['id' => 9, 'invoiceid' => 500, 'status' => 'DONE']];
         $this->hook()->registerCreation(['invoiceid' => 500]);
-        $this->cron()->processPending((array) Capsule::$rows['mod_opennfse_config'][0]);
+        $this->cron()->processPending((array) Capsule::$rows['mod_opennfse_config'][0], $this->later());
         $this->assertSame([], $this->enqueued);
         $this->assertSame([], $this->logTypes());
         $this->assertSame([], $this->repo->rows);
@@ -191,9 +217,9 @@ final class InvoiceCreatedHookTest extends TestCase
     public function testQueueDisabledDoesNothing(): void
     {
         $this->database(['queue_enabled' => '0']);
-        $this->repo->register(500, '2026-10-28 10:00:00');
+        $this->repo->register(500, '2026-10-28 10:00:00', '2026-10-28 10:05:00');
         $this->hook()->handle(['invoiceid' => 500, 'status' => 'Unpaid']);
-        $this->cron()->processPending((array) Capsule::$rows['mod_opennfse_config'][0]);
+        $this->cron()->processPending((array) Capsule::$rows['mod_opennfse_config'][0], $this->later());
 
         $this->assertSame([], $this->enqueued);
         $this->assertArrayHasKey(500, $this->repo->rows);

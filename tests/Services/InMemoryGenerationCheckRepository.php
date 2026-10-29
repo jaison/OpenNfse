@@ -11,31 +11,43 @@ use OpenNfse\Repositories\GenerationCheckRepositoryInterface;
  */
 final class InMemoryGenerationCheckRepository implements GenerationCheckRepositoryInterface
 {
-    /** @var array<int, array{invoiceid: int, registrado_em: string, verificado_em: string}> */
+    /** @var array<int, array{invoiceid: int, registrado_em: string, verificado_em: string, proxima_em: string, tentativas: int, erro_logado_em: ?string}> */
     public array $rows = [];
 
     public bool $tableMissing = false;
 
-    public function register(int $invoiceId, string $at): void
+    public function register(int $invoiceId, string $at, string $dueAt): void
     {
         if ($this->tableMissing) {
             throw new \RuntimeException("SQLSTATE[42S02]: Base table or view not found: 1146 Table 'mod_opennfse_geracao_checks' doesn't exist");
         }
-        $this->rows[$invoiceId] ??= ['invoiceid' => $invoiceId, 'registrado_em' => $at, 'verificado_em' => $at];
+        $this->rows[$invoiceId] ??= [
+            'invoiceid' => $invoiceId,
+            'registrado_em' => $at,
+            'verificado_em' => $at,
+            'proxima_em' => $dueAt,
+            'tentativas' => 0,
+            'erro_logado_em' => null,
+        ];
     }
 
-    public function listPending(int $limit): array
+    public function exists(int $invoiceId): bool
     {
-        $rows = array_values($this->rows);
-        usort($rows, static fn (array $a, array $b): int => [$a['verificado_em'], $a['invoiceid']] <=> [$b['verificado_em'], $b['invoiceid']]);
-
-        return array_slice($rows, 0, $limit);
+        return isset($this->rows[$invoiceId]);
     }
 
-    public function touch(int $invoiceId, string $at): void
+    public function listDue(string $now, int $limit): array
+    {
+        $due = array_values(array_filter($this->rows, static fn (array $r): bool => $r['proxima_em'] <= $now));
+        usort($due, static fn (array $a, array $b): int => [$a['proxima_em'], $a['invoiceid']] <=> [$b['proxima_em'], $b['invoiceid']]);
+
+        return array_slice($due, 0, $limit);
+    }
+
+    public function reschedule(int $invoiceId, array $fields): void
     {
         if (isset($this->rows[$invoiceId])) {
-            $this->rows[$invoiceId]['verificado_em'] = $at;
+            $this->rows[$invoiceId] = array_merge($this->rows[$invoiceId], $fields);
         }
     }
 
