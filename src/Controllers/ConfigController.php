@@ -33,6 +33,13 @@ final class ConfigController
 {
     use AdminHelpersTrait;
 
+    private const AUTO_EMIT_VALUE_WARNING = 'A NFS-e emitida na geração usa o valor da fatura naquele momento. '
+        . 'Se o cliente pagar com um gateway que acrescenta taxa, juros ou multa (ex.: PagHiper, que inclui a taxa '
+        . 'na fatura só depois do pagamento), ou com desconto por antecipação, ou trocar de gateway, o valor final '
+        . 'da fatura vai ser diferente do valor da NFS-e, e o alerta \'Fatura alterada com NFS-e\' será aberto. '
+        . 'Como não é possível saber de antemão qual gateway o cliente vai usar, recomendamos NÃO repassar taxas '
+        . 'ao cliente nos gateways usados com a emissão na geração.';
+
     /** Valores aceitos pelo TSRegEspTrib do leiaute nacional 1.01. */
     private const REG_ESP_TRIB_VALIDOS = ['0', '1', '2', '3', '4', '5', '6', '9'];
 
@@ -472,6 +479,7 @@ final class ConfigController
             echo '</table>';
             echo '<div style="margin-top:6px;color:#666;">Se desativado, o módulo não enfileira/gera NFS-e automaticamente quando a fatura é paga com esse gateway.</div>';
             echo '<div style="margin-top:4px;color:#666;">"Emitir ao gerar a fatura" só vale quando o gatilho de emissão automática (aba Processamento Automático ou custom field do cliente) for "gerada": a NFS-e entra na fila assim que a fatura Unpaid é publicada, apenas para os gateways marcados aqui (ex.: só boleto). O gateway também precisa estar com a emissão de NFS-e ativada. O comportamento no pagamento não muda.</div>';
+            echo '<div class="alert alert-warning" style="margin:6px 0 0 0;font-size:12px;line-height:1.5;">' . htmlspecialchars(self::AUTO_EMIT_VALUE_WARNING, ENT_QUOTES, 'UTF-8') . '</div>';
         }
         echo '</div>';
         $this->renderConfigSectionEnd();
@@ -795,6 +803,7 @@ final class ConfigController
         echo 'O ISS é devido mesmo que a fatura nunca seja paga; a competência é a data de emissão; e o prazo do município para cancelar a NFS-e é curto. ';
         echo 'Se a fatura for cancelada ou alterada depois, o cancelamento da NFS-e continua manual. ';
         echo 'Na geração, a emissão só vale para os gateways marcados em "Emitir ao gerar a fatura" (aba Integração com WHMCS). Confirme com a contabilidade antes de ligar.';
+        echo '<div style="margin-top:8px;"><strong>Valor da NFS-e x valor pago:</strong> ' . $h(self::AUTO_EMIT_VALUE_WARNING) . '</div>';
         echo '</div>';
 
         echo '<script>(function(){'

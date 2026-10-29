@@ -174,6 +174,7 @@ Para voltar à v0.1.24, revise antes a emissão automática: quem usa o gatilho 
 - Configure a série DPS conforme a operação desejada.
 - Revise as opções de fila/processamento automático.
 - Em **Automação de E-mail**, configure **Enviar PDF/XML automaticamente por e-mail?** como `Sim` para enviar os anexos após a fila concluir a nota como `DONE`; a opção vem desativada por padrão.
+- Se usar a emissão automática **Quando a fatura for gerada**, não repasse taxas ao cliente nos gateways marcados em **Emitir ao gerar a fatura**: a NFS-e sai com o valor da fatura na geração, e taxa, juros, multa ou desconto acrescentados no pagamento (ex.: PagHiper) fazem o valor final divergir da nota.
 - Emita manualmente faturas com status `Unpaid` somente quando a opção **Permitir enfileirar manualmente a emissão de faturas não pagas?** estiver configurada como `Sim`.
 - Salve a configuração antes de realizar testes de emissão.
 
