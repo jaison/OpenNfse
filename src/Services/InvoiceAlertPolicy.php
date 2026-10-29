@@ -116,27 +116,56 @@ final class InvoiceAlertPolicy
      * O hook roda no InvoicePaid e o enfileiramento da emissão ao pagar não emite na hora,
      * então uma nota que já está EMITIDA nesse momento foi emitida antes deste pagamento.
      * Assim a decisão não depende de comparar datas em fusos diferentes.
+     *
+     * $paidByMassPayAggregator: a fatura foi quitada por uma fatura de Mass Pay já paga. O crédito
+     * veio do pagamento da agregadora, cuja nota exclui esta fatura, então a nota desta é legítima.
      */
-    public static function onPaid(?array $nota, array $invoice): ?array
+    public static function onPaid(?array $nota, array $invoice, bool $paidByMassPayAggregator = false): ?array
     {
-        if (!self::hasEmittedNota($nota)) {
-            return null;
-        }
-
-        if (strtolower(trim((string) ($invoice['status'] ?? ''))) !== 'paid') {
+        if (!self::isCreditAfterEmissionCandidate($nota, $invoice) || $paidByMassPayAggregator) {
             return null;
         }
 
         $financials = new InvoiceFinancialsService();
-        if (!$financials->isCreditOnlyPayment($invoice)) {
-            return null;
-        }
 
         return [
             'tipo' => AlertService::CREDITO_APOS_EMISSAO,
             'detalhes' => self::notaLabel($nota) . ' emitida antes do pagamento, e a fatura foi quitada só com crédito ('
                 . self::money($financials->getAppliedCredit($invoice)) . '). Revise se a nota deve ser mantida.',
         ];
+    }
+
+    /**
+     * Nota EMITIDA, fatura Paid e pagamento só com crédito: só nesse caso o hook precisa
+     * procurar uma agregadora de Mass Pay.
+     */
+    public static function isCreditAfterEmissionCandidate(?array $nota, array $invoice): bool
+    {
+        if (!self::hasEmittedNota($nota)) {
+            return false;
+        }
+
+        if (strtolower(trim((string) ($invoice['status'] ?? ''))) !== 'paid') {
+            return false;
+        }
+
+        return (new InvoiceFinancialsService())->isCreditOnlyPayment($invoice);
+    }
+
+    /**
+     * Primeira agregadora de Mass Pay com status Paid (0 se nenhuma).
+     *
+     * @param array<int, string> $aggregatorStatuses id da agregadora => status
+     */
+    public static function paidMassPayAggregatorId(array $aggregatorStatuses): int
+    {
+        foreach ($aggregatorStatuses as $id => $status) {
+            if ((int) $id > 0 && strtolower(trim((string) $status)) === 'paid') {
+                return (int) $id;
+            }
+        }
+
+        return 0;
     }
 
     /**

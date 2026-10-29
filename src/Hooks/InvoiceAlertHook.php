@@ -121,10 +121,25 @@ final class InvoiceAlertHook
 
     public function onPaid(array $vars): void
     {
-        $this->run('InvoicePaid', (int) ($vars['invoiceid'] ?? 0), static function (array $nota, int $invoiceId): ?array {
-            $invoice = (new WhmcsInvoiceRepository())->getInvoice($invoiceId);
+        $this->run('InvoicePaid', (int) ($vars['invoiceid'] ?? 0), function (array $nota, int $invoiceId): ?array {
+            $invoiceRepo = new WhmcsInvoiceRepository();
+            $invoice = $invoiceRepo->getInvoice($invoiceId);
 
-            return InvoiceAlertPolicy::onPaid($nota, $invoice);
+            // Só procura a agregadora de Mass Pay quando o alerta caberia (nota emitida e só crédito).
+            $aggregatorId = 0;
+            if (InvoiceAlertPolicy::isCreditAfterEmissionCandidate($nota, $invoice)) {
+                $aggregatorId = InvoiceAlertPolicy::paidMassPayAggregatorId(
+                    $invoiceRepo->findMassPayAggregatorStatuses($invoiceId)
+                );
+                if ($aggregatorId > 0) {
+                    $this->log($nota, 'ALERT_SKIP_MASS_PAY_CHILD', [
+                        'invoiceid' => $invoiceId,
+                        'aggregator' => $aggregatorId,
+                    ], null);
+                }
+            }
+
+            return InvoiceAlertPolicy::onPaid($nota, $invoice, $aggregatorId > 0);
         });
     }
 

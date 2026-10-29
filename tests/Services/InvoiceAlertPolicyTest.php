@@ -180,6 +180,53 @@ final class InvoiceAlertPolicyTest extends TestCase
         $this->assertNotNull(InvoiceAlertPolicy::onPaid(['emitida_em' => null] + self::EMITIDA, $invoice));
     }
 
+    public function testCreditAlertSkippedForChildPaidByPaidMassPayAggregator(): void
+    {
+        $invoice = ['status' => 'Paid', 'total' => '0.00', 'credit' => '100.00', 'datepaid' => '2026-10-05 10:00:00'];
+
+        $this->assertTrue(InvoiceAlertPolicy::isCreditAfterEmissionCandidate(self::EMITIDA, $invoice));
+        $aggregatorId = InvoiceAlertPolicy::paidMassPayAggregatorId([500 => 'Paid']);
+        $this->assertSame(500, $aggregatorId);
+        $this->assertNull(InvoiceAlertPolicy::onPaid(self::EMITIDA, $invoice, $aggregatorId > 0));
+    }
+
+    public function testCreditAlertKeptWithoutMassPayAggregator(): void
+    {
+        // O crédito veio de outro lugar (sem agregadora): o alerta continua.
+        $invoice = ['status' => 'Paid', 'total' => '0.00', 'credit' => '100.00', 'datepaid' => '2026-10-05 10:00:00'];
+        $aggregatorId = InvoiceAlertPolicy::paidMassPayAggregatorId([]);
+
+        $this->assertSame(0, $aggregatorId);
+        $decision = InvoiceAlertPolicy::onPaid(self::EMITIDA, $invoice, $aggregatorId > 0);
+        $this->assertSame(AlertService::CREDITO_APOS_EMISSAO, $decision['tipo']);
+    }
+
+    public function testCreditAlertKeptWhenMassPayAggregatorIsNotPaid(): void
+    {
+        $invoice = ['status' => 'Paid', 'total' => '0.00', 'credit' => '100.00', 'datepaid' => '2026-10-05 10:00:00'];
+        $aggregatorId = InvoiceAlertPolicy::paidMassPayAggregatorId([500 => 'Unpaid', 501 => 'Cancelled']);
+
+        $this->assertSame(0, $aggregatorId);
+        $this->assertNotNull(InvoiceAlertPolicy::onPaid(self::EMITIDA, $invoice, $aggregatorId > 0));
+    }
+
+    public function testPaidMassPayAggregatorPicksThePaidOne(): void
+    {
+        $this->assertSame(501, InvoiceAlertPolicy::paidMassPayAggregatorId([500 => 'Cancelled', 501 => ' paid ']));
+    }
+
+    public function testAggregatorLookupOnlyWhenCreditAlertWouldApply(): void
+    {
+        $gateway = ['status' => 'Paid', 'total' => '100.00', 'credit' => '0.00', 'paymentmethod' => 'pix'];
+        $unpaid = ['status' => 'Unpaid', 'total' => '0.00', 'credit' => '100.00'];
+        $creditOnly = ['status' => 'Paid', 'total' => '0.00', 'credit' => '100.00'];
+
+        $this->assertFalse(InvoiceAlertPolicy::isCreditAfterEmissionCandidate(self::EMITIDA, $gateway));
+        $this->assertFalse(InvoiceAlertPolicy::isCreditAfterEmissionCandidate(self::EMITIDA, $unpaid));
+        $this->assertFalse(InvoiceAlertPolicy::isCreditAfterEmissionCandidate(null, $creditOnly));
+        $this->assertFalse(InvoiceAlertPolicy::isCreditAfterEmissionCandidate(['status' => 'CANCELADA'] + self::EMITIDA, $creditOnly));
+    }
+
     public function testNoCreditAlertWhenInvoiceIsNotPaid(): void
     {
         $invoice = ['status' => 'Unpaid', 'total' => '0.00', 'credit' => '100.00', 'datepaid' => '2026-10-05 10:00:00'];

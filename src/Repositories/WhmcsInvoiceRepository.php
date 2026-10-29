@@ -40,6 +40,41 @@ final class WhmcsInvoiceRepository
     }
 
     /**
+     * Faturas de Mass Pay que agrupam a fatura informada (item type Invoice com relid = fatura),
+     * com o status de cada uma.
+     *
+     * @return array<int, string> id da agregadora => status
+     */
+    public function findMassPayAggregatorStatuses(int $invoiceId): array
+    {
+        if ($invoiceId <= 0) {
+            return [];
+        }
+
+        $ids = [];
+        $items = Capsule::table('tblinvoiceitems')
+            ->where('type', 'Invoice')
+            ->where('relid', $invoiceId)
+            ->get(['invoiceid']);
+        foreach ($items as $item) {
+            $id = (int) ($item->invoiceid ?? 0);
+            if ($id > 0 && $id !== $invoiceId && !in_array($id, $ids, true)) {
+                $ids[] = $id;
+            }
+        }
+        if ($ids === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach (Capsule::table('tblinvoices')->whereIn('id', $ids)->get(['id', 'status']) as $row) {
+            $out[(int) ($row->id ?? 0)] = (string) ($row->status ?? '');
+        }
+
+        return $out;
+    }
+
+    /**
      * Soma líquida dos pagamentos registrados para a fatura (entradas menos saídas em tblaccounts).
      */
     public function sumPayments(int $invoiceId): float
