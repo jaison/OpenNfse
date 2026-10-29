@@ -27,8 +27,16 @@ final class Capsule
         return true;
     }
 
+    /** @var array<string, array<int, array>> linhas recebidas por insert(), por tabela */
+    public static array $inserts = [];
+
+    /** @var array<int, string> tabelas que receberam delete() */
+    public static array $deletes = [];
+
     public static function reset(): void
     {
+        self::$inserts = [];
+        self::$deletes = [];
         self::$rows = [];
         self::$statements = [];
     }
@@ -71,8 +79,15 @@ final class CapsuleQueryStub
         return 0;
     }
 
+    public function delete(): int
+    {
+        Capsule::$deletes[] = $this->table;
+        return 1;
+    }
+
     public function insert(array $data): bool
     {
+        Capsule::$inserts[$this->table][] = $data;
         return true;
     }
 }
