@@ -105,9 +105,13 @@ final class InvoiceAlertPolicy
     }
 
     /**
-     * Fatura paga só com crédito cuja nota foi emitida antes do pagamento.
+     * Fatura paga só com crédito que já tinha nota emitida.
+     *
+     * O hook roda no InvoicePaid e o enfileiramento da emissão ao pagar não emite na hora,
+     * então uma nota que já está EMITIDA nesse momento foi emitida antes deste pagamento.
+     * Assim a decisão não depende de comparar datas em fusos diferentes.
      */
-    public static function onPaid(?array $nota, array $invoice, ?int $now = null): ?array
+    public static function onPaid(?array $nota, array $invoice): ?array
     {
         if (!self::hasEmittedNota($nota)) {
             return null;
@@ -122,12 +126,6 @@ final class InvoiceAlertPolicy
             return null;
         }
 
-        $emitidaEm = trim((string) ($nota['emitida_em'] ?? ''));
-        $datePaid = trim((string) ($invoice['datepaid'] ?? ''));
-        if (!self::emittedBeforePayment($emitidaEm, $datePaid, $now)) {
-            return null;
-        }
-
         return [
             'tipo' => AlertService::CREDITO_APOS_EMISSAO,
             'detalhes' => self::notaLabel($nota) . ' emitida antes do pagamento, e a fatura foi quitada só com crédito ('
@@ -136,36 +134,59 @@ final class InvoiceAlertPolicy
     }
 
     /**
-     * A nota foi emitida antes do pagamento?
-     *
-     * Sem data de pagamento válida, vale o momento atual (o hook roda no pagamento).
-     * Sem data de emissão, a nota que já está EMITIDA no pagamento conta como anterior.
+     * Fatura do parâmetro do hook AddTransaction. A documentação do WHMCS grafa "invocieid",
+     * então as duas grafias são aceitas.
      */
-    public static function emittedBeforePayment(string $emitidaEm, string $datePaid, ?int $now = null): bool
+    public static function transactionInvoiceId(array $vars): int
     {
-        $paidTs = self::parseTimestamp($datePaid);
-        if ($paidTs === null) {
-            $paidTs = $now ?? time();
+        foreach (['invoiceid', 'invocieid'] as $key) {
+            $id = (int) ($vars[$key] ?? 0);
+            if ($id > 0) {
+                return $id;
+            }
         }
 
-        $emittedTs = self::parseTimestamp($emitidaEm);
-        if ($emittedTs === null) {
-            return true;
-        }
-
-        return $emittedTs < $paidTs;
+        return 0;
     }
 
-    private static function parseTimestamp(string $value): ?int
+    /**
+     * A transação devolve dinheiro (estorno total ou parcial, ou reversão de pagamento)?
+     */
+    public static function isOutgoingTransaction(array $vars): bool
     {
-        $value = trim($value);
-        if ($value === '' || str_starts_with($value, '0000-00-00')) {
+        return self::parseMoney($vars['amountout'] ?? 0) > self::MONEY_TOLERANCE || (int) ($vars['refundid'] ?? 0) > 0;
+    }
+
+    /**
+     * Saída de dinheiro registrada numa fatura com nota emitida (hook AddTransaction).
+     *
+     * Usa o mesmo tipo do InvoiceRefunded: num estorno total os dois hooks disparam e a
+     * idempotência por (fatura, tipo, chave) mantém um único alerta aberto.
+     */
+    public static function onTransaction(?array $nota, array $vars): ?array
+    {
+        if (!self::hasEmittedNota($nota) || !self::isOutgoingTransaction($vars)) {
             return null;
         }
 
-        $ts = strtotime($value);
+        $detalhes = 'Saída de ' . self::money(self::parseMoney($vars['amountout'] ?? 0)) . ' registrada na fatura com '
+            . self::notaLabel($nota) . ' emitida (estorno, estorno parcial ou reversão de pagamento).';
+        $gateway = trim((string) ($vars['gateway'] ?? ''));
+        $transId = trim((string) ($vars['transid'] ?? ''));
+        if ($gateway !== '' || $transId !== '') {
+            $detalhes .= ' Transação: ' . trim($gateway . ' ' . $transId) . '.';
+        }
+        $detalhes .= ' Avalie o cancelamento manual da NFS-e dentro do prazo do município.';
 
-        return $ts === false ? null : $ts;
+        return [
+            'tipo' => AlertService::FATURA_ESTORNADA_COM_NFSE,
+            'detalhes' => $detalhes,
+        ];
+    }
+
+    private static function parseMoney(mixed $value): float
+    {
+        return (float) str_replace(',', '.', (string) $value);
     }
 
     private static function notaLabel(array $nota): string

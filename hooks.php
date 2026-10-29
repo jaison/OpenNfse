@@ -53,6 +53,10 @@ add_hook('UpdateInvoiceTotal', 1, static function (array $vars) {
     Module::invoiceAlertHook()->onTotalChanged($vars);
 });
 
+add_hook('AddTransaction', 1, static function (array $vars) {
+    Module::invoiceAlertHook()->onTransaction($vars);
+});
+
 add_hook('AfterCronJob', 1, static function (array $vars) {
     try {
         Module::cron()->runFromWhmcsCron();

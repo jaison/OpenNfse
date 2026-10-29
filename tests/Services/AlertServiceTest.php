@@ -130,4 +130,15 @@ final class AlertServiceTest extends TestCase
             AlertService::openKey(1, 'CREDITO_APOS_EMISSAO', 'ABC')
         );
     }
+
+    public function testFullRefundFiringBothHooksKeepsOneAlert(): void
+    {
+        $service = $this->service();
+        $transaction = \OpenNfse\Services\InvoiceAlertPolicy::onTransaction(self::NOTA, ['invoiceid' => 100, 'amountout' => '100.00']);
+        $refunded = \OpenNfse\Services\InvoiceAlertPolicy::onRefunded(self::NOTA);
+
+        $this->assertNotNull($service->raise(100, $transaction['tipo'], self::NOTA, $transaction['detalhes']));
+        $this->assertNull($service->raise(100, $refunded['tipo'], self::NOTA, $refunded['detalhes']));
+        $this->assertCount(1, $this->repo->rows);
+    }
 }

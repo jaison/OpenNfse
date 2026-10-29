@@ -26,7 +26,7 @@ final class AlertService
 
     public const LABELS = [
         self::FATURA_CANCELADA_COM_NFSE => 'Fatura cancelada com NFS-e',
-        self::FATURA_ESTORNADA_COM_NFSE => 'Fatura estornada com NFS-e',
+        self::FATURA_ESTORNADA_COM_NFSE => 'Estorno ou reversão com NFS-e',
         self::FATURA_REABERTA_COM_NFSE => 'Fatura reaberta com NFS-e',
         self::FATURA_ALTERADA_COM_NFSE => 'Fatura alterada com NFS-e',
         self::CREDITO_APOS_EMISSAO => 'Crédito após emissão',

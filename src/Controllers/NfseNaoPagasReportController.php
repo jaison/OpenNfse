@@ -17,6 +17,8 @@ final class NfseNaoPagasReportController
 
     public const TAB = 'nfse_nao_pagas';
 
+    private const LIST_LIMIT = 500;
+
     private const SITUACOES = [
         '' => 'Todas',
         UnpaidNfseReportRepository::SITUACAO_NAO_PAGA => 'Fatura não paga',
@@ -27,7 +29,7 @@ final class NfseNaoPagasReportController
     {
         $filters = $this->readFilters($_REQUEST);
         $repo = new UnpaidNfseReportRepository();
-        $rows = $repo->list($filters, 500);
+        $rows = $repo->list($filters, self::LIST_LIMIT);
         $summary = $repo->summary($filters);
 
         $h = static function ($value): string {
@@ -70,6 +72,10 @@ final class NfseNaoPagasReportController
             'cliente' => $filters['cliente'],
         ], 'btn btn-xs btn-default');
         echo '</div>';
+
+        if ((int) $summary['total_notas'] > count($rows)) {
+            echo '<div class="alert alert-info" style="margin-bottom:10px;">Exibindo as ' . count($rows) . ' notas mais recentes de ' . (int) $summary['total_notas'] . '. Use os filtros ou o CSV para ver as demais.</div>';
+        }
 
         echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
         echo '<tr>';

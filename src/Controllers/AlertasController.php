@@ -18,6 +18,8 @@ final class AlertasController
 {
     use AdminHelpersTrait;
 
+    private const LIST_LIMIT = 500;
+
     private const SITUACOES = [
         'abertos' => 'Abertos',
         'resolvidos' => 'Resolvidos',
@@ -46,13 +48,17 @@ final class AlertasController
         $invoiceFilter = (int) ($_GET['invoiceid'] ?? 0);
 
         $rows = [];
+        $truncated = false;
         $loadError = '';
         try {
+            // Busca um a mais para saber se a lista foi cortada.
             $rows = (new AlertRepository())->listWithContext([
                 'situacao' => $situacao,
                 'tipo' => $tipo,
                 'invoiceid' => $invoiceFilter,
-            ], 500);
+            ], self::LIST_LIMIT + 1);
+            $truncated = count($rows) > self::LIST_LIMIT;
+            $rows = array_slice($rows, 0, self::LIST_LIMIT);
         } catch (\Throwable $e) {
             $loadError = 'Não foi possível carregar os alertas: ' . $e->getMessage();
         }
@@ -103,6 +109,10 @@ final class AlertasController
         echo '</div>';
         echo '</div>';
         echo '</form>';
+
+        if ($truncated) {
+            echo '<div class="alert alert-info" style="margin-bottom:10px;">Exibindo os ' . self::LIST_LIMIT . ' alertas mais recentes. Use os filtros para ver os demais.</div>';
+        }
 
         echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
         echo '<tr>';

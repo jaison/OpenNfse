@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenNfse\Repositories;
 
+use OpenNfse\Helpers\BrasiliaTime;
 use WHMCS\Database\Capsule;
 
 /**
@@ -14,6 +15,9 @@ final class UnpaidNfseReportRepository
 {
     public const SITUACAO_NAO_PAGA = 'nao_paga';
     public const SITUACAO_PAGA_DEPOIS = 'paga_depois';
+
+    /** Mesma regra de BrasiliaTime::isPaidAfterEmission(), com o deslocamento de fuso em segundos. */
+    private const PAID_AFTER_EMISSION_SQL = 'i.datepaid > DATE_ADD(n.emitida_em, INTERVAL ? SECOND)';
 
     /**
      * @param array{data_inicial?: string, data_final?: string, situacao?: string, cliente?: string} $filters
@@ -82,6 +86,8 @@ final class UnpaidNfseReportRepository
     private function buildQuery(array $filters)
     {
         $situacao = (string) ($filters['situacao'] ?? '');
+        // emitida_em está no horário de Brasília e datepaid no fuso do servidor (ver BrasiliaTime).
+        $shift = BrasiliaTime::shiftToServerSeconds();
 
         $q = Capsule::table('mod_opennfse_notas as n')
             ->join('tblinvoices as i', 'i.id', '=', 'n.invoiceid')
@@ -93,14 +99,14 @@ final class UnpaidNfseReportRepository
         } elseif ($situacao === self::SITUACAO_PAGA_DEPOIS) {
             $q->where('i.status', 'Paid')
                 ->whereNotNull('n.emitida_em')
-                ->whereRaw('i.datepaid > n.emitida_em');
+                ->whereRaw(self::PAID_AFTER_EMISSION_SQL, [$shift]);
         } else {
-            $q->where(static function ($w) {
+            $q->where(static function ($w) use ($shift) {
                 $w->where('i.status', '<>', 'Paid')
-                    ->orWhere(static function ($paid) {
+                    ->orWhere(static function ($paid) use ($shift) {
                         $paid->where('i.status', 'Paid')
                             ->whereNotNull('n.emitida_em')
-                            ->whereRaw('i.datepaid > n.emitida_em');
+                            ->whereRaw(self::PAID_AFTER_EMISSION_SQL, [$shift]);
                     });
             });
         }

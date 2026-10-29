@@ -8,6 +8,7 @@ use OpenNfse\Helpers\NfseXmlExtractor;
 use OpenNfse\Repositories\LogRepository;
 use OpenNfse\Repositories\NotaRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
+use OpenNfse\Services\AlertCheckService;
 use OpenNfse\Services\AlertService;
 use OpenNfse\Services\InvoiceAlertPolicy;
 use OpenNfse\Services\StorageService;
@@ -24,21 +25,21 @@ final class InvoiceAlertHook
 
     public function onCancelled(array $vars): void
     {
-        $this->run('InvoiceCancelled', $vars, static function (array $nota): ?array {
+        $this->run('InvoiceCancelled', (int) ($vars['invoiceid'] ?? 0), static function (array $nota): ?array {
             return InvoiceAlertPolicy::onCancelled($nota);
         });
     }
 
     public function onRefunded(array $vars): void
     {
-        $this->run('InvoiceRefunded', $vars, static function (array $nota): ?array {
+        $this->run('InvoiceRefunded', (int) ($vars['invoiceid'] ?? 0), static function (array $nota): ?array {
             return InvoiceAlertPolicy::onRefunded($nota);
         });
     }
 
     public function onUnpaid(array $vars): void
     {
-        $this->run('InvoiceUnpaid', $vars, static function (array $nota, int $invoiceId): ?array {
+        $this->run('InvoiceUnpaid', (int) ($vars['invoiceid'] ?? 0), static function (array $nota, int $invoiceId): ?array {
             $invoiceRepo = new WhmcsInvoiceRepository();
             $invoice = $invoiceRepo->getInvoice($invoiceId);
             $credit = (float) str_replace(',', '.', (string) ($invoice['credit'] ?? 0));
@@ -47,14 +48,30 @@ final class InvoiceAlertHook
         });
     }
 
+    /**
+     * UpdateInvoiceTotal só registra o pedido de conferência (uma leitura e, com nota emitida,
+     * uma gravação). A comparação roda no cron, em checkTotalNow(), com o total já gravado.
+     */
     public function onTotalChanged(array $vars): void
     {
-        $this->run('UpdateInvoiceTotal', $vars, function (array $nota, int $invoiceId): ?array {
+        $this->run('UpdateInvoiceTotal', (int) ($vars['invoiceid'] ?? 0), static function (array $nota, int $invoiceId): ?array {
+            (new AlertCheckService())->request($invoiceId);
+
+            return null;
+        });
+    }
+
+    /**
+     * Conferência diferida (AlertCheckService): compara o total gravado da fatura com o vServ da nota.
+     */
+    public function checkTotalNow(int $invoiceId): void
+    {
+        $this->run('UpdateInvoiceTotal/cron', $invoiceId, function (array $nota, int $invoiceId): ?array {
             $notaValue = $this->resolveNotaValue($invoiceId, $nota);
             if ($notaValue === null) {
                 $this->log($nota, 'NFSE_ALERTA_SEM_VALOR', [
                     'invoiceid' => $invoiceId,
-                    'hook' => 'UpdateInvoiceTotal',
+                    'hook' => 'UpdateInvoiceTotal/cron',
                 ], 'Valor da NFS-e não encontrado no XML; alteração da fatura não conferida.');
                 return null;
             }
@@ -65,9 +82,24 @@ final class InvoiceAlertHook
         });
     }
 
+    /**
+     * AddTransaction: saída de dinheiro (estorno total ou parcial, reversão de pagamento).
+     * Entradas comuns de pagamento saem antes de qualquer consulta.
+     */
+    public function onTransaction(array $vars): void
+    {
+        if (!InvoiceAlertPolicy::isOutgoingTransaction($vars)) {
+            return;
+        }
+
+        $this->run('AddTransaction', InvoiceAlertPolicy::transactionInvoiceId($vars), static function (array $nota) use ($vars): ?array {
+            return InvoiceAlertPolicy::onTransaction($nota, $vars);
+        });
+    }
+
     public function onPaid(array $vars): void
     {
-        $this->run('InvoicePaid', $vars, static function (array $nota, int $invoiceId): ?array {
+        $this->run('InvoicePaid', (int) ($vars['invoiceid'] ?? 0), static function (array $nota, int $invoiceId): ?array {
             $invoice = (new WhmcsInvoiceRepository())->getInvoice($invoiceId);
 
             return InvoiceAlertPolicy::onPaid($nota, $invoice);
@@ -77,9 +109,8 @@ final class InvoiceAlertHook
     /**
      * @param callable(array, int): ?array $decide
      */
-    private function run(string $hook, array $vars, callable $decide): void
+    private function run(string $hook, int $invoiceId, callable $decide): void
     {
-        $invoiceId = (int) ($vars['invoiceid'] ?? 0);
         if ($invoiceId <= 0) {
             return;
         }
