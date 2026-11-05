@@ -214,9 +214,10 @@ Emitidas para Estrangeiros/
 ```
 
 - A classificação dentro do ZIP segue estas regras:
-- `Emitidas/`: NFS-e emitidas para clientes no Brasil.
-- `Canceladas/`: XMLs de cancelamento das notas canceladas no período.
-- `Emitidas para Estrangeiros/`: NFS-e emitidas para tomadores com país diferente de `BR`.
+- Cada NFS-e (chave de acesso) emitida no período entra uma vez, a partir do histórico fiscal. Assim, uma nota cancelada e depois substituída por reemissão na mesma fatura continua no ZIP.
+- `Emitidas/`: XML das NFS-e emitidas para clientes no Brasil.
+- `Canceladas/`: XML da nota e XML do cancelamento de cada NFS-e cancelada.
+- `Emitidas para Estrangeiros/`: XML das NFS-e emitidas para tomadores com país diferente de `BR`.
 - O nome do arquivo gerado segue o padrão `nfse_xml_{mmyyyy}.zip`, facilitando o envio mensal para a contabilidade.
 
 ## Cron
