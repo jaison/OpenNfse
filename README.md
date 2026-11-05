@@ -56,11 +56,12 @@ Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https:/
 - Envio de XML e PDF por e-mail.
 
 ### Dashboard e Monitoramento
-- Dashboard operacional com métricas do período.
-- Indicadores de emitidas, canceladas, rejeitadas, pendentes, erros e valor emitido.
-- Listas rápidas de últimas emissões, últimos erros e últimos cancelamentos.
-- Banner administrativo para checagem e aviso de atualização disponível do módulo.
-- Atalhos para ações operacionais do dia a dia.
+- Dashboard operacional do período, com navegação por mês, Hoje, 7 dias e período personalizado.
+- Barra de saúde: "Operação em dia" ou o que exige atenção (erros, pendentes, rejeitadas, aguardando status, faturas pagas sem nota, certificado perto do vencimento, não configurado ou ilegível, alertas abertos), cada contador com link para a tela certa.
+- Indicadores de emitidas, valor emitido, canceladas, taxa de sucesso, processadas e XMLs armazenados.
+- Calendário de calor das emissões por dia, média por dia da semana e linha do tempo de emitidas, canceladas e erros.
+- Atividade recente numa lista só, com filtros por tipo e por dia.
+- Aviso de versão nova no cabeçalho.
 
 ### Relatórios e Exportações
 - Relatórios de NFS-e emitidas.
