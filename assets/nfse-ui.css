@@ -195,7 +195,7 @@
 
 /* Componentes (components/bundle.css do OpenNfse UI) */
 
-.nfse-ui { font-family: var(--font-sans); font-size: 13px; line-height: 20px; color: var(--ink); background: var(--surface-page); }
+.nfse-ui { font-family: var(--font-sans); font-size: 13px; line-height: 20px; color: var(--ink); background: transparent; }
 .nfse-ui *, .nfse-ui *::before, .nfse-ui *::after { box-sizing: border-box; }
 .nfse-ui a { color: var(--accent); }
 .nfse-ui a:hover { color: var(--accent-hover); }
@@ -386,14 +386,11 @@
 .nfse-bar__kpis .nfse-kpi__value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nfse-bar__queue { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: var(--space-3) var(--space-4); background: var(--surface-subtle); border-left: 1px solid var(--border); }
 .nfse-queue__head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-/* Ponto, título e cron; num card estreito, o cron desce para a linha de baixo em vez de ser cortado. */
-.nfse-queue__status { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2); flex: 1; min-width: 0; }
 .nfse-dot { width: 8px; height: 8px; border-radius: var(--radius-pill); flex: none; }
 .nfse-dot--ok { background: var(--ok-ink); }
 .nfse-dot--danger { background: var(--danger-ink); }
 .nfse-queue__title { margin: 0; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
-.nfse-queue__cron { font-size: 11px; line-height: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.nfse-ui form.nfse-queue__form { margin: 0; flex: none; }
+.nfse-ui form.nfse-queue__form { margin: 0 0 0 auto; flex: none; }
 .nfse-btn--sm { min-height: 28px; height: 28px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
 .nfse-queue__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--space-4); row-gap: var(--space-1); }
 .nfse-queue__row { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); min-width: 0; font-size: 12px; color: var(--ink-2); }
@@ -403,8 +400,9 @@
 .nfse-queue__n { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
 .nfse-queue__row--zero .nfse-queue__n { color: var(--zero); }
 .nfse-ui a.nfse-queue__row--danger, .nfse-ui a.nfse-queue__row--danger:hover, .nfse-queue__row--danger .nfse-queue__n { color: var(--danger-ink); }
-.nfse-queue__foot { display: flex; justify-content: space-between; gap: var(--space-2); font-size: 11px; line-height: 14px; color: var(--muted); }
-.nfse-queue__foot a { margin-left: auto; font-weight: 600; }
+.nfse-queue__foot { display: flex; align-items: flex-end; gap: var(--space-2); margin-top: auto; font-size: 11px; line-height: 14px; color: var(--muted); }
+.nfse-queue__meta { flex: 1; min-width: 0; }
+.nfse-queue__foot a { margin-left: auto; font-weight: 600; white-space: nowrap; }
 /* Área abaixo de ~1840px: os 6 indicadores a 24px não cabem um valor como R$ 1.258.700,87; passam a 22px. */
 @container nfse-page (max-width: 1839px) {
   .nfse-bar__kpis .nfse-kpi { padding: 0 var(--space-3); }

@@ -203,17 +203,18 @@ final class DashboardViewTest extends TestCase
         $this->assertStringNotContainsString('Cron parado', $html);
     }
 
-    public function testQueueHeaderWithFreshCron(): void
+    public function testQueueHeaderHasOnlyDotTitleAndButton(): void
     {
         $html = DashboardView::render(self::withQueue(['PENDING' => 3], '2026-11-05 09:58:00'));
 
         $this->assertStringContainsString(
-            '<div class="nfse-queue__head"><div class="nfse-queue__status">'
+            '<div class="nfse-queue__head">'
             . '<span class="nfse-dot nfse-dot--ok" aria-hidden="true"></span>'
             . '<h2 class="nfse-queue__title" id="nfse-fila-agora" title="Estado atual, fora do período">Fila agora</h2>'
-            . '<span class="nfse-queue__cron" title="Cron executado há 2 min (WHMCS)">· cron há 2 min</span></div>',
+            . '<form class="nfse-queue__form" method="post"',
             $html
         );
+        $this->assertStringContainsString('Processar agora</button></form></div><div class="nfse-queue__grid">', $html, 'o cron não fica mais no cabeçalho');
     }
 
     public function testQueueCardValuesAndLinks(): void
@@ -232,7 +233,9 @@ final class DashboardViewTest extends TestCase
             $html
         );
         $this->assertStringContainsString(
-            '<div class="nfse-queue__foot"><span>Mais antigo há 12 min</span><a href="addonmodules.php?module=OpenNfse&amp;action=fila">Abrir fila</a></div>',
+            '<div class="nfse-queue__foot"><span class="nfse-queue__meta">'
+            . '<span class="nfse-queue__cron" title="Cron executado há 2 min (WHMCS)">Cron há 2 min</span> · mais antigo há 12 min</span>'
+            . '<a href="addonmodules.php?module=OpenNfse&amp;action=fila">Abrir fila</a></div>',
             $html
         );
     }
@@ -244,9 +247,19 @@ final class DashboardViewTest extends TestCase
         $this->assertSame(4, substr_count($html, 'class="nfse-queue__row nfse-queue__row--zero"'));
         $this->assertStringNotContainsString('nfse-queue__row--danger', $html);
         $this->assertStringContainsString(
-            '<div class="nfse-queue__foot"><a href="addonmodules.php?module=OpenNfse&amp;action=fila">Abrir fila</a></div>',
+            '<div class="nfse-queue__foot"><span class="nfse-queue__meta">'
+            . '<span class="nfse-queue__cron" title="Cron executado há 2 min (WHMCS)">Cron há 2 min</span></span>'
+            . '<a href="addonmodules.php?module=OpenNfse&amp;action=fila">Abrir fila</a></div>',
             $html,
-            'sem pendentes, o rodapé mostra só o link'
+            'sem pendentes, o rodapé mostra só o cron e o link'
+        );
+
+        // Sem dados do cron, "Mais antigo" abre o rodapé com maiúscula.
+        $data = self::withQueue(['PENDING' => 2], '2026-11-05 09:58:00');
+        unset($data['cron']);
+        $this->assertStringContainsString(
+            '<span class="nfse-queue__meta">Mais antigo há 12 min</span>',
+            DashboardView::render($data)
         );
     }
 
@@ -271,12 +284,12 @@ final class DashboardViewTest extends TestCase
         $this->assertStringContainsString('<div class="nfse-health__title">Cron parado há 30 min</div>', $html);
         $this->assertStringContainsString('href="addonmodules.php?module=OpenNfse&amp;action=config&amp;tab=processamento">Ver configuração do cron</a>', $html);
         $this->assertStringContainsString('<span class="nfse-dot nfse-dot--danger" aria-hidden="true"></span>', $html);
-        $this->assertStringContainsString('<span class="nfse-queue__cron nfse-text-danger" title="Cron executado há 30 min (WHMCS)">· cron há 30 min</span>', $html);
+        $this->assertStringContainsString('<span class="nfse-queue__cron nfse-text-danger" title="Cron executado há 30 min (WHMCS)">Cron há 30 min</span>', $html);
 
         $html = DashboardView::render(self::withQueue([], ''));
         $this->assertStringContainsString('<div class="nfse-health__title">Cron nunca executado</div>', $html);
         $this->assertStringContainsString('<span class="nfse-dot nfse-dot--danger" aria-hidden="true"></span>', $html);
-        $this->assertStringContainsString('<span class="nfse-queue__cron nfse-text-danger" title="Cron nunca executado">· cron nunca executado</span>', $html);
+        $this->assertStringContainsString('<span class="nfse-queue__cron nfse-text-danger" title="Cron nunca executado">Cron nunca executado</span>', $html);
     }
 
     public function testQueueCardEscapesCronSource(): void

@@ -229,16 +229,12 @@ final class DashboardView
         $counts = $queue['counts'] ?? [];
 
         $html = '<section class="nfse-bar__queue" aria-labelledby="nfse-fila-agora">';
-        $html .= '<div class="nfse-queue__head"><div class="nfse-queue__status">';
+        $html .= '<div class="nfse-queue__head">';
         if ($cron !== null) {
             $html .= '<span class="nfse-dot nfse-dot--' . ($cron['stale'] ? 'danger' : 'ok') . '" aria-hidden="true"></span>';
         }
         $html .= '<h2 class="nfse-queue__title" id="nfse-fila-agora" title="Estado atual, fora do período">Fila agora</h2>';
-        if ($cron !== null) {
-            $html .= '<span class="nfse-queue__cron' . ($cron['stale'] ? ' nfse-text-danger' : '') . '" title="' . self::h($cron['text']) . '">· '
-                . self::h($cron['short']) . '</span>';
-        }
-        $html .= '</div><form class="nfse-queue__form" method="post" action="addonmodules.php?module=OpenNfse&amp;action=filaProcessNow">';
+        $html .= '<form class="nfse-queue__form" method="post" action="addonmodules.php?module=OpenNfse&amp;action=filaProcessNow">';
         if ($token !== '') {
             $html .= self::hidden(['token' => $token]);
         }
@@ -257,9 +253,18 @@ final class DashboardView
         $html .= '</div>';
 
         $oldest = DashboardQueue::oldestPendingText($counts, (string) ($queue['oldest_pending'] ?? ''), $now);
-        $html .= '<div class="nfse-queue__foot">';
+        // Rodapé: "Cron há 1 min · mais antigo há 12 min" à esquerda, "Abrir fila" à direita.
+        $meta = [];
+        if ($cron !== null) {
+            $meta[] = '<span class="nfse-queue__cron' . ($cron['stale'] ? ' nfse-text-danger' : '') . '" title="' . self::h($cron['text']) . '">'
+                . self::h($cron['short']) . '</span>';
+        }
         if ($oldest !== '') {
-            $html .= '<span>' . self::h($oldest) . '</span>';
+            $meta[] = self::h($meta === [] ? ucfirst($oldest) : $oldest);
+        }
+        $html .= '<div class="nfse-queue__foot">';
+        if ($meta !== []) {
+            $html .= '<span class="nfse-queue__meta">' . implode(' · ', $meta) . '</span>';
         }
         $html .= '<a href="' . self::h(self::url(['action' => 'fila'])) . '">Abrir fila</a></div>';
 
