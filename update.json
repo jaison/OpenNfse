@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.26",
-  "release_date": "2026-11-04",
+  "latest_version": "0.1.27",
+  "release_date": "2026-11-05",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Correção: quando uma NFS-e era cancelada e outra era emitida na mesma fatura, o ZIP \"Baixar XMLs por competência\" colocava o XML de cancelamento em Emitidas e deixava de fora a nota cancelada. Agora a nota cancelada vai para Canceladas com o XML dela e o de cancelamento, e a nota nova vai para Emitidas. A aba Cancelamentos e o painel também passam a mostrar a nota substituída, e as faturas já afetadas são corrigidas automaticamente na atualização. IMPORTANTE: antes de atualizar, apague a pasta modules/addons/OpenNfse e envie a nova (a pasta não guarda dados: a configuração fica no banco, os XML/PDF ficam em attachments/ e o certificado fica obrigatoriamente fora do webroot)."
+  "message": "Correção: o número do endereço do tomador saía repetido na NFS-e (\"RUA X, 541, 541\"), porque ia junto no logradouro e também no campo número. Agora o número sai do logradouro e vai só no campo número; números do nome da rua (ex.: \"Rua 7 de Setembro\") não são mais lidos como número. Nova opção em Configurações › Dados Padrão do Tomador: \"Origem do Bairro do Tomador\". O padrão é \"Endereço 2 é o Bairro\" (o Endereço 2 do cliente passa a ir como bairro, e não mais como complemento); também é possível escolher um campo personalizado do cliente. O bairro padrão continua valendo quando a origem estiver vazia. IMPORTANTE: antes de atualizar, apague a pasta modules/addons/OpenNfse e envie a nova (a pasta não guarda dados: a configuração fica no banco, os XML/PDF ficam em attachments/ e o certificado fica obrigatoriamente fora do webroot)."
 }
