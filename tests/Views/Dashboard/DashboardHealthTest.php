@@ -11,7 +11,10 @@ use PHPUnit\Framework\TestCase;
 final class DashboardHealthTest extends TestCase
 {
     private const URLS = [
-        'fila' => 'fila-url',
+        'erros' => 'falhas-url',
+        'rejeitadas' => 'rejeitadas-url',
+        'aguardando_status' => 'wait-url',
+        'pendentes' => 'fila-url',
         'auditoria' => 'auditoria-url',
         'certificado' => 'cert-url',
         'customfield' => 'cf-url',
@@ -40,8 +43,10 @@ final class DashboardHealthTest extends TestCase
         $this->assertCount(1, $items);
         $this->assertSame('warn', $items[0]['tone']);
         $this->assertSame('3 pendentes · 1 aguardando status', $items[0]['title']);
-        $this->assertSame('Ver na fila', $items[0]['action']);
-        $this->assertSame('fila-url', $items[0]['href']);
+        $this->assertSame(
+            [['label' => '3 pendentes', 'href' => 'fila-url'], ['label' => '1 aguardando status', 'href' => 'wait-url']],
+            $items[0]['parts']
+        );
     }
 
     public function testErrorsAndRejectedAreCritical(): void
@@ -50,6 +55,29 @@ final class DashboardHealthTest extends TestCase
 
         $this->assertSame('danger', $items[0]['tone']);
         $this->assertSame('1 erro · 2 rejeitadas', $items[0]['title']);
+        $this->assertSame(['falhas-url', 'rejeitadas-url'], array_column($items[0]['parts'], 'href'));
+    }
+
+    public function testCountersDoNotRepeatTheSameNote(): void
+    {
+        // 1 rejeitada (também conta em com_erro_periodo) e 1 aguardando status (também conta em pendentes).
+        $counters = DashboardHealth::counters(
+            ['com_erro_periodo' => 1, 'rejeitadas' => 1, 'pendentes' => 1, 'aguardando_status' => 1],
+            0
+        );
+        $this->assertSame(
+            ['erros' => 0, 'pendentes' => 0, 'rejeitadas' => 1, 'aguardando_status' => 1, 'nao_emitidas' => 0],
+            $counters
+        );
+
+        $items = DashboardHealth::items($counters, self::CERT_OK, false, 0, self::URLS);
+        $this->assertSame('1 rejeitada · 1 aguardando status', $items[0]['title']);
+
+        $this->assertSame(
+            ['erros' => 2, 'pendentes' => 3, 'rejeitadas' => 1, 'aguardando_status' => 2, 'nao_emitidas' => 5],
+            DashboardHealth::counters(['com_erro_periodo' => 3, 'rejeitadas' => 1, 'pendentes' => 5, 'aguardando_status' => 2], 5)
+        );
+        $this->assertSame(0, DashboardHealth::counters(['com_erro_periodo' => 0, 'rejeitadas' => 2], 0)['erros'], 'nunca negativo');
     }
 
     public function testNotIssuedHasOwnItemAndRemovesOk(): void
@@ -87,11 +115,31 @@ final class DashboardHealthTest extends TestCase
         $this->assertSame('Venceu em 01/11/2026 · as emissões estão paradas', $item['text']);
     }
 
-    public function testCertificateMissingOrUnreadableAddsNothing(): void
+    public function testCertificateMissingOrUnreadableIsWarn(): void
     {
-        $this->assertNull(DashboardHealth::certificateItem(['status' => 'missing', 'days_left' => ''], 'x'));
-        $this->assertNull(DashboardHealth::certificateItem(['status' => 'error'], 'x'));
-        $this->assertNull(DashboardHealth::certificateItem([], 'x'));
+        $missing = DashboardHealth::certificateItem(['status' => 'missing', 'days_left' => ''], 'cert-url');
+        $this->assertSame('warn', $missing['tone']);
+        $this->assertSame('Certificado não configurado', $missing['title']);
+        $this->assertSame('cert-url', $missing['href']);
+
+        $error = DashboardHealth::certificateItem(['status' => 'error'], 'cert-url');
+        $this->assertSame('warn', $error['tone']);
+        $this->assertSame('Não foi possível ler o certificado', $error['title']);
+
+        $items = DashboardHealth::items(self::ZERO, ['status' => 'error'], false, 0, self::URLS);
+        $this->assertSame(['Operação em dia', 'Não foi possível ler o certificado'], array_column($items, 'title'));
+
+        $this->assertNull(DashboardHealth::certificateItem([], 'x'), 'sem dados do certificado, nada a mostrar');
+    }
+
+    public function testCertificateValidLine(): void
+    {
+        $this->assertSame('Certificado válido até 20/05/2027', DashboardHealth::certificateValidLine(self::CERT_OK));
+        $this->assertSame('', DashboardHealth::certificateValidLine(['status' => 'expiring', 'days_left' => 30, 'valid_to' => '05/12/2026 10:00']));
+        $this->assertSame('', DashboardHealth::certificateValidLine(['status' => 'expired', 'days_left' => -1, 'valid_to' => '01/11/2026 10:00']));
+        $this->assertSame('', DashboardHealth::certificateValidLine(['status' => 'missing', 'days_left' => '']));
+        $this->assertSame('', DashboardHealth::certificateValidLine(['status' => 'ok', 'days_left' => 200, 'valid_to' => '']));
+        $this->assertSame('', DashboardHealth::certificateValidLine([]));
     }
 
     public function testCustomFieldAndAlerts(): void

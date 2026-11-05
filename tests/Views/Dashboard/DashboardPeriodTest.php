@@ -33,6 +33,39 @@ final class DashboardPeriodTest extends TestCase
         );
     }
 
+    public function testCustomRangeIsClamped(): void
+    {
+        $today = '2026-11-05';
+        // Anos fora de 2000–2100 valem como data inválida.
+        $this->assertSame(
+            ['periodo' => 'personalizado', 'start' => '2026-11-01', 'end' => '2026-11-30'],
+            DashboardPeriod::resolve('personalizado', '1999-12-31', '2101-01-01', $today)
+        );
+        $this->assertSame(
+            ['periodo' => 'personalizado', 'start' => '2026-11-01', 'end' => '2026-11-30'],
+            DashboardPeriod::resolve('personalizado', '0001-01-01', '9999-12-31', $today)
+        );
+        $this->assertSame(
+            ['periodo' => 'personalizado', 'start' => '2026-10-10', 'end' => '2026-11-30'],
+            DashboardPeriod::resolve('personalizado', '2026-10-10', '9999-12-31', $today),
+            'só a data fora do intervalo de anos é trocada'
+        );
+        // Mais de 366 dias: o início passa a ser a data final menos 365 dias.
+        $this->assertSame(
+            ['periodo' => 'personalizado', 'start' => '2025-11-05', 'end' => '2026-11-05'],
+            DashboardPeriod::resolve('personalizado', '2000-01-01', '2026-11-05', $today)
+        );
+        // Exatamente 366 dias (ano bissexto) fica como está.
+        $this->assertSame(
+            ['periodo' => 'personalizado', 'start' => '2028-01-01', 'end' => '2028-12-31'],
+            DashboardPeriod::resolve('personalizado', '2028-01-01', '2028-12-31', $today)
+        );
+        $this->assertTrue(DashboardPeriod::isAcceptedDate('2000-01-01'));
+        $this->assertTrue(DashboardPeriod::isAcceptedDate('2100-12-31'));
+        $this->assertFalse(DashboardPeriod::isAcceptedDate('1999-12-31'));
+        $this->assertFalse(DashboardPeriod::isAcceptedDate('2101-01-01'));
+    }
+
     public function testLabel(): void
     {
         $this->assertSame('Outubro 2026', DashboardPeriod::label('2026-10-01', '2026-10-31'));

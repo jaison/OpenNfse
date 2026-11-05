@@ -621,21 +621,27 @@ Na lista de alertas, cada alerta aberto tem duas ações:
 
 Em **Addons > OpenNfse > Dashboard** (`AdminController::showDashboard()`, HTML em `src/Views/Dashboard/`). De cima para baixo:
 
-- **Cabeçalho**: logo, título e versão. Com versão nova, a pílula mostra "v0.1.26 → 0.1.27 disponível" e leva a **Configurações > Processamento**, onde ficam os detalhes e os links de download. À direita, o período:
+- **Cabeçalho**: logo, título e versão. Com versão nova, a pílula mostra "v0.1.26 → 0.1.27 disponível" e leva a **Configurações > Processamento**, onde ficam os detalhes e os links de download. Com o certificado legível e mais de 30 dias de validade, o subtítulo mostra discretamente "Certificado válido até dd/mm/aaaa". À direita, o período:
   - setas de mês, com o nome do mês ("Outubro 2026") ou o intervalo quando o período não é um mês inteiro;
   - **Hoje**, **7 dias** e **Personalizado** (data inicial e final).
-- **Barra de saúde**: "Operação em dia" quando erros, pendentes, rejeitadas, aguardando status e faturas pagas sem nota estão em zero. Senão, um item lista só os contadores acima de zero, com link para a fila no período (crítico quando há erro ou rejeitada). Faturas pagas sem nota têm item próprio, com link para a auditoria. Também aparecem o certificado vencido ou com 30 dias ou menos, o custom field apagado e os alertas abertos.
+- **Barra de saúde**: "Operação em dia" quando erros, pendentes, rejeitadas, aguardando status e faturas pagas sem nota estão em zero. Senão, um item lista só os contadores acima de zero (crítico quando há erro ou rejeitada), cada um com link próprio, sempre no período:
+  - erros → **Relatórios > Falhas**;
+  - rejeitadas → **Relatórios > Emitidas** com `status=REJEITADA`;
+  - pendentes → **Fila**;
+  - aguardando status → **Fila** com `status=WAIT_STATUS`.
+
+  Os contadores não repetem a mesma nota: erros = `com_erro_periodo` − `rejeitadas` e pendentes = `pendentes` − `aguardando_status` (as métricas de `dashboardOverview` já incluem umas nas outras). Faturas pagas sem nota têm item próprio, com link para a auditoria. Também aparecem o certificado vencido ou com 30 dias ou menos, o certificado não configurado ou ilegível (aviso com link para **Configurações > Ambiente**), o custom field apagado e os alertas abertos.
 - **Indicadores**: emitidas, valor emitido, canceladas, taxa de sucesso, processadas e XMLs armazenados.
 - **Emissões por dia**: calendário de calor do período, em semanas de domingo a sábado, com marcadores de canceladas e erros por dia. Faixas fixas: 0–7, 8–13, 14–18, 19–23 e 24 ou mais. Ao lado, a média por dia da semana. Média e médias por dia da semana contam só os dias até hoje.
-- **Linha do tempo**: uma faixa por série (Emitidas, Canceladas, Erros), cada uma com escala própria e o mesmo eixo de datas.
-- **Atividade recente**: até 10 eventos (emissões, cancelamentos e erros), do mais novo para o mais antigo, com filtros Tudo, Emitidas, Canceladas e Erros e link para o relatório completo.
+- **Linha do tempo**: uma faixa por série (Emitidas, Canceladas, Erros (incl. resolvidos)), cada uma com escala própria e o mesmo eixo de datas. Os dias que ainda não chegaram ficam sem barra e com a data esmaecida, como no calendário.
+- **Atividade recente**: até 10 eventos (emissões, cancelamentos e erros), do mais novo para o mais antigo, com filtros Tudo, Emitidas, Canceladas e Erros e link para o relatório completo. Cada fatura aparece com um erro só, o mais recente (a mesma fatura pode vir da nota e da fila).
 
 Parâmetros da URL (`action=dashboard`):
 
 | Parâmetro | Valores | Uso |
 |---|---|---|
 | `periodo` | `hoje`, `7_dias`, `mes_atual` (padrão), `mes_anterior`, `personalizado` | Período da tela. |
-| `data_inicial`, `data_final` | `AAAA-MM-DD` | Com `periodo=personalizado`. As setas de mês usam o primeiro e o último dia do mês. Data inválida vira o mês atual; datas invertidas são trocadas. |
+| `data_inicial`, `data_final` | `AAAA-MM-DD` | Com `periodo=personalizado`. As setas de mês usam o primeiro e o último dia do mês. Data inválida ou fora dos anos 2000–2100 vira o mês atual; datas invertidas são trocadas. No máximo 366 dias: num intervalo maior, o início passa a ser a data final menos 365 dias. |
 | `dia` | `AAAA-MM-DD` dentro do período | Clique num dia do calendário: a atividade recente mostra só esse dia. Clicar de novo no mesmo dia tira o filtro. Valor inválido ou fora do período é ignorado. |
 | `feed` | `tudo` (padrão), `emitidas`, `canceladas`, `erros` | Filtro da atividade recente. |
 

@@ -9,9 +9,9 @@ use OpenNfse\Services\EmissionPolicyService;
 /**
  * Itens da barra de saúde da Dashboard.
  *
- * Contadores do período (todos de ReportRepository::dashboardOverview, exceto o último):
- * - erros: com_erro_periodo;
- * - pendentes: pendentes;
+ * Contadores do período, sem repetir a mesma nota (ver counters()):
+ * - erros: com_erro_periodo menos rejeitadas (com_erro_periodo já inclui as rejeitadas);
+ * - pendentes: pendentes menos aguardando_status (pendentes já inclui WAIT_STATUS);
  * - rejeitadas: rejeitadas;
  * - aguardando_status: aguardando_status;
  * - nao_emitidas: faturas pagas sem nota (ReportsController::getAuditoriaDashboardSummary, total_invoices).
@@ -20,11 +20,34 @@ final class DashboardHealth
 {
     public const CERTIFICATE_WARNING_DAYS = 30;
 
+    private const VALID_CERTIFICATE_STATUSES = ['ok', 'expiring', 'critical'];
+
     /**
-     * @param array<string, int> $counters erros, pendentes, rejeitadas, aguardando_status, nao_emitidas
+     * Contadores exclusivos a partir das métricas de ReportRepository::dashboardOverview.
+     *
+     * @param array<string, mixed> $metrics
+     * @return array{erros: int, pendentes: int, rejeitadas: int, aguardando_status: int, nao_emitidas: int}
+     */
+    public static function counters(array $metrics, int $naoEmitidas): array
+    {
+        $rejeitadas = max(0, (int) ($metrics['rejeitadas'] ?? 0));
+        $aguardando = max(0, (int) ($metrics['aguardando_status'] ?? 0));
+
+        return [
+            'erros' => max(0, (int) ($metrics['com_erro_periodo'] ?? 0) - $rejeitadas),
+            'pendentes' => max(0, (int) ($metrics['pendentes'] ?? 0) - $aguardando),
+            'rejeitadas' => $rejeitadas,
+            'aguardando_status' => $aguardando,
+            'nao_emitidas' => max(0, $naoEmitidas),
+        ];
+    }
+
+    /**
+     * @param array<string, int> $counters erros, pendentes, rejeitadas, aguardando_status, nao_emitidas (já exclusivos)
      * @param array<string, mixed> $certificate saída de ConfigController::evaluateCertificateFromConfig (status, days_left, valid_to)
-     * @param array<string, string> $urls fila, auditoria, certificado, customfield, alertas
-     * @return array<int, array{tone: string, icon: string, title: string, text: string, action: string, href: string}>
+     * @param array<string, string> $urls erros, rejeitadas, aguardando_status, pendentes, auditoria, certificado, customfield, alertas
+     * @return array<int, array{tone: string, icon: string, title: string, text: string, action: string, href: string,
+     *     parts: array<int, array{label: string, href: string}>}>
      */
     public static function items(
         array $counters,
@@ -49,24 +72,30 @@ final class DashboardHealth
             );
         }
 
-        $filaParts = array_values(array_filter([
-            $erros > 0 ? self::plural($erros, 'erro', 'erros') : '',
-            $rejeitadas > 0 ? self::plural($rejeitadas, 'rejeitada', 'rejeitadas') : '',
-            $pendentes > 0 ? self::plural($pendentes, 'pendente', 'pendentes') : '',
-            $aguardando > 0 ? $aguardando . ' aguardando status' : '',
-        ]));
-        if ($filaParts !== []) {
+        $parts = [];
+        $counted = [
+            'erros' => [$erros, self::plural($erros, 'erro', 'erros')],
+            'rejeitadas' => [$rejeitadas, self::plural($rejeitadas, 'rejeitada', 'rejeitadas')],
+            'pendentes' => [$pendentes, self::plural($pendentes, 'pendente', 'pendentes')],
+            'aguardando_status' => [$aguardando, number_format($aguardando, 0, ',', '.') . ' aguardando status'],
+        ];
+        foreach ($counted as $key => [$count, $label]) {
+            if ($count > 0) {
+                $parts[] = ['label' => $label, 'href' => (string) ($urls[$key] ?? '')];
+            }
+        }
+        if ($parts !== []) {
             $critical = $erros > 0 || $rejeitadas > 0;
-            $items[] = self::item(
+            $item = self::item(
                 $critical ? 'danger' : 'warn',
                 $critical ? 'alert' : 'clock',
-                implode(' · ', $filaParts),
+                implode(' · ', array_column($parts, 'label')),
                 $critical
-                    ? 'Há notas que não saíram no período. Veja o motivo na fila e reprocesse.'
-                    : 'A fila ainda está trabalhando nestas notas.',
-                'Ver na fila',
-                (string) ($urls['fila'] ?? '')
+                    ? 'Há notas que não saíram no período. Abra cada contador para ver o motivo e reprocessar.'
+                    : 'A fila ainda está trabalhando nestas notas.'
             );
+            $item['parts'] = $parts;
+            $items[] = $item;
         }
 
         if ($naoEmitidas > 0) {
@@ -111,10 +140,12 @@ final class DashboardHealth
     }
 
     /**
-     * Item crítico quando o certificado venceu ou vence em 30 dias ou menos.
+     * Item crítico quando o certificado venceu ou vence em 30 dias ou menos; aviso quando
+     * não está configurado (missing) ou não pôde ser lido (error e demais status).
      *
      * @param array<string, mixed> $certificate
-     * @return array{tone: string, icon: string, title: string, text: string, action: string, href: string}|null
+     * @return array{tone: string, icon: string, title: string, text: string, action: string, href: string,
+     *     parts: array<int, array{label: string, href: string}>}|null
      */
     public static function certificateItem(array $certificate, string $href): ?array
     {
@@ -135,7 +166,15 @@ final class DashboardHealth
             );
         }
 
-        if (!in_array($status, ['ok', 'expiring', 'critical'], true) || $daysLeft === null || $daysLeft > self::CERTIFICATE_WARNING_DAYS) {
+        if ($status === 'missing') {
+            return self::item('warn', 'alert', 'Certificado não configurado', 'Sem certificado A1 as notas não são emitidas.', 'Abrir Configurações', $href);
+        }
+
+        if ($status !== '' && !in_array($status, self::VALID_CERTIFICATE_STATUSES, true)) {
+            return self::item('warn', 'alert', 'Não foi possível ler o certificado', 'Confira o arquivo e a senha do certificado A1.', 'Abrir Configurações', $href);
+        }
+
+        if ($status === '' || $daysLeft === null || $daysLeft > self::CERTIFICATE_WARNING_DAYS) {
             return null;
         }
 
@@ -155,13 +194,37 @@ final class DashboardHealth
         );
     }
 
+    /**
+     * "Certificado válido até dd/mm/aaaa" quando o certificado está legível e não gera item na barra
+     * (mais de 30 dias). Vazio nos demais casos.
+     *
+     * @param array<string, mixed> $certificate
+     */
+    public static function certificateValidLine(array $certificate): string
+    {
+        $status = trim((string) ($certificate['status'] ?? ''));
+        $rawDays = $certificate['days_left'] ?? null;
+        $validTo = trim((string) strtok(trim((string) ($certificate['valid_to'] ?? '')), ' '));
+        if (
+            !in_array($status, self::VALID_CERTIFICATE_STATUSES, true)
+            || $rawDays === null || $rawDays === ''
+            || (int) $rawDays <= self::CERTIFICATE_WARNING_DAYS
+            || $validTo === ''
+        ) {
+            return '';
+        }
+
+        return 'Certificado válido até ' . $validTo;
+    }
+
     public static function plural(int $n, string $one, string $many): string
     {
         return number_format($n, 0, ',', '.') . ' ' . ($n === 1 ? $one : $many);
     }
 
     /**
-     * @return array{tone: string, icon: string, title: string, text: string, action: string, href: string}
+     * @return array{tone: string, icon: string, title: string, text: string, action: string, href: string,
+     *     parts: array<int, array{label: string, href: string}>}
      */
     private static function item(string $tone, string $icon, string $title, string $text, string $action = '', string $href = ''): array
     {
@@ -172,6 +235,7 @@ final class DashboardHealth
             'text' => $text,
             'action' => $href !== '' ? $action : '',
             'href' => $href,
+            'parts' => [],
         ];
     }
 }

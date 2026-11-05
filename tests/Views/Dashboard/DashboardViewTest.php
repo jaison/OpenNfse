@@ -91,6 +91,83 @@ final class DashboardViewTest extends TestCase
         $this->assertStringContainsString('Nenhuma atividade no período.', $html);
     }
 
+    public function testHealthLinksPerCounter(): void
+    {
+        $data = self::data(['metrics' => [
+            'com_erro_periodo' => 3, 'rejeitadas' => 1, 'pendentes' => 4, 'aguardando_status' => 2,
+        ] + self::data()['metrics']]);
+        $html = DashboardView::render($data);
+
+        $range = 'data_inicial=2026-10-01&amp;data_final=2026-10-31';
+        $fila = 'updated_from=2026-10-01&amp;updated_to=2026-10-31';
+        $this->assertStringContainsString('<a href="addonmodules.php?module=OpenNfse&amp;action=relatorios&amp;tab=falhas&amp;' . $range . '">2 erros</a>', $html);
+        $this->assertStringContainsString('<a href="addonmodules.php?module=OpenNfse&amp;action=relatorios&amp;tab=emitidas&amp;' . $range . '&amp;status=REJEITADA">1 rejeitada</a>', $html);
+        $this->assertStringContainsString('<a href="addonmodules.php?module=OpenNfse&amp;action=fila&amp;' . $fila . '">2 pendentes</a>', $html);
+        $this->assertStringContainsString('<a href="addonmodules.php?module=OpenNfse&amp;action=fila&amp;status=WAIT_STATUS&amp;' . $fila . '">2 aguardando status</a>', $html);
+        $this->assertStringNotContainsString('Operação em dia', $html);
+    }
+
+    public function testCertificateInHeaderAndHealth(): void
+    {
+        $html = DashboardView::render(self::data());
+        $this->assertStringContainsString('<span class="nfse-header__cert">· Certificado válido até 20/05/2027</span>', $html);
+
+        $html = DashboardView::render(self::data(['certificate' => ['status' => 'missing', 'days_left' => '', 'valid_to' => '']]));
+        $this->assertStringNotContainsString('nfse-header__cert', $html);
+        $this->assertStringContainsString('Certificado não configurado', $html);
+        $this->assertStringContainsString('href="addonmodules.php?module=OpenNfse&amp;action=config&amp;tab=ambiente">Abrir Configurações</a>', $html);
+    }
+
+    public function testDayAndFeedKeepEachOther(): void
+    {
+        $html = DashboardView::render(self::data(['feed_filter' => 'canceladas']));
+        $period = '<input type="hidden" name="periodo" value="personalizado"><input type="hidden" name="data_inicial" value="2026-10-01"><input type="hidden" name="data_final" value="2026-10-31">';
+
+        // Formulário do calendário: período e filtro do feed.
+        $this->assertStringContainsString('<input type="hidden" name="action" value="dashboard">' . $period . '<input type="hidden" name="feed" value="canceladas">', $html);
+        // Formulário dos chips: período e dia.
+        $this->assertStringContainsString($period . '<input type="hidden" name="dia" value="2026-10-23">', $html);
+        // O dia escolhido desmarca ao clicar de novo; os outros marcam.
+        $this->assertStringContainsString('name="dia" value="" aria-pressed="true" aria-label="23/10/2026', $html);
+        $this->assertStringContainsString('name="dia" value="2026-10-22" aria-pressed="false"', $html);
+        $this->assertStringContainsString('name="feed" value="canceladas" aria-pressed="true"', $html);
+        $this->assertStringContainsString('name="feed" value="tudo" aria-pressed="false"', $html);
+        $this->assertStringContainsString('feed=canceladas#nfse-atividade">Todo o período</a>', $html);
+        $this->assertStringContainsString('tab=cancelamentos&amp;data_inicial=2026-10-23&amp;data_final=2026-10-23', $html);
+    }
+
+    public function testChipCountsFollowSelectedDay(): void
+    {
+        // 23/10 tem 29 emitidas; 08/10 tem 4 canceladas. O mês tem 119 emitidas e 4 canceladas.
+        $html = DashboardView::render(self::data());
+        $this->assertStringContainsString('>Tudo<span class="nfse-chip__count">29</span>', $html);
+        $this->assertStringContainsString('>Emitidas<span class="nfse-chip__count">29</span>', $html);
+        $this->assertStringContainsString('>Canceladas<span class="nfse-chip__count">0</span>', $html);
+
+        $html = DashboardView::render(self::data(['dia' => '']));
+        $this->assertStringContainsString('>Tudo<span class="nfse-chip__count">123</span>', $html);
+        $this->assertStringContainsString('>Canceladas<span class="nfse-chip__count">4</span>', $html);
+    }
+
+    public function testFutureDaysInStrips(): void
+    {
+        $series = [];
+        for ($i = 1; $i <= 30; $i++) {
+            $series[] = ['date' => sprintf('2026-11-%02d', $i), 'emitidas' => $i <= 5 ? 2 : 0, 'canceladas' => 0, 'erros_resolvidos' => 0];
+        }
+        $html = DashboardView::render(self::data([
+            'period' => ['periodo' => 'mes_atual', 'start' => '2026-11-01', 'end' => '2026-11-30'],
+            'series' => $series,
+            'dia' => '',
+        ]));
+
+        // 25 dias futuros (06 a 30/11) em cada uma das 3 faixas, sem barra.
+        $this->assertSame(75, substr_count($html, 'nfse-strip__bar nfse-strip__bar--future"'));
+        $this->assertSame(25, substr_count($html, 'class="nfse-strip__day--future"'));
+        $this->assertStringContainsString('<span class="nfse-strip__label">Erros (incl. resolvidos)</span>', $html);
+        $this->assertStringContainsString('Erros (incl. resolvidos) no dia', $html);
+    }
+
     public function testNextArrowDisabledForFutureMonth(): void
     {
         $html = DashboardView::render(self::data(['period' => ['periodo' => 'mes_atual', 'start' => '2026-11-01', 'end' => '2026-11-30'], 'dia' => '']));

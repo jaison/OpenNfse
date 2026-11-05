@@ -31,6 +31,21 @@ final class DashboardCalendarTest extends TestCase
         return $out;
     }
 
+    public function testFebruary2028LeapYear(): void
+    {
+        // 01/02/2028 é terça; 29/02/2028 também.
+        $cells = DashboardCalendar::grid(self::series('2028-02-01', array_fill(0, 29, 1)), '2028-02-01', '2028-02-29');
+
+        $this->assertCount(35, $cells);
+        $this->assertTrue($cells[0]['empty']);
+        $this->assertTrue($cells[1]['empty']);
+        $this->assertSame('2028-02-01', $cells[2]['date']);
+        $this->assertSame('2028-02-29', $cells[30]['date']);
+        $this->assertSame(29, count(array_filter($cells, static fn (array $c): bool => !$c['empty'])));
+        $this->assertTrue($cells[31]['empty']);
+        $this->assertSame('', $cells[2]['month'], 'mês único: sem nome do mês nas células');
+    }
+
     public function testOctober2026StartsOnThursday(): void
     {
         $series = self::series('2026-10-01', array_fill(0, 31, 3), [7 => 4], [9 => 1]);

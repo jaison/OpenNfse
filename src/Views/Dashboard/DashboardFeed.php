@@ -67,7 +67,7 @@ final class DashboardFeed
         }
 
         if ($sources['erros']) {
-            foreach ($issues as $row) {
+            foreach (self::latestIssuePerInvoice($issues) as $row) {
                 $items[] = self::item('erro', $row, self::issueTitle($row));
             }
         }
@@ -75,6 +75,32 @@ final class DashboardFeed
         usort($items, static fn (array $a, array $b): int => strcmp($b['data'], $a['data']));
 
         return array_slice($items, 0, max(1, $limit));
+    }
+
+    /**
+     * Um erro por fatura, o mais recente: a mesma fatura pode vir da nota e da fila.
+     * Linhas sem fatura ficam todas.
+     *
+     * @param array<int, array<string, mixed>> $issues
+     * @return array<int, array<string, mixed>>
+     */
+    public static function latestIssuePerInvoice(array $issues): array
+    {
+        $byInvoice = [];
+        $out = [];
+        foreach ($issues as $row) {
+            $invoiceId = (int) ($row['invoiceid'] ?? 0);
+            if ($invoiceId <= 0) {
+                $out[] = $row;
+                continue;
+            }
+            $data = trim((string) ($row['data'] ?? ''));
+            if (!isset($byInvoice[$invoiceId]) || strcmp($data, trim((string) ($byInvoice[$invoiceId]['data'] ?? ''))) > 0) {
+                $byInvoice[$invoiceId] = $row;
+            }
+        }
+
+        return array_merge(array_values($byInvoice), $out);
     }
 
     /**

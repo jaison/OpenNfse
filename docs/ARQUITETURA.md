@@ -147,11 +147,11 @@ O uso dos campos do WHMCS está em [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_
 
 Classes puras, sem acesso ao banco, testadas em `tests/Views/Dashboard/`. O HTML usa as classes `nfse-` do OpenNfse UI em `assets/nfse-ui.css`.
 
-- `DashboardPeriod`: lê `periodo`, `data_inicial` e `data_final`, monta o rótulo ("Outubro 2026", "05/11/2026" ou o intervalo), as setas de mês e valida o dia escolhido (`dia`).
+- `DashboardPeriod`: lê `periodo`, `data_inicial` e `data_final`, limita o período personalizado (anos 2000–2100, até 366 dias), monta o rótulo ("Outubro 2026", "05/11/2026" ou o intervalo), as setas de mês e valida o dia escolhido (`dia`).
 - `DashboardCalendar`: grade do calendário de calor (semanas de domingo a sábado que cobrem o período), faixas fixas de calor, resumo (total, média por dia corrido e pico) e média por dia da semana.
-- `DashboardStrips`: linha do tempo em faixas (Emitidas, Canceladas, Erros), cada uma com escala própria, e os rótulos do eixo de datas.
-- `DashboardHealth`: itens da barra de saúde (operação em dia, pendências da fila, faturas pagas sem nota, certificado, custom field, alertas).
-- `DashboardFeed`: junta emissões, cancelamentos e erros recentes numa lista, com o filtro `feed` e o resumo das mensagens de erro da API.
+- `DashboardStrips`: linha do tempo em faixas (Emitidas, Canceladas, Erros incl. resolvidos), cada uma com escala própria, os rótulos do eixo de datas e a marca dos dias futuros.
+- `DashboardHealth`: contadores sem dupla contagem e itens da barra de saúde (operação em dia, erros/rejeitadas/pendentes/aguardando status com link próprio, faturas pagas sem nota, certificado, custom field, alertas) e a linha "Certificado válido até".
+- `DashboardFeed`: junta emissões, cancelamentos e erros recentes numa lista (um erro por fatura, o mais recente), com o filtro `feed` e o resumo das mensagens de erro da API.
 - `DashboardView`: monta o HTML da tela com os itens acima.
 
 ### Migrations

@@ -67,6 +67,38 @@ final class DashboardFeedTest extends TestCase
         $this->assertSame(110, mb_strlen(DashboardFeed::normalizeIssueMessage(str_repeat('a', 200))));
     }
 
+    public function testNormalizeIssueMessage(): void
+    {
+        $this->assertSame(
+            'Erro na requisição: 400 Bad Request',
+            DashboardFeed::normalizeIssueMessage("Client error: `POST https://sefin.example/SefinNacional/nfse` resulted in a `400 Bad Request` response:\n{\"erro\":1}")
+        );
+        $this->assertSame(
+            'Erro na requisição: 503 Service Unavailable',
+            DashboardFeed::normalizeIssueMessage('Server error: `GET https://adn.example/danfse/123` resulted in a `503 Service Unavailable` response')
+        );
+        $this->assertSame(
+            'cURL error 28: timeout - adn.example',
+            DashboardFeed::normalizeIssueMessage('cURL error 28: timeout for URI https://adn.example/contribuintes/x?y=1')
+        );
+        $this->assertSame('-', DashboardFeed::normalizeIssueMessage("  \n "));
+    }
+
+    public function testIssuesAreDeduplicatedByInvoice(): void
+    {
+        $issues = [
+            ['invoiceid' => 10, 'status' => 'ERRO', 'erro' => 'antigo', 'data' => '2026-10-30 10:00:00'],
+            ['invoiceid' => 10, 'status' => 'RESOLVIDO', 'erro' => 'novo', 'data' => '2026-10-31 10:00:00'],
+            ['invoiceid' => 11, 'status' => 'ERROR', 'erro' => 'outra', 'data' => '2026-10-29 10:00:00'],
+            ['invoiceid' => 0, 'status' => 'ERROR', 'erro' => 'sem fatura 1', 'data' => '2026-10-28 10:00:00'],
+            ['invoiceid' => 0, 'status' => 'ERROR', 'erro' => 'sem fatura 2', 'data' => '2026-10-27 10:00:00'],
+        ];
+        $items = DashboardFeed::merge([], [], $issues, 'erros');
+
+        $this->assertSame(['novo — resolvido', 'outra', 'sem fatura 1', 'sem fatura 2'], array_column($items, 'title'));
+        $this->assertSame([10, 11, 0, 0], array_column($items, 'invoiceid'));
+    }
+
     public function testNotaWithoutNumber(): void
     {
         $items = DashboardFeed::merge([['invoiceid' => 1, 'numero_nf' => '', 'data' => '2026-10-01 10:00:00']], [], []);

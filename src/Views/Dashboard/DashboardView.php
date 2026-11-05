@@ -49,21 +49,19 @@ final class DashboardView
         $feedFilter = DashboardFeed::filter((string) ($d['feed_filter'] ?? ''));
         $periodParams = DashboardPeriod::queryParams($period['periodo'], $start, $end);
 
-        $range = ['updated_from' => $start, 'updated_to' => $end];
+        $filaRange = ['updated_from' => $start, 'updated_to' => $end];
+        $reportRange = ['data_inicial' => $start, 'data_final' => $end];
         $health = DashboardHealth::items(
-            [
-                'erros' => (int) ($metrics['com_erro_periodo'] ?? 0),
-                'pendentes' => (int) ($metrics['pendentes'] ?? 0),
-                'rejeitadas' => (int) ($metrics['rejeitadas'] ?? 0),
-                'aguardando_status' => (int) ($metrics['aguardando_status'] ?? 0),
-                'nao_emitidas' => (int) ($d['nao_emitidas'] ?? 0),
-            ],
+            DashboardHealth::counters($metrics, (int) ($d['nao_emitidas'] ?? 0)),
             $d['certificate'] ?? [],
             (bool) ($d['customfield_missing'] ?? false),
             (int) ($d['alertas_abertos'] ?? 0),
             [
-                'fila' => self::url(['action' => 'fila'] + $range),
-                'auditoria' => self::url(['action' => 'relatorios', 'tab' => 'auditoria', 'data_inicial' => $start, 'data_final' => $end]),
+                'erros' => self::url(['action' => 'relatorios', 'tab' => 'falhas'] + $reportRange),
+                'rejeitadas' => self::url(['action' => 'relatorios', 'tab' => 'emitidas'] + $reportRange + ['status' => 'REJEITADA']),
+                'aguardando_status' => self::url(['action' => 'fila', 'status' => 'WAIT_STATUS'] + $filaRange),
+                'pendentes' => self::url(['action' => 'fila'] + $filaRange),
+                'auditoria' => self::url(['action' => 'relatorios', 'tab' => 'auditoria'] + $reportRange),
                 'certificado' => self::url(['action' => 'config', 'tab' => 'ambiente']),
                 'customfield' => self::url(['action' => 'config', 'tab' => 'processamento']),
                 'alertas' => self::url(['action' => 'alertas']),
@@ -78,7 +76,7 @@ final class DashboardView
         $html .= self::calendar($series, $start, $end, $today, $dia, $feedFilter, $periodParams);
         $html .= self::weekdays($series, $today, $start, $end);
         $html .= '</div>';
-        $html .= self::strips($series);
+        $html .= self::strips($series, $today);
         $html .= self::feed($d['feed_items'] ?? [], $metrics, $series, $start, $end, $dia, $feedFilter, $periodParams, $today);
         $html .= '</div>';
 
@@ -111,7 +109,12 @@ final class DashboardView
         } elseif ($current !== '') {
             $html .= '<span class="nfse-badge nfse-badge--version">v' . self::h($current) . '</span>';
         }
-        $html .= '</div><div class="nfse-subtitle">Visão geral da operação fiscal</div></div>';
+        $html .= '</div><div class="nfse-subtitle">Visão geral da operação fiscal';
+        $certificateLine = DashboardHealth::certificateValidLine($d['certificate'] ?? []);
+        if ($certificateLine !== '') {
+            $html .= ' <span class="nfse-header__cert">· ' . self::h($certificateLine) . '</span>';
+        }
+        $html .= '</div></div>';
         $html .= '</div>';
 
         $start = $period['start'];
@@ -163,7 +166,17 @@ final class DashboardView
         foreach ($items as $item) {
             $html .= '<div class="nfse-health__item nfse-health__item--' . self::h($item['tone']) . '">';
             $html .= self::icon($item['icon']);
-            $html .= '<div class="nfse-health__body"><div class="nfse-health__title">' . self::h($item['title']) . '</div>';
+            $title = self::h($item['title']);
+            if (($item['parts'] ?? []) !== []) {
+                $links = [];
+                foreach ($item['parts'] as $part) {
+                    $links[] = $part['href'] !== ''
+                        ? '<a href="' . self::h($part['href']) . '">' . self::h($part['label']) . '</a>'
+                        : self::h($part['label']);
+                }
+                $title = implode(' · ', $links);
+            }
+            $html .= '<div class="nfse-health__body"><div class="nfse-health__title">' . $title . '</div>';
             $html .= '<div class="nfse-health__text">' . self::h($item['text']) . '</div></div>';
             if ($item['action'] !== '' && $item['href'] !== '') {
                 $html .= '<a href="' . self::h($item['href']) . '">' . self::h($item['action']) . '</a>';
@@ -272,7 +285,7 @@ final class DashboardView
 
         $html .= '<div class="nfse-legend nfse-legend--below">';
         $html .= '<span class="nfse-legend__item"><span class="nfse-swatch nfse-swatch--cancelada"></span>Canceladas no dia</span>';
-        $html .= '<span class="nfse-legend__item"><span class="nfse-swatch nfse-swatch--erro"></span>Erros no dia</span>';
+        $html .= '<span class="nfse-legend__item"><span class="nfse-swatch nfse-swatch--erro"></span>Erros (incl. resolvidos) no dia</span>';
         $html .= '<span>Clique num dia para filtrar a atividade recente</span>';
         $html .= '</div>';
 
@@ -302,9 +315,9 @@ final class DashboardView
     /**
      * @param array<int, array<string, mixed>> $series
      */
-    private static function strips(array $series): string
+    private static function strips(array $series, string $today): string
     {
-        $data = DashboardStrips::build($series);
+        $data = DashboardStrips::build($series, $today);
 
         $html = '<section class="nfse-card nfse-card--pad">';
         $html .= '<div class="nfse-chart-head"><h2 class="nfse-section-title">Linha do tempo</h2>';
@@ -322,12 +335,20 @@ final class DashboardView
                 'erros_resolvidos' => ' nfse-strip__bar--erro',
                 default => '',
             };
-            $noun = strtolower($strip['label']);
+            $noun = match ($strip['key']) {
+                'canceladas' => 'canceladas',
+                'erros_resolvidos' => 'erros (incl. resolvidos)',
+                default => 'emitidas',
+            };
             $html .= '<span class="nfse-strip__label">' . self::h($strip['label']) . '</span>';
             $html .= '<div class="nfse-strip ' . ($main ? 'nfse-strip--main' : 'nfse-strip--minor') . '" role="img" aria-label="'
                 . self::h($strip['label'] . ': ' . self::number($strip['total']) . ' no período, escala até ' . $strip['scale']) . '">';
             foreach ($strip['bars'] as $i => $bar) {
                 $day = $data['days'][$i];
+                if ($day['future']) {
+                    $html .= '<div class="nfse-strip__bar nfse-strip__bar--future" title="' . self::h($day['label'] . ': dia ainda não chegou') . '"></div>';
+                    continue;
+                }
                 $class = 'nfse-strip__bar' . $barClass . ($main && $day['weekend'] ? ' nfse-strip__bar--weekend' : '');
                 $html .= '<div class="' . $class . '" style="height:' . self::h(self::pct($bar['percent'])) . '"'
                     . ' title="' . self::h($day['label'] . ': ' . $bar['value'] . ' ' . $noun) . '"></div>';
@@ -337,7 +358,7 @@ final class DashboardView
         }
         $html .= '<span></span><div class="nfse-strip__axis" aria-hidden="true">';
         foreach ($data['days'] as $day) {
-            $html .= '<span>' . self::h($day['axis']) . '</span>';
+            $html .= '<span' . ($day['future'] ? ' class="nfse-strip__day--future"' : '') . '>' . self::h($day['axis']) . '</span>';
         }
         $html .= '</div><span></span>';
 

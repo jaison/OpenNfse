@@ -368,3 +368,7 @@
 .nfse-feed__foot { padding: 10px var(--space-4); border-top: 1px solid var(--divider); font-weight: 600; }
 .nfse-feed__meta a { color: inherit; text-decoration: underline; }
 .nfse-ui .nfse-health__item a:hover { color: inherit; }
+.nfse-health__title a { font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.nfse-header__cert { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.nfse-strip__bar--future { background: transparent; }
+.nfse-strip__axis .nfse-strip__day--future { opacity: 0.55; }

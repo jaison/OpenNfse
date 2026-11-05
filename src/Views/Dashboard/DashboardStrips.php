@@ -16,7 +16,7 @@ final class DashboardStrips
     private const SERIES = [
         'emitidas' => 'Emitidas',
         'canceladas' => 'Canceladas',
-        'erros_resolvidos' => 'Erros',
+        'erros_resolvidos' => 'Erros (incl. resolvidos)',
     ];
 
     /**
@@ -49,14 +49,16 @@ final class DashboardStrips
     }
 
     /**
+     * Dias depois de $today (Y-m-d) saem com future = true: a view os mostra esmaecidos, como no calendário.
+     *
      * @param array<int, array<string, mixed>> $series
      * @return array{
      *     long: bool,
-     *     days: array<int, array{date: string, label: string, axis: string, weekend: bool}>,
+     *     days: array<int, array{date: string, label: string, axis: string, weekend: bool, future: bool}>,
      *     strips: array<int, array{key: string, label: string, total: int, scale: int, bars: array<int, array{percent: float, value: int}>}>
      * }
      */
-    public static function build(array $series): array
+    public static function build(array $series, string $today = ''): array
     {
         $series = array_values($series);
         $count = count($series);
@@ -74,6 +76,7 @@ final class DashboardStrips
                 'label' => $dt ? $dt->format('d/m') : '',
                 'axis' => $dt ? self::axisLabel($dt, $i, $count, $long, $multiMonth) : '',
                 'weekend' => $dt !== null && in_array((int) $dt->format('w'), [0, 6], true),
+                'future' => $today !== '' && $date > $today,
             ];
         }
 

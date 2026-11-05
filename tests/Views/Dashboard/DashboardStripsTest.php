@@ -55,10 +55,21 @@ final class DashboardStripsTest extends TestCase
         $this->assertSame(96.7, $em['bars'][0]['percent']);
         $this->assertSame(50.0, $em['bars'][1]['percent']);
         $this->assertSame(['Canceladas', 4, 100.0], [$ca['label'], $ca['scale'], $ca['bars'][0]['percent']]);
-        $this->assertSame(['Erros', 1, 100.0], [$er['label'], $er['scale'], $er['bars'][0]['percent']]);
+        $this->assertSame(['Erros (incl. resolvidos)', 1, 100.0], [$er['label'], $er['scale'], $er['bars'][0]['percent']]);
         $this->assertFalse($data['days'][0]['weekend']);
         $this->assertTrue($data['days'][1]['weekend'], '03/10/2026 é sábado');
         $this->assertSame(['02', '03'], [$data['days'][0]['axis'], $data['days'][1]['axis']]);
+    }
+
+    public function testFutureDays(): void
+    {
+        $series = [
+            ['date' => '2026-11-04', 'emitidas' => 3],
+            ['date' => '2026-11-05', 'emitidas' => 2],
+            ['date' => '2026-11-06', 'emitidas' => 0],
+        ];
+        $this->assertSame([false, false, true], array_column(DashboardStrips::build($series, '2026-11-05')['days'], 'future'));
+        $this->assertSame([false, false, false], array_column(DashboardStrips::build($series)['days'], 'future'));
     }
 
     public function testAxisLabelsForMonthAndLongRange(): void

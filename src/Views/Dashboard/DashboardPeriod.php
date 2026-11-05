@@ -9,13 +9,19 @@ namespace OpenNfse\Views\Dashboard;
  *
  * Parâmetros aceitos na URL (os mesmos de antes):
  * - periodo: hoje, 7_dias, mes_atual (padrão), mes_anterior ou personalizado;
- * - data_inicial e data_final (Y-m-d), usados com periodo=personalizado.
+ * - data_inicial e data_final (Y-m-d), usados com periodo=personalizado: anos de 2000 a 2100 e
+ *   no máximo 366 dias (num intervalo maior, o início passa a ser a data final menos 365 dias).
  *
  * As setas de mês geram periodo=personalizado com o primeiro e o último dia do mês.
  */
 final class DashboardPeriod
 {
     public const PRESETS = ['hoje', '7_dias', 'mes_atual', 'mes_anterior', 'personalizado'];
+
+    /** Limites do período personalizado: anos aceitos e quantidade máxima de dias. */
+    public const MIN_YEAR = 2000;
+    public const MAX_YEAR = 2100;
+    public const MAX_DAYS = 366;
 
     private const MONTHS = [
         1 => 'Janeiro', 2 => 'Fevereiro', 3 => 'Março', 4 => 'Abril', 5 => 'Maio', 6 => 'Junho',
@@ -43,14 +49,18 @@ final class DashboardPeriod
             case 'personalizado':
                 $start = trim($dataInicial);
                 $end = trim($dataFinal);
-                if (!self::isDate($start)) {
+                if (!self::isAcceptedDate($start)) {
                     $start = $todayDate->format('Y-m-01');
                 }
-                if (!self::isDate($end)) {
+                if (!self::isAcceptedDate($end)) {
                     $end = $todayDate->format('Y-m-t');
                 }
                 if ($start > $end) {
                     [$start, $end] = [$end, $start];
+                }
+                $earliest = (new \DateTimeImmutable($end))->modify('-' . (self::MAX_DAYS - 1) . ' days')->format('Y-m-d');
+                if ($start < $earliest) {
+                    $start = $earliest;
                 }
 
                 return ['periodo' => 'personalizado', 'start' => $start, 'end' => $end];
@@ -66,6 +76,19 @@ final class DashboardPeriod
         }
 
         return checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
+    }
+
+    /**
+     * Data válida entre MIN_YEAR e MAX_YEAR, aceita como início ou fim de um período personalizado.
+     */
+    public static function isAcceptedDate(string $value): bool
+    {
+        if (!self::isDate($value)) {
+            return false;
+        }
+        $year = (int) substr($value, 0, 4);
+
+        return $year >= self::MIN_YEAR && $year <= self::MAX_YEAR;
     }
 
     public static function isFullMonth(string $start, string $end): bool
