@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "5bb5a1b401a39f5d51441d93ed2dfea0",
+    "content-hash": "7b65128775c505937e8c911dfff8cfcb",
     "packages": [
         {
             "name": "guzzlehttp/guzzle",
@@ -339,20 +339,20 @@
         },
         {
             "name": "nfse-nacional/nfse-php",
-            "version": "dev-main",
+            "version": "v1.24.0-beta",
             "source": {
                 "type": "git",
                 "url": "https://github.com/nfse-nacional/nfse-php.git",
-                "reference": "a9bdf8cc58c333b4bbda791fd20ab77cfdcabab3"
+                "reference": "83e6484ed860eec04801d560431898c6065f85fe"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/nfse-nacional/nfse-php/zipball/a9bdf8cc58c333b4bbda791fd20ab77cfdcabab3",
-                "reference": "a9bdf8cc58c333b4bbda791fd20ab77cfdcabab3",
+                "url": "https://api.github.com/repos/nfse-nacional/nfse-php/zipball/83e6484ed860eec04801d560431898c6065f85fe",
+                "reference": "83e6484ed860eec04801d560431898c6065f85fe",
                 "shasum": ""
             },
             "require": {
-                "guzzlehttp/guzzle": "^7.9",
+                "guzzlehttp/guzzle": "^7.11",
                 "php": "^8.1",
                 "spatie/data-transfer-object": "^3.9"
             },
@@ -373,7 +373,6 @@
             "suggest": {
                 "spatie/typescript-transformer": "Opcional (PHP >=8.2) para regenerar o arquivo types/generated.d.ts."
             },
-            "default-branch": true,
             "type": "library",
             "autoload": {
                 "psr-4": {
@@ -398,9 +397,9 @@
             ],
             "support": {
                 "issues": "https://github.com/nfse-nacional/nfse-php/issues",
-                "source": "https://github.com/nfse-nacional/nfse-php/tree/main"
+                "source": "https://github.com/nfse-nacional/nfse-php/tree/v1.24.0-beta"
             },
-            "time": "2026-10-28T22:41:46+00:00"
+            "time": "2026-11-01T16:11:44+00:00"
         },
         {
             "name": "paseto/nfse-nacional-pdf",
@@ -1024,54 +1023,6 @@
         }
     ],
     "packages-dev": [
-        {
-            "name": "cweagans/composer-patches",
-            "version": "1.7.3",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/cweagans/composer-patches.git",
-                "reference": "e190d4466fe2b103a55467dfa83fc2fecfcaf2db"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/cweagans/composer-patches/zipball/e190d4466fe2b103a55467dfa83fc2fecfcaf2db",
-                "reference": "e190d4466fe2b103a55467dfa83fc2fecfcaf2db",
-                "shasum": ""
-            },
-            "require": {
-                "composer-plugin-api": "^1.0 || ^2.0",
-                "php": ">=5.3.0"
-            },
-            "require-dev": {
-                "composer/composer": "~1.0 || ~2.0",
-                "phpunit/phpunit": "~4.6"
-            },
-            "type": "composer-plugin",
-            "extra": {
-                "class": "cweagans\\Composer\\Patches"
-            },
-            "autoload": {
-                "psr-4": {
-                    "cweagans\\Composer\\": "src"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "BSD-3-Clause"
-            ],
-            "authors": [
-                {
-                    "name": "Cameron Eagans",
-                    "email": "me@cweagans.net"
-                }
-            ],
-            "description": "Provides a way to patch Composer packages.",
-            "support": {
-                "issues": "https://github.com/cweagans/composer-patches/issues",
-                "source": "https://github.com/cweagans/composer-patches/tree/1.7.3"
-            },
-            "time": "2022-12-20T22:53:13+00:00"
-        },
         {
             "name": "fidry/console",
             "version": "0.6.11",
@@ -4455,9 +4406,7 @@
     ],
     "aliases": [],
     "minimum-stability": "dev",
-    "stability-flags": {
-        "nfse-nacional/nfse-php": 20
-    },
+    "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
