@@ -70,7 +70,7 @@ Código: [`WhmcsInvoiceRepository`](../src/Repositories/WhmcsInvoiceRepository.p
 | `paymentmethod` | Regra de gateway e detecção de pagamento com crédito. |
 | `credit` | Detecção de pagamento só com crédito. |
 | `datepaid` | Data de pagamento exibida (e usada na ordenação) na auditoria de emissão. |
-| `notes` | O módulo acrescenta linhas com os eventos da NFS-e (`InvoiceHistoryService`). |
+| `notes` | Visível ao cliente. O módulo acrescenta só as linhas de emissão e de cancelamento da NFS-e (`InvoiceHistoryService`); os demais eventos vão para `mod_opennfse_logs`. |
 
 Pagamento só com crédito (`InvoiceFinancialsService::isCreditOnlyPayment()`): `paymentmethod = 'credit'`, ou `credit > 0` com `total` igual a zero. Nesses casos a emissão é bloqueada.
 

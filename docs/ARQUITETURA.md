@@ -84,11 +84,11 @@ Arquivos, PDF e e-mail:
 - `AutoEmailService`: envio automático do e-mail da NFS-e, uma vez por chave de acesso, disparado quando a nota passa a `EMITIDA`, e novas tentativas depois de falha (pelo cron).
 - `AutoEmailTrigger`: avalia o disparo do e-mail automático ao fim da emissão e da consulta do `NfseService`, inclusive quando elas terminam com exceção, sem disparo duplo quando a consulta reenvia a DPS por `emitir()`.
 - `AutomaticEmailPolicy`: regras puras do envio automático (transição para `EMITIDA`, motivos para não enviar e agenda das novas tentativas).
-- `InvoiceHistoryService`: registra eventos da NFS-e nas notas da fatura (`tblinvoices.notes`).
+- `InvoiceHistoryService`: acrescenta às observações da fatura (`tblinvoices.notes`), que o cliente vê, só as linhas de emissão (`appendEmission()`) e de cancelamento (`appendCancellation()`). Os demais eventos vão para o log do addon.
 
 Alertas:
 
-- `AlertService`: abre alertas de NFS-e (idempotente enquanto o alerta está aberto) e os marca como resolvidos, com log (`NFSE_ALERTA_CRIADO`, `NFSE_ALERTA_RESOLVIDO`) e histórico na fatura.
+- `AlertService`: abre alertas de NFS-e (idempotente enquanto o alerta está aberto) e os marca como resolvidos, com log (`NFSE_ALERTA_CRIADO`, `NFSE_ALERTA_RESOLVIDO`). Não escreve nas observações da fatura.
 - `InvoiceAlertPolicy`: decide, sem acesso ao banco, se um evento da fatura gera alerta e de qual tipo, inclusive se uma transação é de saída (`isOutgoingTransaction()`).
 - `AlertCheckService`: conferência diferida do total da fatura. Registra o pedido no `UpdateInvoiceTotal` e, no cron, processa os pedidos com 30 s ou mais (até 200 por ciclo), chamando `InvoiceAlertHook::checkTotalNow()`.
 
