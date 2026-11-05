@@ -65,66 +65,85 @@ final class ConfigController
         }
 
         $activeTab = (string) ($_GET['tab'] ?? 'ambiente');
+        // Seções agrupadas no submenu (Empresa, Fiscal, Integração, Documentos, Sistema).
         $tabMeta = [
             'ambiente' => [
+                'group' => 'Empresa',
                 'label' => 'Ambiente',
-                'title' => 'Ambiente e Certificado',
-                'description' => 'Defina o ambiente de operação e os dados do certificado digital usado nas requisições.',
+                'title' => 'Ambiente e certificado',
+                'description' => 'Ambiente de operação e o certificado digital usado nas requisições.',
             ],
             'prestador' => [
-                'label' => 'Prestador de Serviços',
-                'title' => 'Dados do Prestador',
-                'description' => 'Informe a identificação fiscal e os dados cadastrais do emissor da NFS-e.',
+                'group' => 'Empresa',
+                'label' => 'Prestador de serviços',
+                'title' => 'Dados do prestador',
+                'description' => 'Identificação fiscal e dados cadastrais do emissor da NFS-e.',
             ],
             'endereco' => [
-                'label' => 'Endereço do Prestador',
-                'title' => 'Endereço do Prestador',
-                'description' => 'Configure o endereço padrão enviado na identificação do prestador.',
+                'group' => 'Empresa',
+                'label' => 'Endereço do prestador',
+                'title' => 'Endereço do prestador',
+                'description' => 'Endereço padrão enviado na identificação do prestador.',
             ],
             'servicosnbs' => [
-                'label' => 'Código de Serviços e NBS',
-                'title' => 'Código de Serviços e NBS',
-                'description' => 'Mantenha o catálogo de códigos de serviço e NBS que alimenta as opções usadas nas demais configurações do módulo.',
+                'group' => 'Fiscal',
+                'label' => 'Serviços e NBS',
+                'title' => 'Código de serviços e NBS',
+                'description' => 'Catálogo de códigos de serviço e NBS usado nas demais configurações.',
             ],
             'tributacao' => [
+                'group' => 'Fiscal',
                 'label' => 'Tributação',
-                'title' => 'Tributação e Regimes',
-                'description' => 'Centralize código de serviço, NBS, alíquota e parâmetros tributários padrão.',
+                'title' => 'Tributação e regimes',
+                'description' => 'Código de serviço, NBS, alíquota e parâmetros tributários padrão.',
             ],
             'sequenciais' => [
+                'group' => 'Fiscal',
                 'label' => 'Sequenciais',
                 'title' => 'Sequenciais de DPS',
-                'description' => 'Acompanhe e ajuste a sequência numérica utilizada na geração dos DPS.',
-            ],
-            'integracao' => [
-                'label' => 'Integração com WHMCS',
-                'title' => 'Integração com WHMCS',
-                'description' => 'Defina o relacionamento com custom fields e quais gateways ativam a emissão automática.',
+                'description' => 'Sequência numérica usada na geração dos DPS.',
             ],
             'codigos' => [
-                'label' => 'Códigos Produtos/Serviços',
-                'title' => 'Mapeamento de Grupos',
-                'description' => 'Associe grupos do WHMCS aos códigos de serviço e NBS usados pelo módulo.',
+                'group' => 'Fiscal',
+                'label' => 'Códigos por produto',
+                'title' => 'Códigos por grupo de produto',
+                'description' => 'Código de serviço e NBS usados para cada grupo de produtos do WHMCS.',
             ],
-            'danfse' => [
-                'label' => 'PDF DANFS-e',
-                'title' => 'PDF DANFS-e',
-                'description' => 'Personalize o cabeçalho do PDF gerado e os dados institucionais exibidos no DANFS-e.',
+            'integracao' => [
+                'group' => 'Integração',
+                'label' => 'WHMCS e gateways',
+                'title' => 'Integração com o WHMCS',
+                'description' => 'Custom fields, aviso na área do cliente e gateways que ativam a emissão automática.',
             ],
             'tomador' => [
-                'label' => 'Dados Padrão do Tomador',
-                'title' => 'Dados Padrão do Tomador',
-                'description' => 'Use valores de fallback quando o cadastro do tomador vier incompleto no WHMCS.',
+                'group' => 'Integração',
+                'label' => 'Dados do tomador',
+                'title' => 'Dados padrão do tomador',
+                'description' => 'Valores usados quando o cadastro do cliente vier incompleto.',
             ],
             'processamento' => [
-                'label' => 'Processamento Automático',
-                'title' => 'Fila e Processamento',
-                'description' => 'Controle a automação de emissão, fila, cron e intervalo de consulta de status.',
+                'group' => 'Integração',
+                'label' => 'Fila e processamento',
+                'title' => 'Fila e processamento',
+                'description' => 'Automação de emissão, fila, cron e intervalo de consulta de status.',
+            ],
+            'danfse' => [
+                'group' => 'Documentos',
+                'label' => 'PDF DANFS-e',
+                'title' => 'PDF DANFS-e',
+                'description' => 'Cabeçalho do PDF e dados institucionais exibidos no DANFS-e.',
+            ],
+            'atualizacoes' => [
+                'group' => 'Sistema',
+                'label' => 'Atualizações',
+                'title' => 'Atualizações',
+                'description' => 'Versão instalada e novas versões publicadas no GitHub.',
             ],
             'retencao' => [
-                'label' => 'Retenção e Logs',
-                'title' => 'Retenção e Logs',
-                'description' => 'Defina por quantos dias filas concluídas e logs devem permanecer armazenados.',
+                'group' => 'Sistema',
+                'label' => 'Retenção e logs',
+                'title' => 'Retenção e logs',
+                'description' => 'Por quantos dias a fila concluída e os logs ficam guardados.',
             ],
         ];
         $allowedTabs = [];
@@ -135,7 +154,7 @@ final class ConfigController
             $activeTab = 'ambiente';
         }
         // Seções com formulário próprio: a barra "Salvar alterações" do formulário principal fica oculta nelas.
-        $standaloneTabs = ['codigos', 'sequenciais', 'servicosnbs', 'danfse'];
+        $standaloneTabs = ['codigos', 'sequenciais', 'servicosnbs', 'danfse', 'atualizacoes'];
 
         $msg = (string) ($_GET['msg'] ?? '');
         if ($msg === 'ibge_sync_ok') {
@@ -176,33 +195,29 @@ final class ConfigController
         foreach (array_keys($allowedTabs) as $key) {
             $tabStatuses[$key] = $this->getConfigTabStatusMeta($key, $config);
         }
-        $trackedTotal = 0;
-        $trackedOk = 0;
-        foreach ($tabStatuses as $status) {
-            $trackedTotal += (int) ($status['total'] ?? 0);
-            $trackedOk += (int) ($status['ok'] ?? 0);
-        }
-        $completionPercent = $trackedTotal > 0 ? (int) round(($trackedOk / $trackedTotal) * 100) : 0;
-        $environmentLabel = ((string) ($config['environment'] ?? 'homologacao')) === 'producao' ? 'Produção' : 'Homologação';
-        $queueModeLabel = ((string) ($config['queue_enabled'] ?? '0')) === '1' ? 'Fila habilitada' : 'Processamento manual';
-
-        echo Ui::kpis([
-            ['label' => 'Checklist principal (' . $trackedOk . ' de ' . $trackedTotal . ' itens)', 'value' => $completionPercent . '%', 'tone' => $completionPercent >= 100 ? 'ok' : ''],
-            ['label' => 'Ambiente atual', 'value' => $environmentLabel],
-            ['label' => 'Gateways automáticos', 'value' => $enabledGatewayCount . '/' . count($gateways)],
-            ['label' => 'Processamento', 'value' => $queueModeLabel],
-        ]);
-
+        // Submenu: ponto verde (ok) ou cinza (neutro); só o que pede atenção leva o texto do status.
         $navItems = [];
+        $lastGroup = '';
         foreach ($allowedTabs as $key => $label) {
+            $group = (string) ($tabMeta[$key]['group'] ?? '');
+            if ($group !== '' && $group !== $lastGroup) {
+                $navItems[] = ['group' => $group];
+                $lastGroup = $group;
+            }
             $status = $tabStatuses[$key] ?? $this->getConfigTabStatusMeta($key, $config);
-            $navItems[] = [
+            $tone = $this->configStatusTone($status);
+            $item = [
                 'label' => $label,
                 'href' => $configUrl($key),
                 'current' => $key === $activeTab,
-                'pill' => (string) ($status['label'] ?? ''),
-                'tone' => $this->configStatusTone($status),
             ];
+            if ($tone === 'warn') {
+                $item['pill'] = (string) ($status['label'] ?? '');
+                $item['tone'] = 'warn';
+            } else {
+                $item['dot'] = $tone === 'ok' ? 'ok' : 'neutral';
+            }
+            $navItems[] = $item;
         }
 
         echo '<div class="nfse-withnav">';
@@ -244,7 +259,7 @@ final class ConfigController
         } elseif ($msg === 'conn_sdk_missing') {
             echo Ui::callout('danger', 'SDK não disponível no servidor.', 'Garanta que o vendor do módulo esteja instalado e carregado.');
         }
-        $this->renderConfigSectionStart('Ambiente de operação', 'Escolha o ambiente utilizado pelo módulo e mantenha esta opção alinhada com o certificado e os testes realizados.');
+        $this->renderConfigSectionStart('Ambiente de operação', 'Mantenha alinhado com o certificado e os testes realizados.');
         $this->renderConfigFormTableStart();
         $this->renderSelectRow('environment', 'Ambiente', [
             'homologacao' => 'Homologação',
@@ -260,7 +275,7 @@ final class ConfigController
         $this->renderConfigBlock('Leiaute ativo agora: <strong>' . Ui::h((new DpsLayoutService())->describe($config))
             . '</strong>. Depois de mudar o ambiente ou o leiaute, salve para atualizar esta informação.', 'nfse-cfg-note');
         $this->renderConfigSectionEnd();
-        $this->renderConfigSectionStart('Certificado digital', 'Defina o arquivo A1 e a senha utilizados nas chamadas à API. Esses dados são críticos para a autenticação do emissor.');
+        $this->renderConfigSectionStart('Certificado digital', 'Arquivo A1 e senha usados para autenticar o emissor na API.');
         $this->renderConfigFormTableStart();
         $this->renderTextRow('certificate_path', 'Caminho do Certificado A1 (.pfx)', $config['certificate_path'] ?? '');
         $this->renderPasswordRow('certificate_password', 'Senha do Certificado', '');
@@ -273,7 +288,7 @@ final class ConfigController
         if (class_exists(\Nfse\Nfse::class)) {
             $certActions .= Ui::button('Testar conexão', ['sm'], ['formaction' => 'addonmodules.php?module=OpenNfse&action=testConnection', 'formmethod' => 'post']);
         }
-        $this->renderConfigSectionStart('Status do certificado', 'Confira validade, expiração e o status de leitura do certificado configurado.', $certActions);
+        $this->renderConfigSectionStart('Status do certificado', 'Validade e leitura do certificado configurado.', $certActions);
         $statusLine = Ui::badge((string) ($certInfo['status_label'] ?? 'Revisar'), $this->configStatusTone($certInfo));
         $summary = trim((string) ($certInfo['summary'] ?? ''));
         if ($summary !== '') {
@@ -301,7 +316,7 @@ final class ConfigController
         $paneEnd();
 
         $paneStart('prestador');
-        $this->renderConfigSectionStart('Identificação fiscal', 'Os campos abaixo definem os dados cadastrais principais do emissor enviados para a NFS-e.');
+        $this->renderConfigSectionStart('Identificação fiscal', 'Dados cadastrais do emissor enviados na NFS-e.');
         $this->renderConfigFormTableStart();
         $this->renderTextRow('cnpj_emissor', 'CNPJ do Emissor', $config['cnpj_emissor'] ?? '');
         $this->renderSelectRow('prestador_informar_im', 'Informar IM do Prestador?', [
@@ -324,7 +339,7 @@ final class ConfigController
         $this->renderTextRow('prestador_nome', 'Razão Social do Prestador (xNome)', $config['prestador_nome'] ?? '');
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
-        $this->renderConfigSectionStart('Contato do prestador', 'Esses dados são usados como referência de comunicação e ajudam na padronização do emissor.');
+        $this->renderConfigSectionStart('Contato do prestador', 'E-mail e telefone de referência do emissor.');
         $this->renderConfigFormTableStart();
         $this->renderTextRow('prestador_email', 'E-mail do Prestador', $config['prestador_email'] ?? '');
         $this->renderTextRow('prestador_fone', 'Telefone do Prestador', $config['prestador_fone'] ?? '');
@@ -333,7 +348,7 @@ final class ConfigController
         $paneEnd();
 
         $paneStart('endereco');
-        $this->renderConfigSectionStart('Endereço cadastral', 'Mantenha esse bloco alinhado com o cadastro fiscal do emissor para evitar rejeições por inconsistência.');
+        $this->renderConfigSectionStart('Endereço cadastral', 'Igual ao cadastro fiscal, para evitar rejeições por inconsistência.');
         $this->renderConfigFormTableStart();
         $this->renderTextRow('prestador_logradouro', 'Logradouro do Prestador', $config['prestador_logradouro'] ?? '');
         $this->renderTextRow('prestador_numero', 'Número do Prestador', $config['prestador_numero'] ?? '');
@@ -345,12 +360,12 @@ final class ConfigController
         $paneEnd();
 
         $paneStart('integracao');
-        $this->renderConfigSectionStart('Integração base', 'Configure o relacionamento entre os dados do WHMCS e os campos obrigatórios usados pelo módulo.');
+        $this->renderConfigSectionStart('Integração base', 'Onde o WHMCS guarda o CPF/CNPJ do tomador.');
         $this->renderConfigFormTableStart();
         $this->renderCustomFieldSelectRow('tomador_cpfcnpj_customfield_id', 'Custom Field (CPF/CNPJ do Tomador)', (string) ($config['tomador_cpfcnpj_customfield_id'] ?? ''));
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
-        $this->renderConfigSectionStart('Área do Cliente', 'Configure o aviso exibido na lista de NFS-e do cliente, com controle de exibição, tipo visual e mensagem.');
+        $this->renderConfigSectionStart('Área do cliente', 'Aviso exibido no topo da lista de NFS-e do cliente.');
         $this->renderConfigFormTableStart();
         $this->renderSelectRow('client_area_notice_enabled', 'Aviso na área do cliente', [
             '1' => 'Habilitado',
@@ -371,9 +386,9 @@ final class ConfigController
         }
         $this->renderConfigSectionStart(
             'Gateways habilitados',
-            'Selecione quais meios de pagamento devem disparar a emissão automática de NFS-e ao marcar a fatura como paga. Atualmente '
-                . $enabledGatewayCount . ' de ' . count($gateways) . ' gateway(s) estão habilitados para emissão automática.',
-            $gatewayActions
+            'Meios de pagamento que disparam a emissão automática. ' . $enabledGatewayCount . ' de ' . count($gateways) . ' habilitados.',
+            $gatewayActions,
+            true
         );
         if (empty($gateways)) {
             $this->renderConfigBlock('Nenhum gateway ativo encontrado.', 'nfse-cfg-note');
@@ -407,7 +422,7 @@ final class ConfigController
         $paneEnd();
 
         $paneStart('tomador');
-        $this->renderConfigSectionStart('Fallbacks para o tomador', 'Esses campos só devem ser usados quando o cadastro do cliente não trouxer a informação necessária no momento da emissão.');
+        $this->renderConfigSectionStart('Fallbacks para o tomador', 'Usados só quando o cadastro do cliente não trouxer a informação.');
         $this->renderConfigFormTableStart();
         $this->renderTextRow('tomador_codigo_ibge_padrao', 'Código IBGE do Tomador (padrão)', $config['tomador_codigo_ibge_padrao'] ?? ($config['codigo_ibge'] ?? ''));
         $this->renderTextRow('tomador_numero_padrao', 'Número do Tomador (padrão)', $config['tomador_numero_padrao'] ?? 'S/N');
@@ -431,8 +446,9 @@ final class ConfigController
 
         $this->renderConfigSectionStart(
             'Municípios IBGE',
-            'Sincronize a base completa de municípios IBGE para acelerar resoluções de código e evitar dependência de consultas sob demanda durante a geração do PDF. Quando a fonte primária mudar, o módulo exige aprovação explícita do novo hash antes de atualizar o banco.',
-            Ui::button('Sincronizar municípios IBGE agora', ['sm'], ['formaction' => 'addonmodules.php?module=OpenNfse&action=syncIbgeMunicipios', 'formmethod' => 'post'])
+            'Base local de municípios usada para resolver códigos e gerar o PDF. Se a fonte mudar, o novo hash precisa ser aprovado antes de sincronizar.',
+            Ui::button('Sincronizar agora', ['sm'], ['formaction' => 'addonmodules.php?module=OpenNfse&action=syncIbgeMunicipios', 'formmethod' => 'post']),
+            true
         );
         if (is_array($ibgeCatalogStatus) && is_array($configuredMunicipioStatus) && is_array($viaCepStatus)) {
             $catalogTone = match ((string) ($ibgeCatalogStatus['status'] ?? '')) {
@@ -498,15 +514,12 @@ final class ConfigController
         $this->renderConfigSectionEnd();
         $paneEnd();
 
-        $paneStart('processamento');
-        $this->renderConfigSectionStart(
-            'Atualizações do módulo',
-            'Acompanhe a versão instalada, verifique novas versões publicadas no GitHub e mantenha um cache local da última checagem remota.',
-            $this->updateCheckActions($updateStatus)
-        );
+        $paneStart('atualizacoes');
         $this->renderUpdateCheckContent($updateStatus);
-        $this->renderConfigSectionEnd();
-        $this->renderConfigSectionStart('Automação da fila', 'Ligue a fila/cron, que processa as emissões automáticas e manuais, e defina a regra da emissão manual.');
+        $paneEnd();
+
+        $paneStart('processamento');
+        $this->renderConfigSectionStart('Automação da fila', 'Liga a fila e define a regra da emissão manual.');
         $this->renderConfigFormTableStart();
         $this->renderSelectRow('queue_enabled', 'Habilitar fila/cron?', [
             '1' => 'Sim',
@@ -519,10 +532,10 @@ final class ConfigController
         $this->renderTextRow('queue_wait_status_interval_seconds', 'Intervalo de consulta (segundos)', $config['queue_wait_status_interval_seconds'] ?? '120');
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
-        $this->renderConfigSectionStart('Emissão automática', 'Defina quando a emissão entra na fila sozinha e para quais clientes. O custom field do cliente, quando preenchido, vale antes do grupo e da regra global.');
+        $this->renderConfigSectionStart('Emissão automática', 'Quando e para quem a NFS-e entra na fila sozinha. O custom field do cliente vale antes do grupo e da regra global.');
         $this->renderAutoEmitPolicyContent($config);
         $this->renderConfigSectionEnd();
-        $this->renderConfigSectionStart('Automação de E-mail', 'Envie automaticamente o XML e o PDF ao cliente quando a consulta confirmar a autorização da NFS-e.');
+        $this->renderConfigSectionStart('E-mail ao cliente', 'Envio automático do PDF e do XML após a autorização.');
         $this->renderConfigFormTableStart();
         $this->renderSelectRow('auto_send_nfse_email', 'Enviar PDF/XML automaticamente por e-mail?', [
             '1' => 'Sim',
@@ -533,7 +546,7 @@ final class ConfigController
         $paneEnd();
 
         $paneStart('retencao');
-        $this->renderConfigSectionStart('Política de retenção', 'Use prazos curtos para reduzir volume desnecessário, sem perder o histórico necessário para auditoria e suporte.');
+        $this->renderConfigSectionStart('Política de retenção', 'Prazos curtos reduzem volume sem perder o histórico de auditoria.');
         $this->renderConfigFormTableStart();
         $this->renderTextRow('queue_done_retention_days', 'Reter fila DONE/RESOLVIDO (dias, 0=desativar)', $config['queue_done_retention_days'] ?? '30');
         $this->renderTextRow('logs_retention_days', 'Reter logs (dias, 0=desativar)', $config['logs_retention_days'] ?? '90');
@@ -542,14 +555,14 @@ final class ConfigController
         $paneEnd();
 
         $paneStart('tributacao');
-        $this->renderConfigSectionStart('Parâmetros principais', 'Esses valores são usados como base na emissão quando não houver regra específica por grupo de produto ou serviço.');
+        $this->renderConfigSectionStart('Parâmetros principais', 'Valores base quando não houver regra por grupo de produto.');
         $this->renderConfigFormTableStart();
         $this->renderTributacaoServiceNbsFields($config);
         $this->renderTextRow('aliquota_iss', 'Alíquota ISS (%)', $config['aliquota_iss'] ?? '');
         $this->renderTextRow('serie_dps', 'Série DPS', $config['serie_dps'] ?? '900');
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
-        $this->renderConfigSectionStart('Regimes e enquadramento', 'Use essas opções para refletir o enquadramento tributário do prestador no padrão nacional.');
+        $this->renderConfigSectionStart('Regimes e enquadramento', 'Enquadramento tributário do prestador no padrão nacional.');
         $this->renderConfigFormTableStart();
         $this->renderSelectRow('prestador_op_simp_nac', 'Opção Simples Nacional', [
             '1' => '1 - Não optante',
@@ -1255,7 +1268,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
     {
         try {
             (new UpdateCheckService())->checkNow();
-            header('Location: addonmodules.php?module=OpenNfse&action=config&tab=processamento&msg=update_check_ok');
+            header('Location: addonmodules.php?module=OpenNfse&action=config&tab=atualizacoes&msg=update_check_ok');
             exit;
         } catch (\Throwable $e) {
             $configRepo = new ConfigRepository();
@@ -1266,65 +1279,79 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
                     'update_error' => $e->getMessage(),
                 ]);
             }
-            header('Location: addonmodules.php?module=OpenNfse&action=config&tab=processamento&msg=update_check_error');
+            header('Location: addonmodules.php?module=OpenNfse&action=config&tab=atualizacoes&msg=update_check_error');
             exit;
         }
     }
 
-    private function updateCheckActions(array $status): string
-    {
-        $downloadUrl = trim((string) ($status['download_url'] ?? ''));
-        $changelogUrl = trim((string) ($status['changelog_url'] ?? ''));
-
-        $html = Ui::button('Verificar atualizações agora', ['sm'], ['formaction' => 'addonmodules.php?module=OpenNfse&action=checkUpdates', 'formmethod' => 'post']);
-        if ($downloadUrl !== '') {
-            $html .= Ui::button('Abrir releases', ['sm'], ['href' => $downloadUrl, 'target' => '_blank', 'rel' => 'noopener noreferrer']);
-        }
-        if ($changelogUrl !== '' && $changelogUrl !== $downloadUrl) {
-            $html .= Ui::button('Ver changelog', ['sm'], ['href' => $changelogUrl, 'target' => '_blank', 'rel' => 'noopener noreferrer']);
-        }
-
-        return $html;
-    }
-
+    /**
+     * Sub-aba Atualizações: versão instalada e a mais recente, notas da versão (uma vez só) e requisitos.
+     * Fica dentro do formulário principal: "Verificar agora" usa formaction.
+     */
     private function renderUpdateCheckContent(array $status): void
     {
         $tone = match ((string) ($status['status'] ?? 'never_checked')) {
             'ok' => !empty($status['update_available']) ? 'warn' : 'ok',
             'error' => 'danger',
-            default => 'emitida',
+            default => '',
         };
         $lastCheckedAt = trim((string) ($status['last_checked_at'] ?? ''));
         $lastCheckedDisplay = $lastCheckedAt !== '' ? date('d/m/Y H:i', strtotime($lastCheckedAt) ?: time()) : 'Nunca';
-        $minimumWhmcs = trim((string) ($status['minimum_whmcs'] ?? ''));
-        $minimumPhp = trim((string) ($status['minimum_php'] ?? ''));
-
-        $statusLine = Ui::badge((string) ($status['label'] ?? ''), $tone);
+        $downloadUrl = trim((string) ($status['download_url'] ?? ''));
+        $changelogUrl = trim((string) ($status['changelog_url'] ?? ''));
+        $message = trim((string) ($status['message'] ?? ''));
         $summary = trim((string) ($status['summary'] ?? ''));
-        if ($summary !== '') {
+        $error = trim((string) ($status['error'] ?? ''));
+
+        $actions = Ui::button('Verificar agora', ['sm'], ['formaction' => 'addonmodules.php?module=OpenNfse&action=checkUpdates', 'formmethod' => 'post']);
+        if ($downloadUrl !== '') {
+            $actions .= Ui::button('Releases no GitHub', ['sm'], ['href' => $downloadUrl, 'target' => '_blank', 'rel' => 'noopener noreferrer']);
+        }
+        if ($changelogUrl !== '' && $changelogUrl !== $downloadUrl) {
+            $actions .= Ui::button('Changelog', ['sm'], ['href' => $changelogUrl, 'target' => '_blank', 'rel' => 'noopener noreferrer']);
+        }
+
+        $this->renderConfigSectionStart('Versão', 'O módulo consulta o GitHub pelo cron, no máximo uma vez por dia.', $actions);
+        $statusLine = Ui::badge((string) ($status['label'] ?? ''), $tone);
+        if ($summary !== '' && $summary !== $message) {
             $statusLine .= '<span>' . Ui::h($summary) . '</span>';
         }
         $facts = [
-            'Versão instalada' => Ui::h((string) ($status['current_version'] ?? '—')),
-            'Última versão conhecida' => Ui::h((string) ($status['latest_version'] ?? '—')),
+            'Instalada' => Ui::h((string) ($status['current_version'] ?? '—')),
+            'Mais recente' => Ui::h((string) ($status['latest_version'] ?? '—')),
             'Última checagem' => Ui::h($lastCheckedDisplay),
-            'Manifesto remoto' => '<span class="nfse-mono">' . Ui::h((string) ($status['manifest_url'] ?? '')) . '</span>',
         ];
-        if ($minimumWhmcs !== '') {
-            $facts['WHMCS mínimo informado'] = Ui::h($minimumWhmcs);
+        if ($error !== '' && $error !== $summary) {
+            $facts['Erro'] = '<span class="nfse-text-danger">' . Ui::h($error) . '</span>';
         }
-        if ($minimumPhp !== '') {
-            $facts['PHP mínimo informado'] = Ui::h($minimumPhp);
-        }
-        if (trim((string) ($status['message'] ?? '')) !== '') {
-            $facts['Notas da versão'] = Ui::h((string) $status['message']);
-        }
-        if (trim((string) ($status['error'] ?? '')) !== '') {
-            $facts['Erro'] = '<span class="nfse-text-danger">' . Ui::h((string) $status['error']) . '</span>';
+        $this->renderConfigBlock('<div class="nfse-cfg-status">' . $statusLine . '</div>' . self::factsHtml($facts));
+        $this->renderConfigBlock(
+            '<details class="nfse-form__more"><summary>Como funciona</summary><div class="nfse-form__more-body">'
+            . 'O cron lê o manifesto <span class="nfse-mono">' . Ui::h((string) ($status['manifest_url'] ?? '')) . '</span> e guarda a última resposta. '
+            . 'A instalação continua manual: baixe a versão nova em Releases no GitHub.</div></details>'
+        );
+        $this->renderConfigSectionEnd();
+
+        if ($message !== '') {
+            $this->renderConfigSectionStart('Notas da versão', 'Resumo publicado junto com a versão mais recente.');
+            $this->renderConfigBlock('<p class="nfse-cfg-text">' . Ui::h($message) . '</p>');
+            $this->renderConfigSectionEnd();
         }
 
-        $this->renderConfigBlock('<div class="nfse-cfg-status">' . $statusLine . '</div>' . self::factsHtml($facts));
-        $this->renderConfigBlock('O módulo consulta o manifesto de atualização publicado no GitHub e mantém um cache local da última checagem. A validação automática ocorre no cron no máximo uma vez por dia.', 'nfse-cfg-note');
+        $minimumWhmcs = trim((string) ($status['minimum_whmcs'] ?? ''));
+        $minimumPhp = trim((string) ($status['minimum_php'] ?? ''));
+        if ($minimumWhmcs !== '' || $minimumPhp !== '') {
+            $requirements = [];
+            if ($minimumWhmcs !== '') {
+                $requirements['WHMCS mínimo'] = Ui::h($minimumWhmcs);
+            }
+            if ($minimumPhp !== '') {
+                $requirements['PHP mínimo'] = Ui::h($minimumPhp);
+            }
+            $this->renderConfigSectionStart('Requisitos', 'Informados pela versão mais recente.');
+            $this->renderConfigBlock(self::factsHtml($requirements));
+            $this->renderConfigSectionEnd();
+        }
     }
 
 
@@ -1578,7 +1605,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
             'environment' => (string) ($config['environment'] ?? 'homologacao'),
         ];
 
-        $this->renderConfigSectionStart('Cabeçalho do DANFS-e', 'Defina o logotipo e os dados institucionais exibidos no cabeçalho do PDF gerado.');
+        $this->renderConfigSectionStart('Cabeçalho do DANFS-e', 'Logotipo e dados institucionais do cabeçalho do PDF.');
         echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=saveDanfseConfig" class="nfse-cfg-cardform">';
         if ($token !== '') {
             echo '<input type="hidden" name="token" value="' . Ui::h($token) . '" />';
@@ -1594,7 +1621,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         echo '</form>';
         $this->renderConfigSectionEnd();
 
-        $this->renderConfigSectionStart('Pré-visualização', 'Visualize como o cabeçalho do PDF DANFS-e deve ficar com base nas configurações atuais.');
+        $this->renderConfigSectionStart('Pré-visualização', 'Como o cabeçalho do PDF fica com as configurações atuais.', '', true);
         $html = '<div class="nfse-cfg-preview">';
         $html .= '<div class="nfse-cfg-preview__title"><div>DANFSe v1.0</div><div>Documento Auxiliar da NFS-e</div>';
         if ($preview['environment'] === 'homologacao') {
@@ -1816,7 +1843,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         $editRow = $editId > 0 ? $repo->findById($editId) : null;
         $digitsOnly = 'this.value=this.value.replace(/\D/g, \'\');';
 
-        $this->renderConfigSectionStart('Relações cadastradas', 'As opções salvas aqui passam a alimentar a seleção de código de serviço e NBS usada no módulo. Total atual: ' . $catalogCount . ' relação(ões).');
+        $this->renderConfigSectionStart('Relações cadastradas', 'Alimentam a escolha de código de serviço e NBS no módulo. Total: ' . $catalogCount . '.', '', true);
         if (empty($rows)) {
             $this->renderConfigBlock('Nenhuma relação cadastrada até o momento.', 'nfse-cfg-note');
         } else {
@@ -1852,7 +1879,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         $this->renderConfigSectionEnd();
 
         if ($editRow) {
-            $this->renderConfigSectionStart('Editar relação', 'Atualize o código de serviço, a NBS ou a descrição. Se o vínculo estiver em uso, a alteração é propagada para Tributação e para os grupos mapeados.');
+            $this->renderConfigSectionStart('Editar relação', 'Se a relação estiver em uso, a mudança vale também em Tributação e nos grupos mapeados.');
             echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=updateServiceNbsCatalog" class="nfse-cfg-cardform">';
             if ($token !== '') {
                 echo '<input type="hidden" name="token" value="' . Ui::h($token) . '" />';
@@ -1875,7 +1902,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
             $this->renderConfigSectionEnd();
         }
 
-        $this->renderConfigSectionStart('Adicionar nova relação', 'Cadastre um novo código de serviço e a NBS correspondente para disponibilizar essa opção nas demais configurações.');
+        $this->renderConfigSectionStart('Adicionar nova relação', 'Novo par de código de serviço e NBS para as demais configurações.');
         echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=saveServiceNbsCatalog" class="nfse-cfg-cardform">';
         if ($token !== '') {
             echo '<input type="hidden" name="token" value="' . Ui::h($token) . '" />';
@@ -2239,8 +2266,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         $servicoOptions = $catalogRepo->getServiceOptions(true);
         $nbsOptions = $catalogRepo->getNbsOptionsByServiceCode();
 
-        $this->renderConfigSectionStart('Mapeamento por grupo', 'Associe cada grupo do WHMCS a um código de serviço e NBS. Quando estiver em "Padrão", o módulo usa os valores definidos na aba Tributação.');
-        $this->renderConfigBlock('Revise esses mapeamentos sempre que novos grupos de produto forem criados no WHMCS ou quando houver atualização fiscal.', 'nfse-cfg-note');
+        $this->renderConfigSectionStart('Mapeamento por grupo', 'Código de serviço e NBS de cada grupo do WHMCS. Em "Padrão", vale o que está em Tributação. Revise ao criar grupos novos.', '', true);
 
         echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=saveCodigos" class="nfse-cfg-cardform">';
         $token = (new TokenService())->token();

@@ -231,28 +231,29 @@ trait AdminHelpersTrait
 
 
     /**
-     * Card de subseção das Configurações: título e descrição no cabeçalho, ações (HTML) à direita.
-     * O conteúdo vem logo depois (formulário, blocos, tabela) e o card fecha em renderConfigSectionEnd().
+     * Bloco de subseção das Configurações: título, descrição e ações à esquerda; o card com os campos à direita.
+     * Com $wide (tabelas, grades de status) o texto fica em cima e o card ocupa a largura toda.
+     * O conteúdo vem logo depois (formulário, blocos, tabela) e o bloco fecha em renderConfigSectionEnd().
      */
-    public function renderConfigSectionStart(string $title, string $description = '', string $actionsHtml = ''): void
+    public function renderConfigSectionStart(string $title, string $description = '', string $actionsHtml = '', bool $wide = false): void
     {
-        echo '<section class="nfse-card nfse-cfg-card">';
-        echo '<div class="nfse-card__head"><div class="nfse-cfg-card__heading">';
-        echo '<h3 class="nfse-card__title">' . Ui::h($title) . '</h3>';
+        echo '<div class="nfse-cfg-blk' . ($wide ? ' nfse-cfg-blk--wide' : '') . '">';
+        echo '<div class="nfse-cfg-blk__intro">';
+        echo '<h3 class="nfse-cfg-blk__title">' . Ui::h($title) . '</h3>';
         if ($description !== '') {
-            echo '<div class="nfse-sechead__summary">' . Ui::h($description) . '</div>';
+            echo '<p class="nfse-cfg-blk__desc">' . Ui::h($description) . '</p>';
         }
-        echo '</div>';
         if ($actionsHtml !== '') {
-            echo '<div class="nfse-actions">' . $actionsHtml . '</div>';
+            echo '<div class="nfse-actions nfse-cfg-blk__actions">' . $actionsHtml . '</div>';
         }
         echo '</div>';
+        echo '<section class="nfse-card nfse-cfg-card" aria-label="' . Ui::h($title) . '">';
     }
 
 
     public function renderConfigSectionEnd(): void
     {
-        echo '</section>';
+        echo '</section></div>';
     }
 
 
@@ -331,7 +332,7 @@ trait AdminHelpersTrait
     {
         $id = $this->configFieldId($name);
         $class = 'nfse-cfg-field' . ($name === 'certificate_path' ? ' nfse-mono' : '');
-        echo Ui::formRow($label, Ui::input($name, (string) $value, 'text', ['id' => $id], $class), $this->getConfigFieldHelp($name), ['id' => $id]);
+        echo Ui::formRow($label, Ui::input($name, (string) $value, 'text', ['id' => $id], $class), $this->getConfigFieldHelp($name), ['id' => $id, 'more' => $this->getConfigFieldHelpMore($name)]);
     }
 
 
@@ -342,14 +343,14 @@ trait AdminHelpersTrait
             . Ui::input($name, (string) $value, 'password', ['id' => $id, 'autocomplete' => 'new-password'])
             . Ui::button('Mostrar', [], ['type' => 'button', 'data-nfse-toggle-password' => $id])
             . '</div>';
-        echo Ui::formRow($label, $field, $this->getConfigFieldHelp($name), ['id' => $id]);
+        echo Ui::formRow($label, $field, $this->getConfigFieldHelp($name), ['id' => $id, 'more' => $this->getConfigFieldHelpMore($name)]);
     }
 
 
     public function renderSelectRow(string $name, string $label, array $options, string $selected): void
     {
         $id = $this->configFieldId($name);
-        echo Ui::formRow($label, Ui::select($name, $options, $selected, ['id' => $id], 'nfse-cfg-field'), $this->getConfigFieldHelp($name), ['id' => $id]);
+        echo Ui::formRow($label, Ui::select($name, $options, $selected, ['id' => $id], 'nfse-cfg-field'), $this->getConfigFieldHelp($name), ['id' => $id, 'more' => $this->getConfigFieldHelpMore($name)]);
     }
 
 
@@ -369,7 +370,7 @@ trait AdminHelpersTrait
         }
 
         $id = $this->configFieldId($name);
-        echo Ui::formRow($label, Ui::select($name, $options, $selected, ['id' => $id], 'nfse-cfg-field'), $this->getConfigFieldHelp($name), ['id' => $id]);
+        echo Ui::formRow($label, Ui::select($name, $options, $selected, ['id' => $id], 'nfse-cfg-field'), $this->getConfigFieldHelp($name), ['id' => $id, 'more' => $this->getConfigFieldHelpMore($name)]);
     }
 
 
@@ -377,7 +378,7 @@ trait AdminHelpersTrait
     {
         $id = $this->configFieldId($name);
         $field = '<textarea name="' . Ui::h($name) . '" id="' . Ui::h($id) . '" class="nfse-input" rows="5">' . Ui::h((string) $value) . '</textarea>';
-        echo Ui::formRow($label, $field, $this->getConfigFieldHelp($name), ['id' => $id]);
+        echo Ui::formRow($label, $field, $this->getConfigFieldHelp($name), ['id' => $id, 'more' => $this->getConfigFieldHelpMore($name)]);
     }
 
     public function renderPostActionButton(string $action, string $label, array $params = [], string $class = 'btn btn-xs btn-default', string $style = ''): string
@@ -423,7 +424,10 @@ trait AdminHelpersTrait
     }
 
 
-    public function getConfigFieldHelp(string $name): string
+    /**
+     * @return array<string, string|array{0: string, 1: string}>
+     */
+    private function configFieldHelpMap(): array
     {
         $help = [
             'environment' => 'Use homologação para testes e produção somente quando toda a configuração fiscal já estiver validada.',
@@ -447,21 +451,21 @@ trait AdminHelpersTrait
             'serie_dps' => 'Série padrão usada na numeração do DPS emitido pelo módulo.',
             'prestador_op_simp_nac' => 'Selecione o enquadramento do prestador perante o Simples Nacional.',
             'prestador_reg_ap_trib_sn' => 'Usado quando o prestador é ME/EPP no Simples Nacional.',
-            'prestador_reg_esp_trib' => 'Regime especial tributário (TSRegEspTrib): 0 Nenhum, 1 Ato Cooperado, 2 Estimativa, 3 Microempresa Municipal, 4 Notário ou Registrador, 5 Profissional Autônomo, 6 Sociedade de Profissionais, 9 Outros. Use 0 quando não houver enquadramento específico.',
-            'dps_leiaute' => 'Automático segue a NT 009: leiaute novo em homologação desde 20/10/2026 e em produção a partir de 01/12/2026 00:00 (horário de Brasília). Force um leiaute só se a SEFIN rejeitar a DPS com E1235 por leiaute.',
+            'prestador_reg_esp_trib' => ['Use 0 quando não houver enquadramento específico.', 'Regime especial tributário (TSRegEspTrib): 0 Nenhum, 1 Ato Cooperado, 2 Estimativa, 3 Microempresa Municipal, 4 Notário ou Registrador, 5 Profissional Autônomo, 6 Sociedade de Profissionais, 9 Outros.'],
+            'dps_leiaute' => ['Deixe em Automático, salvo se a SEFIN rejeitar a DPS com E1235 por leiaute.', 'O modo Automático segue a NT 009: leiaute novo em homologação desde 20/10/2026 e em produção a partir de 01/12/2026 00:00 (horário de Brasília). Force um leiaute só se a SEFIN rejeitar a DPS com E1235 por leiaute.'],
             'tomador_cpfcnpj_customfield_id' => 'ID do custom field do cliente que armazena CPF/CNPJ do tomador no WHMCS.',
             'client_area_notice_enabled' => 'Controla a exibição de um aviso fixo no topo da lista de NFS-e do cliente.',
             'client_area_notice_type' => 'Define o estilo visual do aviso mostrado na área do cliente.',
-            'client_area_notice_message' => 'Mensagem exibida na lista de NFS-e do cliente. HTML não é permitido; URLs informadas no texto podem ser exibidas como links clicáveis.',
+            'client_area_notice_message' => ['Mensagem exibida na lista de NFS-e do cliente.', 'HTML não é permitido. URLs informadas no texto podem ser exibidas como links clicáveis.'],
             'tomador_codigo_ibge_padrao' => 'Fallback para o código do município do tomador quando o cadastro do cliente não informar.',
             'tomador_numero_padrao' => 'Número padrão usado quando o endereço do tomador vier sem numeração.',
-            'tomador_bairro_origem' => 'Endereço 2 é o Bairro: o campo Endereço 2 do cliente vai como bairro da NFS-e. Campo personalizado: o bairro vem do custom field escolhido abaixo e o Endereço 2 vai como complemento.',
+            'tomador_bairro_origem' => ['De onde vem o bairro do tomador na NFS-e.', 'Endereço 2 é o Bairro: o campo Endereço 2 do cliente vai como bairro da NFS-e. Campo personalizado: o bairro vem do custom field escolhido abaixo e o Endereço 2 vai como complemento.'],
             'tomador_bairro_customfield_id' => 'Custom field do cliente que armazena o bairro. Usado só com a origem "Campo personalizado".',
             'tomador_bairro_padrao' => 'Bairro usado quando a origem escolhida estiver vazia.',
             'queue_enabled' => 'Habilita o processamento automático via fila e cron do módulo.',
-            'auto_emit_trigger' => 'Nunca: sem emissão automática. Paga: enfileira quando a fatura é paga. Gerada: enfileira quando a fatura Unpaid é publicada (só nos gateways marcados para emitir ao gerar) e, se ainda não houver NFS-e, também no pagamento.',
+            'auto_emit_trigger' => ['Nunca, quando a fatura for paga ou quando for gerada.', 'Nunca: sem emissão automática. Paga: enfileira quando a fatura é paga. Gerada: enfileira quando a fatura Unpaid é publicada (só nos gateways marcados para emitir ao gerar) e, se ainda não houver NFS-e, também no pagamento.'],
             'auto_emit_scope' => 'Com "Só os grupos selecionados", a regra acima vale apenas para clientes dos grupos marcados abaixo.',
-            'allow_manual_unpaid' => 'Vale para o botão Emitir NFS-e na fatura, independente do gatilho automático, do grupo e do custom field do cliente. Exige a fila ligada.',
+            'allow_manual_unpaid' => ['Vale para o botão Emitir NFS-e na fatura. Exige a fila ligada.', 'A regra vale independente do gatilho automático, do grupo e do custom field do cliente.'],
             'queue_wait_status_interval_seconds' => 'Intervalo entre consultas de status quando a nota fica aguardando retorno do ambiente nacional.',
             'queue_done_retention_days' => 'Quantidade de dias para manter registros da fila concluídos ou resolvidos antes da limpeza.',
             'logs_retention_days' => 'Quantidade de dias para manter logs de request/response antes da limpeza.',
@@ -472,7 +476,26 @@ trait AdminHelpersTrait
             'danfse_email' => 'E-mail institucional mostrado no cabeçalho do DANFS-e.',
         ];
 
-        return (string) ($help[$name] ?? '');
+        return $help;
+    }
+
+
+    /**
+     * Ajuda curta do campo (uma linha). Entradas com [curta, detalhe] mostram o detalhe em "Como funciona".
+     */
+    public function getConfigFieldHelp(string $name): string
+    {
+        $entry = $this->configFieldHelpMap()[$name] ?? '';
+
+        return is_array($entry) ? (string) ($entry[0] ?? '') : (string) $entry;
+    }
+
+
+    public function getConfigFieldHelpMore(string $name): string
+    {
+        $entry = $this->configFieldHelpMap()[$name] ?? '';
+
+        return is_array($entry) ? (string) ($entry[1] ?? '') : '';
     }
 
 
@@ -595,6 +618,28 @@ trait AdminHelpersTrait
                     'ok' => 0,
                     'total' => 1,
                 ],
+            'atualizacoes' => (function () use ($config): array {
+                $update = (new UpdateCheckService())->getStatus($config);
+                $state = (string) ($update['status'] ?? '');
+                $tone = match (true) {
+                    $state === 'ok' && empty($update['update_available']) => 'ok',
+                    $state === 'ok', $state === 'error' => 'attention',
+                    default => 'info',
+                };
+
+                return [
+                    'label' => match (true) {
+                        $state === 'ok' && !empty($update['update_available']) => 'Nova versão',
+                        $state === 'error' => 'Falha',
+                        default => (string) ($update['label'] ?? 'Revisar'),
+                    },
+                    'tone' => $tone,
+                    'summary' => (string) ($update['summary'] ?? ''),
+                    'missing' => [],
+                    'ok' => 0,
+                    'total' => 0,
+                ];
+            })(),
             'retencao' => $build([
                 'queue_done_retention_days' => 'Retenção da fila DONE/RESOLVIDO',
                 'logs_retention_days' => 'Retenção de logs',

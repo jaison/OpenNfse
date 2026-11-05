@@ -51,7 +51,7 @@ final class SequenciaisController
         $token = (new TokenService())->token();
         $rows = Capsule::table('mod_opennfse_sequences')->orderBy('environment', 'asc')->orderBy('cnpj_emissor', 'asc')->orderBy('serie_dps', 'asc')->get();
 
-        $this->renderConfigSectionStart('Sequências cadastradas', 'Ajuste o último número manualmente apenas quando houver necessidade operacional ou correção de ambiente.');
+        $this->renderConfigSectionStart('Sequências cadastradas', 'Ajuste o último número só em caso de necessidade operacional ou correção de ambiente.', '', true);
         echo '<div class="nfse-table-wrap"><table class="nfse-table nfse-cfg-table">';
         echo '<thead><tr><th scope="col">Ambiente</th><th scope="col">CNPJ</th><th scope="col">Série</th><th scope="col" class="nfse-num">Último</th><th scope="col">Ações</th></tr></thead><tbody>';
         $count = 0;
@@ -86,7 +86,7 @@ final class SequenciaisController
         echo '</tbody></table></div>';
         $this->renderConfigSectionEnd();
 
-        $this->renderConfigSectionStart('Criar ou inicializar sequência', 'Use este formulário para cadastrar uma nova sequência de DPS ou reinicializar uma combinação ainda não criada.');
+        $this->renderConfigSectionStart('Criar ou inicializar sequência', 'Cadastra uma sequência de DPS para uma combinação ainda não criada.');
         echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=sequenciaisInit" class="nfse-cfg-cardform">';
         if ($token !== '') {
             echo '<input type="hidden" name="token" value="' . Ui::h($token) . '" />';

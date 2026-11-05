@@ -719,14 +719,45 @@
 
 /* Configurações */
 
+/* Configurações (padrão E3, telas de texto e formulário; ver docs/UI.md):
+   submenu em grupos, conteúdo até 900px, cada bloco com título e explicação à esquerda e os campos num card à direita. */
+.nfse-cfg .nfse-withnav { grid-template-columns: 240px minmax(0, 1fr); gap: var(--space-6) 32px; }
+.nfse-cfg .nfse-withnav__content { max-width: 900px; gap: var(--space-6); }
+.nfse-cfg .nfse-subnav { gap: 2px; padding: var(--space-3) var(--space-2); }
+.nfse-cfg .nfse-subnav__group { padding: 14px 10px 6px; letter-spacing: .04em; }
+.nfse-cfg .nfse-subnav__group:first-child { padding-top: 0; }
+.nfse-cfg.nfse-ui a.nfse-subnav__item, .nfse-cfg .nfse-ui a.nfse-subnav__item { min-height: 36px; }
+.nfse-cfg .nfse-subnav__dot { width: 7px; height: 7px; }
+.nfse-cfg .nfse-sechead { align-items: flex-start; }
+.nfse-cfg.nfse-ui h2.nfse-sechead__title, .nfse-cfg .nfse-ui h2.nfse-sechead__title { font-size: 20px; line-height: 28px; }
+.nfse-cfg .nfse-sechead__summary { font-size: 13px; line-height: 20px; max-width: 620px; }
+.nfse-cfg-blk { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--space-4) 32px; align-items: start; padding-top: var(--space-6); border-top: 1px solid var(--divider); min-width: 0; }
+.nfse-cfg-blk--wide { grid-template-columns: minmax(0, 1fr); }
+.nfse-cfg-blk--wide > .nfse-cfg-blk__intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-4); }
+.nfse-cfg-blk--wide > .nfse-cfg-blk__intro > .nfse-cfg-blk__actions { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; align-self: start; }
+.nfse-cfg-blk__intro { min-width: 0; }
+.nfse-ui h3.nfse-cfg-blk__title { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.nfse-ui p.nfse-cfg-blk__desc { margin: var(--space-1) 0 0; font-size: 12px; line-height: 18px; color: var(--muted); max-width: 70ch; }
+.nfse-cfg-blk__actions { margin-top: var(--space-3); }
+/* Campos dentro do card: rótulo em cima (500), campo, ajuda curta e "Como funciona" recolhível. */
+.nfse-cfg-card .nfse-form__row { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 14px var(--space-5); }
+.nfse-cfg .nfse-ui label.nfse-form__label, .nfse-cfg.nfse-ui label.nfse-form__label, .nfse-cfg-card .nfse-form__label { padding-top: 0; font-weight: 500; }
+.nfse-cfg-card .nfse-form__help { max-width: 520px; line-height: 18px; }
+.nfse-form__more { font-size: 12px; line-height: 18px; max-width: 520px; }
+.nfse-form__more > summary { cursor: pointer; color: var(--accent, #1f5fbf); list-style: none; width: max-content; }
+.nfse-form__more > summary::-webkit-details-marker { display: none; }
+.nfse-form__more > summary::before { content: "▸"; display: inline-block; margin-right: 4px; transition: transform .15s; }
+.nfse-form__more[open] > summary::before { transform: rotate(90deg); }
+.nfse-form__more-body { margin-top: var(--space-1); color: var(--muted); }
+.nfse-cfg-text { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2); max-width: 70ch; white-space: pre-line; }
 /* Submenu: com as pílulas de status, os nomes das seções quebram em duas linhas em vez de cortar
    (e, sem espaço nem assim, a pílula desce para a linha de baixo). */
 .nfse-cfg a.nfse-subnav__item { flex-wrap: wrap; row-gap: 2px; }
 .nfse-cfg .nfse-subnav__label { flex: 1 1 0; min-width: auto; overflow: visible; white-space: normal; }
 /* Abas da tela (painéis alternados por JS) e formulário principal com os mesmos 16px entre blocos. */
-.nfse-cfg-pane { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.nfse-cfg-pane { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
 .nfse-cfg-pane[hidden], .nfse-cfg-savebar[hidden] { display: none; }
-.nfse-ui form.nfse-cfg-form { display: flex; flex-direction: column; gap: var(--space-4); margin: 0; }
+.nfse-ui form.nfse-cfg-form { display: flex; flex-direction: column; gap: var(--space-6); margin: 0; }
 /* Nas seções com formulário próprio, o formulário principal fica todo oculto: sem ele, não sobra espaço vazio. */
 .nfse-ui form.nfse-cfg-form:not(:has(> .nfse-cfg-pane:not([hidden]))) { display: none; }
 .nfse-ui form.nfse-cfg-cardform { margin: 0; }
@@ -736,8 +767,8 @@
 .nfse-cfg-card > .nfse-card__head { align-items: flex-start; }
 .nfse-cfg-card__heading { min-width: 0; flex: 1 1 320px; }
 .nfse-ui h3.nfse-card__title { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ink); }
-.nfse-cfg-block { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--divider); min-width: 0; }
-.nfse-card__head + .nfse-cfg-block, .nfse-cfg-block:first-child { border-top: 0; }
+.nfse-cfg-block { display: flex; flex-direction: column; gap: var(--space-2); padding: 14px var(--space-5); border-top: 1px solid var(--divider); min-width: 0; }
+.nfse-card__head + .nfse-cfg-block, .nfse-cfg-block:first-child, .nfse-cfg-card > .nfse-cfg-cardform:first-child > .nfse-cfg-block:first-child { border-top: 0; }
 .nfse-cfg-note, .nfse-cfg-block.nfse-cfg-note { display: block; font-size: 12px; line-height: 18px; color: var(--muted); }
 .nfse-cfg-note > div + div { margin-top: var(--space-1); }
 .nfse-cfg-note strong { color: var(--ink-2); }
@@ -773,9 +804,15 @@
 .nfse-cfg-logo { flex: none; width: 48px; height: 48px; display: flex; align-items: flex-start; justify-content: center; overflow: hidden; }
 .nfse-cfg-logo svg { display: block; width: 100%; height: 100%; max-width: 48px; max-height: 48px; }
 @container nfse-page (max-width: 999px) {
-  .nfse-cfg a.nfse-subnav__item { flex-wrap: nowrap; }
+  .nfse-cfg .nfse-withnav { grid-template-columns: minmax(0, 1fr); }
+  .nfse-cfg .nfse-withnav__content { max-width: none; }
+  .nfse-cfg .nfse-subnav { padding: var(--space-1); gap: var(--space-1); }
+  .nfse-cfg.nfse-ui a.nfse-subnav__item { flex-wrap: nowrap; min-height: 30px; }
   .nfse-cfg .nfse-subnav__label { flex: none; white-space: nowrap; }
 }
 @container nfse-page (max-width: 699px) {
+  .nfse-cfg-blk { grid-template-columns: minmax(0, 1fr); }
+  .nfse-cfg-blk--wide > .nfse-cfg-blk__intro { display: block; }
+  .nfse-cfg-blk--wide > .nfse-cfg-blk__intro > .nfse-cfg-blk__actions { margin-top: var(--space-3); }
   .nfse-cfg-preview__org { justify-content: flex-start; }
 }

@@ -226,6 +226,12 @@ final class UiTest extends TestCase
             . '<div class="nfse-form__field"><select></select><div class="nfse-form__error">Informe a série</div></div></div>',
             Ui::formRow('Série', '<select></select>', '', ['error' => 'Informe a série'])
         );
+        $this->assertSame(
+            '<div class="nfse-form__row"><div class="nfse-form__label">Leiaute</div>'
+            . '<div class="nfse-form__field"><select></select><div class="nfse-form__help">Deixe em Automático.</div>'
+            . '<details class="nfse-form__more"><summary>Como funciona</summary><div class="nfse-form__more-body">Segue a NT &lt;009&gt;.</div></details></div></div>',
+            Ui::formRow('Leiaute', '<select></select>', 'Deixe em Automático.', ['more' => 'Segue a NT <009>.'])
+        );
     }
 
     public function testSaveBarAndChips(): void

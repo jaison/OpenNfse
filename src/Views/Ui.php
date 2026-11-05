@@ -442,6 +442,11 @@ final class Ui
         if ($help !== '') {
             $html .= '<div class="nfse-form__help">' . self::h($help) . '</div>';
         }
+        $more = (string) ($opts['more'] ?? '');
+        if ($more !== '') {
+            $html .= '<details class="nfse-form__more"><summary>' . self::h((string) ($opts['moreLabel'] ?? 'Como funciona')) . '</summary>'
+                . '<div class="nfse-form__more-body">' . self::h($more) . '</div></details>';
+        }
 
         return $html . '</div></div>';
     }
