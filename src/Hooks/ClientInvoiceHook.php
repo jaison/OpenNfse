@@ -40,25 +40,10 @@ final class ClientInvoiceHook
         $url = 'index.php?m=OpenNfse&action=downloadXml';
         $pdfUrl = 'index.php?m=OpenNfse&action=downloadPdf';
         $emailUrl = 'index.php?m=OpenNfse&action=sendEmail';
-        $status = trim((string) ($nota['status'] ?? ''));
         $xmlPath = trim((string) ($nota['xml_path'] ?? ''));
         $emitidaEm = $this->formatDateTime((string) ($nota['emitida_em'] ?? ''));
-        $canceladoEm = $this->formatDateTime((string) ($nota['cancelado_em'] ?? ''));
         $numeroNf = trim((string) ($nota['numero_nf'] ?? ''));
         $chave = trim((string) ($nota['chave_acesso'] ?? ''));
-        $erro = trim((string) ($nota['erro_api'] ?? ''));
-
-        $alertClass = 'alert-info';
-        $statusClass = '';
-        if ($status === 'EMITIDA') {
-            $alertClass = 'alert-success';
-            $statusClass = 'nfse-status-ok';
-        } elseif (in_array($status, ['ERRO', 'REJEITADA', 'CANCELADA'], true)) {
-            $alertClass = 'alert-danger';
-            $statusClass = 'nfse-status-error';
-        } elseif ($status === 'PROCESSANDO') {
-            $alertClass = 'alert-warning';
-        }
 
         $html = '';
         $emailMsg = (string) ($_REQUEST['nfse_email'] ?? '');
@@ -67,23 +52,17 @@ final class ClientInvoiceHook
         } elseif ($emailMsg === 'error') {
             $html .= '<div class="alert alert-danger nfse-client-invoice-alert nfse-mt-15" style="margin-top:15px;">Erro ao enviar o e-mail da NFS-e.</div>';
         }
-        $html .= '<div class="alert ' . $alertClass . ' nfse-client-invoice-alert nfse-client-summary nfse-mt-15" style="margin-top:15px;">';
-        $html .= '<div class="nfse-client-summary-line"><strong>NFS-e:</strong> <span class="' . htmlspecialchars($statusClass, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($status !== '' ? $status : '-', ENT_QUOTES, 'UTF-8') . '</span></div>';
+        $html .= '<div class="alert alert-success nfse-client-invoice-alert nfse-client-summary nfse-mt-15" style="margin-top:15px;">';
+        $html .= '<div class="nfse-client-summary-line"><strong>NFS-e:</strong> <span class="nfse-status-ok">EMITIDA</span></div>';
         $html .= '<div class="nfse-client-summary-line"><strong>Número:</strong> ' . htmlspecialchars($numeroNf !== '' ? $numeroNf : '-', ENT_QUOTES, 'UTF-8') . '</div>';
         if ($emitidaEm !== '-') {
             $html .= '<div class="nfse-client-summary-line"><strong>Emitida em:</strong> ' . htmlspecialchars($emitidaEm, ENT_QUOTES, 'UTF-8') . '</div>';
         }
-        if ($canceladoEm !== '-') {
-            $html .= '<div class="nfse-client-summary-line"><strong>Cancelada em:</strong> ' . htmlspecialchars($canceladoEm, ENT_QUOTES, 'UTF-8') . '</div>';
-        }
-        if ($chave !== '' && $status === 'EMITIDA') {
+        if ($chave !== '') {
             $chaveShort = mb_strlen($chave, 'UTF-8') > 20 ? (mb_substr($chave, 0, 20, 'UTF-8') . '...') : $chave;
             $html .= '<div class="nfse-client-summary-line nfse-chave-line" style="display:block;margin-bottom:10px;padding-bottom:10px;"><strong>Chave:</strong> <span class="nfse-chave-wrap" style="margin-bottom:10px;"><span class="nfse-chave-short" title="' . htmlspecialchars($chave, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($chaveShort, ENT_QUOTES, 'UTF-8') . '</span> <button type="button" class="btn btn-xs btn-default nfse-btn-xs nfse-copy-btn nfse-mb-10" style="margin-bottom:10px;" data-nfse-copy="' . htmlspecialchars($chave, ENT_QUOTES, 'UTF-8') . '" onclick="(function(b){var t=b.getAttribute(&quot;data-nfse-copy&quot;)||&quot;&quot;;if(!t){return;}if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(function(){b.innerText=&quot;Copiado&quot;;setTimeout(function(){b.innerText=&quot;Copiar&quot;;},1200);});return;}var ta=document.createElement(&quot;textarea&quot;);ta.value=t;ta.style.position=&quot;fixed&quot;;ta.style.left=&quot;-10000px&quot;;ta.style.top=&quot;-10000px&quot;;document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand(&quot;copy&quot;);b.innerText=&quot;Copiado&quot;;setTimeout(function(){b.innerText=&quot;Copiar&quot;;},1200);}catch(e){}document.body.removeChild(ta);})(this)">Copiar</button></span><br /></div>';
         }
-        if (in_array($status, ['ERRO', 'REJEITADA'], true) && $erro !== '') {
-            $html .= '<div class="nfse-client-summary-line"><strong>Detalhe:</strong> ' . htmlspecialchars($erro, ENT_QUOTES, 'UTF-8') . '</div>';
-        }
-        if ($status === 'EMITIDA' && $xmlPath !== '') {
+        if ($xmlPath !== '') {
             $html .= '<div class="nfse-client-summary-line nfse-client-actions">';
             $html .= ActionFormRenderer::render(
                 $url,
@@ -146,7 +125,8 @@ final class ClientInvoiceHook
         } catch (\Throwable $e) {
             $nota = null;
         }
-        if (!$nota) {
+        // Como em ClientController::listNotasEmitidas, o cliente só vê a nota emitida.
+        if (!$nota || trim((string) ($nota['status'] ?? '')) !== 'EMITIDA') {
             return null;
         }
 
