@@ -110,10 +110,33 @@ final class UiTest extends TestCase
             'DONE' => 'nfse-badge--ok',
         ];
         foreach ($map as $status => $class) {
-            $this->assertSame('<span class="nfse-badge ' . $class . '">' . $status . '</span>', Ui::statusBadge($status), $status);
+            $this->assertSame('<span class="nfse-badge ' . $class . '" title="' . $status . '">' . Ui::h(Ui::STATUS_LABELS[$status]) . '</span>', Ui::statusBadge($status), $status);
         }
-        $this->assertSame('<span class="nfse-badge">WAIT_STATUS</span>', Ui::statusBadge('WAIT_STATUS'), 'aguardando é neutro');
+        $this->assertSame('<span class="nfse-badge" title="WAIT_STATUS">Aguardando status</span>', Ui::statusBadge('WAIT_STATUS'), 'aguardando é neutro');
+        $this->assertSame('<span class="nfse-badge nfse-badge--ok" title="DONE">Concluído</span>', Ui::statusBadge(' done '));
+        $this->assertSame('<span class="nfse-badge nfse-badge--ok">OK</span>', Ui::statusBadge('OK'), 'rótulo igual ao código, sem title');
         $this->assertSame('<span class="nfse-badge">&lt;x&gt;</span>', Ui::statusBadge('<x>'));
+        $this->assertSame('<span class="nfse-badge">GAP</span>', Ui::statusBadge('GAP'), 'desconhecido mantém o texto');
+    }
+
+    public function testIcon(): void
+    {
+        $this->assertStringStartsWith('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect', Ui::icon('copy'));
+        $this->assertSame('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"></svg>', Ui::icon('nada'));
+    }
+
+    public function testStatusLabelsAndOptions(): void
+    {
+        $this->assertSame('Pendente', Ui::statusLabel('PENDING'));
+        $this->assertSame('Processando', Ui::statusLabel('RUNNING'));
+        $this->assertSame('Com erro', Ui::statusLabel('ERROR'));
+        $this->assertSame('Resolvido', Ui::statusLabel('RESOLVIDO'));
+        $this->assertSame('XYZ', Ui::statusLabel('XYZ'));
+        $this->assertSame(
+            ['' => 'Todos os status', 'PENDING' => 'Pendente', 'DONE' => 'Concluído'],
+            Ui::statusOptions(['PENDING', 'DONE'])
+        );
+        $this->assertSame(['ERROR' => 'Com erro'], Ui::statusOptions(['ERROR'], ''));
     }
 
     public function testCallout(): void

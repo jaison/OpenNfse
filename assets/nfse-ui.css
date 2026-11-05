@@ -651,6 +651,38 @@
 .nfse-ui label.nfse-check { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-size: 13px; font-weight: 400; color: var(--ink-2); cursor: pointer; }
 .nfse-menu__foot { display: flex; justify-content: space-between; gap: var(--space-2); margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--divider); }
 
+/* Corpo de card com respiro (quando o card tem cabeçalho e o conteúdo não é tabela). */
+.nfse-card__body { padding: var(--space-4); }
+
+/* Texto e ação pequena na mesma linha (ex.: erro + botão de copiar só com ícone). */
+.nfse-cell-inline { display: inline-flex; align-items: flex-start; gap: var(--space-1); max-width: 100%; }
+.nfse-cell-inline > .nfse-btn { flex: none; margin-block: -3px; }
+
+/* Pares rótulo/valor numa grade (<dl>). */
+.nfse-dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-2) var(--space-4); margin: 0; }
+.nfse-dl__item { min-width: 0; }
+.nfse-dl dt { font-size: 12px; line-height: 16px; font-weight: 400; color: var(--muted); }
+.nfse-dl dd { margin: 0; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+
+/* Barra de progresso (a largura do preenchimento vem do dado). */
+.nfse-progress { height: 8px; border-radius: var(--radius-pill); background: var(--surface-subtle); overflow: hidden; }
+.nfse-progress__fill { height: 100%; background: var(--ok-ink); border-radius: var(--radius-pill); }
+
+/* Código: prévia de uma linha em tabela (abre ao focar) e bloco no detalhe. */
+.nfse-ui textarea.nfse-code-preview { display: block; width: 100%; min-width: 160px; height: 28px; margin: 0; padding: 4px 6px; resize: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-subtle); color: var(--ink-2); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 18px; }
+.nfse-ui textarea.nfse-code-preview:focus { height: 120px; white-space: pre-wrap; overflow: auto; }
+.nfse-ui textarea.nfse-code, .nfse-ui pre.nfse-code { display: block; width: 100%; margin: 0; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-subtle); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.nfse-ui textarea.nfse-code { height: 320px; resize: vertical; overflow: auto; }
+.nfse-ui pre.nfse-code { max-height: 360px; overflow: auto; }
+
+/* Duas colunas iguais com título por coluna; uma coluna abaixo de 900px de área. */
+.nfse-split2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.nfse-split2__item { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.nfse-split2__title { font-size: 13px; line-height: 18px; font-weight: 600; color: var(--ink); }
+@container nfse-page (max-width: 899px) {
+  .nfse-split2 { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* Área estreita: submenu vira uma linha de chips com rolagem; formulário empilha rótulo e campo. */
 @container nfse-page (max-width: 999px) {
   .nfse-withnav { grid-template-columns: minmax(0, 1fr); }
@@ -666,13 +698,9 @@
 
 /* Relatórios */
 
-/* Cards de informação: pares rótulo/valor numa grade e nota curta. */
+/* Cards de informação: título, pares rótulo/valor (nfse-dl) e nota curta. */
 .nfse-rel-info { display: flex; flex-direction: column; gap: var(--space-2); }
 .nfse-rel-info .nfse-card__title { margin: 0; }
-.nfse-dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-2) var(--space-4); margin: 0; }
-.nfse-dl__item { min-width: 0; }
-.nfse-dl dt { font-size: 12px; line-height: 16px; font-weight: 400; color: var(--muted); }
-.nfse-dl dd { margin: 0; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 .nfse-rel-note { font-size: 12px; line-height: 18px; color: var(--ink-2); }
 .nfse-rel-note code, .nfse-callout code { font-size: 11px; padding: 0 3px; border-radius: var(--radius-sm); background: var(--surface-subtle); color: var(--ink); }
 .nfse-rel-sub { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--divider); border-radius: var(--radius-lg); background: var(--surface-subtle); }
@@ -684,22 +712,7 @@
 .nfse-rel-shortcuts__title { font-size: 13px; line-height: 18px; font-weight: 600; color: var(--ink); }
 .nfse-rel-shortcuts__summary { font-size: 12px; line-height: 16px; color: var(--muted); }
 
-/* Progresso da auditoria assíncrona (a largura do preenchimento vem do dado). */
-.nfse-progress { height: 8px; border-radius: var(--radius-pill); background: var(--surface-subtle); overflow: hidden; }
-.nfse-progress__fill { height: 100%; background: var(--ok-ink); border-radius: var(--radius-pill); }
+/* Estado da auditoria assíncrona (a barra é o nfse-progress). */
 .nfse-rel-hint { font-size: 12px; line-height: 16px; color: var(--warn-ink); }
 .nfse-rel-hint[hidden], .nfse-rel-error[hidden] { display: none; }
 .nfse-rel-error { padding: 10px var(--space-3); border: 1px solid var(--danger-border); border-radius: var(--radius-lg); background: var(--danger-bg); color: var(--danger-ink); font-size: 12px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
-
-/* Logs: prévia de request/response na tabela e blocos de código no detalhe. */
-.nfse-ui textarea.nfse-code-preview { display: block; width: 100%; min-width: 160px; height: 28px; margin: 0; padding: 4px 6px; resize: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-subtle); color: var(--ink-2); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 18px; }
-.nfse-ui textarea.nfse-code-preview:focus { height: 120px; white-space: pre-wrap; overflow: auto; }
-.nfse-ui textarea.nfse-code, .nfse-ui pre.nfse-code { display: block; width: 100%; margin: 0; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-subtle); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
-.nfse-ui textarea.nfse-code { height: 320px; resize: vertical; overflow: auto; }
-.nfse-ui pre.nfse-code { max-height: 360px; overflow: auto; }
-.nfse-rel-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
-.nfse-rel-block { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
-.nfse-rel-block__title { font-size: 13px; line-height: 18px; font-weight: 600; color: var(--ink); }
-@container nfse-page (max-width: 899px) {
-  .nfse-rel-split { grid-template-columns: minmax(0, 1fr); }
-}

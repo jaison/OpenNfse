@@ -81,15 +81,7 @@ final class QueueController
             $page = 1;
         }
 
-        $statusOptions = [
-            '' => 'Todos os status',
-            'PENDING' => 'PENDING',
-            'RUNNING' => 'RUNNING',
-            'WAIT_STATUS' => 'WAIT_STATUS',
-            'ERROR' => 'ERROR',
-            'RESOLVIDO' => 'RESOLVIDO',
-            'DONE' => 'DONE',
-        ];
+        $statusOptions = Ui::statusOptions(['PENDING', 'RUNNING', 'WAIT_STATUS', 'ERROR', 'RESOLVIDO', 'DONE']);
         echo Ui::filterBar(
             ['id' => 'nfse-fila-filters', 'method' => 'get', 'action' => 'addonmodules.php', 'hidden' => ['module' => 'OpenNfse', 'action' => 'fila', 'per_page' => $perPage]],
             Ui::field('Fatura', Ui::input('invoiceid', $invoiceFilter, 'text', ['placeholder' => 'ID da fatura', 'inputmode' => 'numeric'], 'nfse-input--w-sm'))
@@ -204,7 +196,7 @@ final class QueueController
         $columnOptions = [
             'correlation' => 'Rastreio',
             'queue_id' => 'Fila ID',
-            'invoice' => 'Invoice',
+            'invoice' => 'Fatura',
             'dps' => 'DPS atual',
             'nfse' => 'NFS-e',
             'queue_status' => 'Status Fila',
@@ -300,7 +292,7 @@ final class QueueController
         echo '<thead><tr>';
         echo '<th data-col="correlation">Rastreio</th>';
         echo '<th data-col="queue_id" class="nfse-num">Fila ID</th>';
-        echo '<th data-col="invoice">Invoice</th>';
+        echo '<th data-col="invoice">Fatura</th>';
         echo '<th data-col="dps">DPS atual</th>';
         echo '<th data-col="nfse" class="nfse-num">NFS-e</th>';
         echo '<th data-col="queue_status">Status fila</th>';
@@ -358,7 +350,7 @@ final class QueueController
             echo '<td data-col="correlation">' . $renderCopyCell($correlationId, 'Copiar', true) . '</td>';
             echo '<td data-col="queue_id" class="nfse-num">' . $id . '</td>';
             $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
-            echo '<td data-col="invoice"><a href="' . Ui::h($invoiceUrl) . '" title="Abre o estado atual da invoice e da nota vinculada"><b>' . $invoiceId . '</b></a></td>';
+            echo '<td data-col="invoice"><a href="' . Ui::h($invoiceUrl) . '" title="Abre o estado atual da fatura e da nota vinculada"><b>' . $invoiceId . '</b></a></td>';
             echo '<td data-col="dps">' . $renderCopyCell($notaIdDps, 'Copiar', true) . '</td>';
             echo '<td data-col="nfse" class="nfse-num">' . ($notaNumeroNf !== '' ? Ui::h($notaNumeroNf) : $dash) . '</td>';
             echo '<td data-col="queue_status"><div class="nfse-cell-stack">' . Ui::statusBadge($status);
@@ -383,8 +375,8 @@ final class QueueController
                 if ($isE2404Reemit) {
                     echo '<span class="nfse-cell-meta nfse-text-danger">Reemitindo a mesma DPS apos E2404 (' . $e2404ReemitAttempts . '/2)</span>';
                 }
-                echo '<span class="nfse-break" title="' . Ui::h($erro) . '">' . Ui::h($truncateError($erro)) . '</span>';
-                echo '<button type="button" class="nfse-btn nfse-btn--sm nfse-copy" data-copy="' . Ui::h($erro) . '">Copiar erro</button>';
+                echo '<span class="nfse-cell-inline"><span class="nfse-break" title="' . Ui::h($erro) . '">' . Ui::h($truncateError($erro)) . '</span>';
+                echo '<button type="button" class="nfse-btn nfse-btn--icon nfse-btn--xs nfse-copy" data-copy="' . Ui::h($erro) . '" aria-label="Copiar erro" title="Copiar erro">' . Ui::icon('copy') . '</button></span>';
                 echo '</div>';
             }
             echo '</td>';
@@ -446,7 +438,7 @@ final class QueueController
 
         $invoiceId = (int) ($row['invoiceid'] ?? 0);
         if ($invoiceId <= 0) {
-            Module::ui()->renderError('Invoice inválida no item da fila.');
+            Module::ui()->renderError('Fatura inválida no item da fila.');
             return;
         }
 

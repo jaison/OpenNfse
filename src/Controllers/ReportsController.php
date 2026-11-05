@@ -2675,10 +2675,10 @@ final class ReportsController
             ['Data', (string) ($row->created_at ?? '')],
             ['Fatura', $invoiceId > 0 ? ReportView::invoiceLink($invoiceId) : '-', $invoiceId > 0],
         ]);
-        echo '<section class="nfse-card nfse-card--pad" aria-labelledby="nfse-log-titulo"><div class="nfse-rel-split">';
-        echo '<div class="nfse-rel-block"><label class="nfse-rel-block__title" for="nfse-log-request">Request</label>';
+        echo '<section class="nfse-card nfse-card--pad" aria-labelledby="nfse-log-titulo"><div class="nfse-split2">';
+        echo '<div class="nfse-split2__item"><label class="nfse-split2__title" for="nfse-log-request">Request</label>';
         echo '<textarea id="nfse-log-request" class="nfse-code" readonly>' . Ui::h((string) ($row->request ?? '')) . '</textarea></div>';
-        echo '<div class="nfse-rel-block"><label class="nfse-rel-block__title" for="nfse-log-response">Response</label>';
+        echo '<div class="nfse-split2__item"><label class="nfse-split2__title" for="nfse-log-response">Response</label>';
         echo '<textarea id="nfse-log-response" class="nfse-code" readonly>' . Ui::h((string) ($row->response ?? '')) . '</textarea></div>';
         echo '</div></section>';
         echo '</div>';
@@ -2726,12 +2726,12 @@ final class ReportsController
 
             echo '<section class="nfse-card">';
             echo '<div class="nfse-card__head"><h3 class="nfse-card__title">' . Ui::h($tipo) . '</h3><span class="nfse-card__summary">' . Ui::h($created) . '</span></div>';
-            echo '<div class="nfse-card--pad nfse-rel-split">';
+            echo '<div class="nfse-card__body nfse-split2">';
             if ($req !== '') {
-                echo '<div class="nfse-rel-block"><div class="nfse-rel-block__title">Request</div><pre class="nfse-code">' . Ui::h($req) . '</pre></div>';
+                echo '<div class="nfse-split2__item"><div class="nfse-split2__title">Request</div><pre class="nfse-code">' . Ui::h($req) . '</pre></div>';
             }
             if ($resp !== '') {
-                echo '<div class="nfse-rel-block"><div class="nfse-rel-block__title">Response</div><pre class="nfse-code">' . Ui::h($resp) . '</pre></div>';
+                echo '<div class="nfse-split2__item"><div class="nfse-split2__title">Response</div><pre class="nfse-code">' . Ui::h($resp) . '</pre></div>';
             }
             echo '</div>';
             echo '</section>';

@@ -19,6 +19,7 @@ final class Ui
         'ok' => '<circle cx="12" cy="12" r="9"></circle><path d="M8 12.5l2.5 2.5L16 9.5"></path>',
         'warn' => '<path d="M12 3l9 16H3z"></path><path d="M12 10v4M12 16.5v.5"></path>',
         'danger' => '<path d="M12 3l9 16H3z"></path><path d="M12 10v4M12 16.5v.5"></path>',
+        'copy' => '<rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V6a2 2 0 0 1 2-2h9"></path>',
     ];
 
     /** Status de NFS-e e da fila → tom do badge (StatusBadge do OpenNfse UI). */
@@ -33,6 +34,26 @@ final class Ui
         'REJEITADA' => 'danger',
         'DONE' => 'ok',
         'OK' => 'ok',
+    ];
+
+    /** Status de NFS-e e da fila → rótulo exibido. O código continua nos filtros, parâmetros e dados. */
+    public const STATUS_LABELS = [
+        'PENDING' => 'Pendente',
+        'RUNNING' => 'Processando',
+        'WAIT_STATUS' => 'Aguardando status',
+        'ERROR' => 'Com erro',
+        'RESOLVIDO' => 'Resolvido',
+        'DONE' => 'Concluído',
+        'EMITIDA' => 'Emitida',
+        'CANCELADA' => 'Cancelada',
+        'SUBSTITUIDA' => 'Substituída',
+        'SUBSTITUÍDA' => 'Substituída',
+        'PROCESSANDO' => 'Processando',
+        'REJEITADA' => 'Rejeitada',
+        'ERRO' => 'Erro',
+        'ENVIADO' => 'Enviado',
+        'FALHOU' => 'Falhou',
+        'OK' => 'OK',
     ];
 
     public static function h(string $value): string
@@ -205,6 +226,14 @@ final class Ui
         return '<button' . self::attrs(array_merge(['type' => 'submit', 'class' => $class], $attrs)) . '>' . self::h($label) . '</button>';
     }
 
+    /**
+     * Ícone SVG decorativo (aria-hidden): info, ok, warn, danger, copy. Use em botão com aria-label.
+     */
+    public static function icon(string $name): string
+    {
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' . (self::ICONS[$name] ?? '') . '</svg>';
+    }
+
     public static function badge(string $text, string $tone = ''): string
     {
         $tone = trim($tone);
@@ -213,13 +242,46 @@ final class Ui
     }
 
     /**
-     * Badge de status de NFS-e ou da fila, com o tom do StatusBadge. Status desconhecido fica neutro.
+     * Badge de status de NFS-e ou da fila, com o tom do StatusBadge e o rótulo em português (o código
+     * fica no title). Status desconhecido fica neutro e com o texto original.
      */
     public static function statusBadge(string $status): string
     {
         $status = trim($status);
+        $code = strtoupper($status);
+        $tone = self::STATUS_TONES[$code] ?? '';
+        $label = self::statusLabel($status);
+        if ($label === $status) {
+            return self::badge($status, $tone);
+        }
 
-        return self::badge($status, self::STATUS_TONES[strtoupper($status)] ?? '');
+        return '<span class="nfse-badge' . ($tone !== '' ? ' nfse-badge--' . self::h($tone) : '') . '" title="' . self::h($code) . '">' . self::h($label) . '</span>';
+    }
+
+    /**
+     * Rótulo em português de um status de NFS-e ou da fila (Ui::STATUS_LABELS); desconhecido volta como veio.
+     */
+    public static function statusLabel(string $status): string
+    {
+        $status = trim($status);
+
+        return self::STATUS_LABELS[strtoupper($status)] ?? $status;
+    }
+
+    /**
+     * Opções de select com os rótulos de status, mantendo o código como valor.
+     *
+     * @param array<int, string> $codes
+     * @return array<string, string>
+     */
+    public static function statusOptions(array $codes, string $allLabel = 'Todos os status'): array
+    {
+        $options = $allLabel !== '' ? ['' => $allLabel] : [];
+        foreach ($codes as $code) {
+            $options[$code] = self::statusLabel($code);
+        }
+
+        return $options;
     }
 
     /**

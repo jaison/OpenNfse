@@ -182,16 +182,25 @@ echo '</section>';
 
 ### Status
 
-`Ui::statusBadge($status)` aplica o tom do StatusBadge do OpenNfse UI:
+`Ui::statusBadge($status)` mostra o rótulo em português (`Ui::STATUS_LABELS`, o código fica no
+`title`) com o tom do StatusBadge do OpenNfse UI. O código continua nos filtros, parâmetros e
+dados; para selects use `Ui::statusOptions(['PENDING', 'DONE'])` (valor = código, texto = rótulo)
+e, para texto solto, `Ui::statusLabel($status)`. Status fora do mapa aparece como veio.
 
-| Status | Tom |
-|---|---|
-| EMITIDA | `nfse-badge--emitida` |
-| CANCELADA, SUBSTITUÍDA | `nfse-badge--cancelada` |
-| ERRO, ERROR, RESOLVIDO | `nfse-badge--erro` |
-| REJEITADA | `nfse-badge--danger` |
-| DONE, OK | `nfse-badge--ok` |
-| demais (PENDING, RUNNING, WAIT_STATUS, PROCESSANDO…) | neutro |
+| Status | Rótulo | Tom |
+|---|---|---|
+| PENDING | Pendente | neutro |
+| RUNNING | Processando | neutro |
+| WAIT_STATUS | Aguardando status | neutro |
+| ERROR | Com erro | `nfse-badge--erro` |
+| RESOLVIDO | Resolvido | `nfse-badge--erro` |
+| DONE | Concluído | `nfse-badge--ok` |
+| EMITIDA | Emitida | `nfse-badge--emitida` |
+| CANCELADA, SUBSTITUÍDA | Cancelada, Substituída | `nfse-badge--cancelada` |
+| PROCESSANDO | Processando | neutro |
+| REJEITADA | Rejeitada | `nfse-badge--danger` |
+| ERRO | Erro | `nfse-badge--erro` |
+| OK | OK | `nfse-badge--ok` |
 
 Para outros rótulos: `Ui::badge('Expira 27d', 'warn')` (tons: emitida, cancelada, erro, ok,
 danger, warn, neutro).
@@ -227,8 +236,38 @@ Use `Ui::button($label, $variants, $attrs)` ou as classes direto:
 | `nfse-btn--sm` | 28px, para tabelas, rodapés e cabeçalhos de card |
 | `nfse-btn--icon` (+ `--xs`) | só ícone, exige `aria-label` |
 
+Botão só com ícone numa célula, logo depois do texto (ex.: copiar o erro na Fila):
+
+```php
+echo '<span class="nfse-cell-inline"><span class="nfse-break">' . Ui::h($erroCurto) . '</span>'
+    . '<button type="button" class="nfse-btn nfse-btn--icon nfse-btn--xs nfse-copy" data-copy="' . Ui::h($erro) . '"'
+    . ' aria-label="Copiar erro" title="Copiar erro">' . Ui::icon('copy') . '</button></span>';
+```
+
 `Ui::button` gera `<button type="submit">` (troque com `['type' => 'button']`) ou `<a>` quando
 recebe `href`. Desativado: `aria-disabled="true"` num `<span class="nfse-btn">` ou `disabled` no botão.
+
+## Blocos de conteúdo
+
+- **Respiro do card:** `.nfse-card--pad` (o card inteiro, 20px) ou `.nfse-card__body` (16px, abaixo
+  de um `.nfse-card__head`).
+- **Rótulo/valor:** `<dl class="nfse-dl">` com `<div class="nfse-dl__item"><dt>…</dt><dd>…</dd></div>`,
+  numa grade que se ajusta à largura. Helper: `ReportView::keyValues([['Ambiente', 'producao'], …])`
+  (valores escapados; `[$rótulo, $html, true]` para HTML) e `ReportView::infoCard($título, $pares, $notaHtml)`.
+- **Progresso:** `ReportView::progress($percent, $id)` gera `.nfse-progress` com `.nfse-progress__fill`;
+  a largura é o único `style` (vem do dado).
+- **Código:** `<pre class="nfse-code">` ou `<textarea class="nfse-code" readonly>` para request/response;
+  em tabela, `<textarea class="nfse-code-preview" readonly rows="1" aria-label="…">` (uma linha, abre ao focar).
+- **Duas colunas:** `.nfse-split2` com `.nfse-split2__item` e `.nfse-split2__title`; vira uma coluna
+  abaixo de 900px de área.
+
+```php
+echo '<section class="nfse-card"><div class="nfse-card__head"><h3 class="nfse-card__title">EMISSAO</h3></div>';
+echo '<div class="nfse-card__body nfse-split2">'
+    . '<div class="nfse-split2__item"><div class="nfse-split2__title">Request</div><pre class="nfse-code">' . Ui::h($req) . '</pre></div>'
+    . '<div class="nfse-split2__item"><div class="nfse-split2__title">Response</div><pre class="nfse-code">' . Ui::h($resp) . '</pre></div>'
+    . '</div></section>';
+```
 
 ## Formulários (Configurações)
 
@@ -285,5 +324,5 @@ Ex.: escolha de colunas da Fila. O painel abre e fecha pelo atributo `hidden`.
 
 ## Outros utilitários
 
-`Ui::h()` (escape), `Ui::attrs()` (atributos a partir de array), `Ui::hidden()` (campos ocultos),
+`Ui::h()` (escape), `Ui::icon()` (SVG decorativo: info, ok, warn, danger, copy), `Ui::attrs()` (atributos a partir de array), `Ui::hidden()` (campos ocultos),
 `.nfse-sr-only` (texto só para leitor de tela), `.nfse-text-danger`.
