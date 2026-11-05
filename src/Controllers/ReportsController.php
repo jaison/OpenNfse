@@ -30,10 +30,50 @@ use OpenNfse\Services\StorageService;
 use OpenNfse\Services\TokenService;
 use WHMCS\Database\Capsule;
 use OpenNfse\Controllers\Support\AdminHelpersTrait;
+use OpenNfse\Views\ReportView;
+use OpenNfse\Views\Ui;
 
 final class ReportsController
 {
     use AdminHelpersTrait;
+
+    private string $postToken = '';
+
+    /**
+     * Botão de POST (exportações, abrir log) com o token da sessão, sem estilo inline.
+     *
+     * @param array<string, string|int> $params
+     */
+    private function postButton(string $action, string $label, array $params, string $class = 'nfse-btn nfse-btn--sm'): string
+    {
+        if ($this->postToken === '') {
+            $this->postToken = (new TokenService())->token();
+        }
+
+        return ReportView::postButton($action, $label, $params, $this->postToken, $class);
+    }
+
+    /**
+     * Rodapé com a contagem, a paginação (links com $params + page) e ferramentas extras.
+     *
+     * @param array<string, string|int> $params
+     */
+    private function pagedFooter(int $first, int $last, int $total, string $noun, array $params, int $page, int $totalPages, string $extraHtml = '', string $pageParam = 'page'): string
+    {
+        $pager = '';
+        if ($pageParam === 'page') {
+            $pager = Ui::pager($params, $page, $totalPages);
+        } else {
+            $link = static fn (int $p): string => 'addonmodules.php?' . http_build_query($params + [$pageParam => $p], '', '&', PHP_QUERY_RFC3986);
+            $pager = '<span class="nfse-pager">'
+                . ($page > 1 ? Ui::button('Anterior', ['sm'], ['href' => $link($page - 1)]) : '<span class="nfse-btn nfse-btn--sm" aria-disabled="true">Anterior</span>')
+                . '<span class="nfse-pager__current">Página ' . $page . ' de ' . max(1, $totalPages) . '</span>'
+                . ($page < $totalPages ? Ui::button('Próxima', ['sm'], ['href' => $link($page + 1)]) : '<span class="nfse-btn nfse-btn--sm" aria-disabled="true">Próxima</span>')
+                . '</span>';
+        }
+
+        return Ui::tableFooter(Ui::rangeText($first, $last, $total, $noun), $pager . $extraHtml);
+    }
 
     public function getAuditoriaDashboardSummary(?string $month = null, ?string $fromDate = null, ?string $toDate = null): array
     {
@@ -74,64 +114,46 @@ final class ReportsController
             'emitidas' => [
                 'label' => 'NFS-e Emitidas',
                 'badge' => 'Fiscal',
-                'badge_bg' => '#e8f5e9',
-                'badge_color' => '#2e7d32',
                 'summary' => 'Acompanha notas emitidas e canceladas, com totais e exportações do período.',
             ],
             'auditoria' => [
                 'label' => 'Auditoria Emissão',
                 'badge' => 'Conferência',
-                'badge_bg' => '#e8f0fe',
-                'badge_color' => '#23527c',
                 'summary' => 'Lista faturas pagas em gateways ativos que não geraram NFS-e e também não entraram na fila.',
             ],
             NfseNaoPagasReportController::TAB => [
                 'label' => 'NFS-e de faturas não pagas',
                 'badge' => 'Revisão',
-                'badge_bg' => '#fdf0e6',
-                'badge_color' => '#a04000',
                 'summary' => 'Lista notas emitidas cuja fatura não está paga (Unpaid, Cancelled, Refunded, Collections) e notas emitidas antes do pagamento.',
             ],
             'xml_auditoria' => [
                 'label' => 'Auditoria XML',
                 'badge' => 'Técnico',
-                'badge_bg' => '#eef2f7',
-                'badge_color' => '#5f6b7a',
                 'summary' => 'Compara a pasta mensal de XMLs com o xml_path atual das notas para encontrar órfãos e referências inconsistentes.',
             ],
             'auditoria_api_dps' => [
                 'label' => 'Auditoria DPS > API',
                 'badge' => 'API',
-                'badge_bg' => '#eaf7f1',
-                'badge_color' => '#176b46',
                 'summary' => 'Confere as DPS do período diretamente na API e verifica lacunas na sequência numérica do emissor.',
             ],
             'historico_fiscal' => [
                 'label' => 'Historico Fiscal',
                 'badge' => 'Fiscal',
-                'badge_bg' => '#f3e8ff',
-                'badge_color' => '#6b21a8',
                 'summary' => 'Preserva os documentos e eventos fiscais da invoice ao longo do tempo, inclusive emissões, cancelamentos e snapshots de migracao.',
             ],
             'cancelamentos' => [
                 'label' => 'Cancelamentos',
                 'badge' => 'Auditoria',
-                'badge_bg' => '#fff3e0',
-                'badge_color' => '#a67c00',
                 'summary' => 'Mostra cancelamentos do período com foco em conferência fiscal e contábil.',
             ],
             'falhas' => [
                 'label' => 'Falhas',
                 'badge' => 'Atenção',
-                'badge_bg' => '#fff8e1',
-                'badge_color' => '#8a6d3b',
                 'summary' => 'Concentra erros de emissão, rejeições e problemas que exigem correção manual.',
             ],
             'logs' => [
                 'label' => 'Logs',
                 'badge' => 'Técnico',
-                'badge_bg' => '#eef2f7',
-                'badge_color' => '#5f6b7a',
                 'summary' => 'Centraliza request/response e rastreabilidade técnica para suporte e diagnóstico.',
             ],
         ];
@@ -156,34 +178,15 @@ final class ReportsController
         $params = $_GET;
         unset($params['module'], $params['action'], $params['tab']);
 
-        $h = static function ($value): string {
-            return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-        };
         $activeMeta = $tabMeta[$active] ?? $tabMeta['emitidas'];
+        if ($active === 'auditoria_api') {
+            $activeMeta = [
+                'label' => 'Auditoria API (NSU)',
+                'summary' => 'Compara os documentos distribuídos pela API (por NSU) com o histórico fiscal local do mês.',
+            ];
+        }
 
-        echo '<style>';
-        echo '.nfse-report-layout{display:flex;gap:18px;align-items:flex-start;}';
-        echo '.nfse-report-sidebar{width:280px;padding:14px;border:1px solid #dbe3ea;border-radius:10px;background:linear-gradient(180deg,#fbfcfe 0%,#f4f6f8 100%);box-shadow:0 2px 8px rgba(15,23,42,0.05);box-sizing:border-box;}';
-        echo '.nfse-report-sidebar-summary{margin-top:2px;margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,0.04);}';
-        echo '.nfse-report-sidebar-summary strong{display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#5b6776;margin-bottom:6px;}';
-        echo '.nfse-report-sidebar-summary span{display:block;font-size:13px;color:#334155;line-height:1.5;font-weight:600;}';
-        echo '.nfse-report-sidebar-links{display:flex;flex-direction:column;gap:8px;}';
-        echo '.nfse-report-sidebar-links a{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;text-decoration:none;color:#2c4778;box-shadow:0 1px 2px rgba(15,23,42,0.03);transition:all .15s ease;}';
-        echo '.nfse-report-sidebar-links a:hover{background:#f8fafc;border-color:#cfd9e5;box-shadow:0 2px 6px rgba(15,23,42,0.06);transform:translateY(-1px);}';
-        echo '.nfse-report-sidebar-links a.is-active{background:linear-gradient(180deg,#f7fbff 0%,#edf4fb 100%);border-color:#c8d8ea;color:#234b74;box-shadow:inset 0 0 0 1px #dbe7f3,0 2px 8px rgba(35,82,124,0.08);}';
-        echo '.nfse-report-sidebar-link-label{display:block;font-size:13px;font-weight:600;line-height:1.35;}';
-        echo '.nfse-report-sidebar-badge{display:inline-block;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:.03em;text-transform:uppercase;}';
-        echo '.nfse-report-content{flex:1;min-width:0;}';
-        echo '@media (max-width: 1200px){.nfse-report-layout{flex-direction:column;}.nfse-report-sidebar{width:100%;}}';
-        echo '</style>';
-
-        echo '<div class="nfse-report-layout">';
-        echo '<div class="nfse-report-sidebar">';
-        echo '<div class="nfse-report-sidebar-summary">';
-        echo '<strong>' . $h((string) ($activeMeta['label'] ?? 'Relatórios')) . '</strong>';
-        echo '<span>' . $h((string) ($activeMeta['summary'] ?? '')) . '</span>';
-        echo '</div>';
-        echo '<div class="nfse-report-sidebar-links">';
+        $navItems = [];
         foreach ($allowed as $key => $label) {
             $p = $params;
             $p['tab'] = $key;
@@ -191,16 +194,19 @@ final class ReportsController
             if (!empty($p)) {
                 $url .= '&' . http_build_query($p, '', '&', PHP_QUERY_RFC3986);
             }
-            $isActive = $key === $active;
-            $meta = $tabMeta[$key] ?? ['badge' => 'Relatório', 'badge_bg' => '#eef2f7', 'badge_color' => '#5f6b7a'];
-            echo '<a href="' . $h($url) . '" class="' . ($isActive ? 'is-active' : '') . '">';
-            echo '<span class="nfse-report-sidebar-link-label">' . $h($label) . '</span>';
-            echo '<span class="nfse-report-sidebar-badge" style="background:' . $h((string) ($meta['badge_bg'] ?? '#eef2f7')) . ';color:' . $h((string) ($meta['badge_color'] ?? '#5f6b7a')) . ';">' . $h((string) ($meta['badge'] ?? 'Relatório')) . '</span>';
-            echo '</a>';
+            $navItems[] = [
+                'label' => $label,
+                'href' => $url,
+                'current' => $key === $active,
+                'meta' => (string) ($tabMeta[$key]['badge'] ?? ''),
+            ];
         }
-        echo '</div>';
-        echo '</div>';
-        echo '<div class="nfse-report-content">';
+
+        echo '<div class="nfse-ui nfse-page">';
+        echo '<div class="nfse-withnav">';
+        echo Ui::subnav($navItems, 'Relatórios');
+        echo '<div class="nfse-withnav__content">';
+        echo Ui::sectionHeader((string) ($activeMeta['label'] ?? 'Relatórios'), (string) ($activeMeta['summary'] ?? ''), '', 'nfse-rel-secao');
 
         if ($active === 'falhas') {
             $this->showRelatorioFalhas(true);
@@ -224,8 +230,7 @@ final class ReportsController
             $this->showRelatorioEmitidas(true);
         }
 
-        echo '</div>';
-        echo '</div>';
+        echo '</div></div></div>';
 
         Module::ui()->renderFooter();
     }
@@ -276,38 +281,45 @@ final class ReportsController
         $offset = ($page - 1) * $perPage;
         $rows = $repo->listNotas($filters, $perPage, $offset);
 
-        if ($msg === 'status_done') {
-            echo '<div class="successbox">Consulta de status executada.</div>';
-        } elseif ($msg === 'status_error') {
-            echo '<div class="errorbox">Erro ao consultar status. Verifique os logs do módulo.</div>';
-        } elseif ($msg === 'reemitir_gateway_disabled') {
-            echo '<div class="errorbox">Reemissão manual desativada para o gateway de pagamento desta fatura.</div>';
-        } elseif ($msg === 'reemitir_enqueued') {
-            echo '<div class="successbox">Reemissão manual enfileirada. O cron processará em breve.</div>';
-        } elseif ($msg === 'reemitir_requested') {
-            echo '<div class="successbox">Reemissão manual solicitada. Verifique o status e o XML na fatura.</div>';
-        } elseif ($msg === 'reemitir_error') {
-            echo '<div class="errorbox">Erro ao solicitar reemissão manual. Verifique os logs do módulo.</div>';
-        } elseif ($msg === 'cancel_done') {
-            echo '<div class="successbox">Cancelamento solicitado com sucesso.</div>';
-        } elseif ($msg === 'cancel_error') {
-            echo '<div class="errorbox">Erro ao cancelar NFS-e. Verifique os logs do módulo.</div>';
+        $messages = [
+            'status_done' => ['ok', 'Consulta de status executada.'],
+            'status_error' => ['danger', 'Erro ao consultar status. Verifique os logs do módulo.'],
+            'reemitir_gateway_disabled' => ['danger', 'Reemissão manual desativada para o gateway de pagamento desta fatura.'],
+            'reemitir_enqueued' => ['ok', 'Reemissão manual enfileirada. O cron processará em breve.'],
+            'reemitir_requested' => ['ok', 'Reemissão manual solicitada. Verifique o status e o XML na fatura.'],
+            'reemitir_error' => ['danger', 'Erro ao solicitar reemissão manual. Verifique os logs do módulo.'],
+            'cancel_done' => ['ok', 'Cancelamento solicitado com sucesso.'],
+            'cancel_error' => ['danger', 'Erro ao cancelar NFS-e. Verifique os logs do módulo.'],
+        ];
+        if (isset($messages[$msg])) {
+            echo Ui::callout($messages[$msg][0], $messages[$msg][1]);
         }
+
+        $statusOptions = [
+            '' => 'Todos os status',
+            'EMITIDA,CANCELADA' => 'Emitidas e Canceladas',
+            'EMITIDA' => 'Emitida',
+            'CANCELADA' => 'Cancelada',
+            'PROCESSANDO' => 'Processando',
+            'REJEITADA' => 'Rejeitada',
+            'ERRO' => 'Erro',
+        ];
+        echo Ui::filterBar(
+            ['hidden' => ['module' => 'OpenNfse', 'action' => 'relatorios', 'tab' => 'emitidas', 'per_page' => $perPage]],
+            Ui::field('Fatura', Ui::input('invoiceid', $invoiceFilter, 'text', ['placeholder' => 'ID da fatura'], 'nfse-input--w-sm'))
+            . Ui::field('Data inicial', Ui::input('data_inicial', $dataInicial, 'date'))
+            . Ui::field('Data final', Ui::input('data_final', $dataFinal, 'date'))
+            . Ui::field('Status', Ui::select('status', $statusOptions, $status, [], 'nfse-input--w-md'))
+            . Ui::field('Cliente', Ui::input('cliente', $cliente, 'text', ['placeholder' => 'Cliente (ID ou nome)'], 'nfse-input--w-lg')),
+            Ui::button('Filtrar', ['primary']) . Ui::button('Limpar', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas']),
+            'Filtros das notas emitidas'
+        );
 
         $recentCompetencias = $this->buildRecentCompetenciaZipPresets();
         if (!empty($recentCompetencias)) {
-            echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #d7eadc;border-radius:8px;background:linear-gradient(180deg,#fbfefb 0%,#f2f9f4 100%);">';
-            echo '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
-            echo '<div style="flex:1 1 420px;">';
-            echo '<div style="font-size:11px;color:#5f7a67;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Exportação por competência</div>';
-            echo '<div style="font-size:15px;font-weight:700;color:#1f4d30;margin-bottom:4px;">Baixar XMLs por competência</div>';
-            echo '<div style="font-size:12px;color:#4f6b57;line-height:1.5;">Atalhos rápidos para baixar os XMLs ZIPados dos 3 últimos meses fechados separadamente, considerando todas as notas Emitidas e Canceladas.</div>';
-            echo '</div>';
-            echo '<div style="min-width:420px;flex:1 1 520px;padding:12px 14px;border:1px solid #bfe0c7;border-radius:8px;background:#ffffff;box-shadow:0 2px 8px rgba(22,101,52,0.08);">';
-            echo '<div style="font-size:11px;color:#176b46;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Últimos 3 períodos fechados</div>';
-            echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
+            $chips = '';
             foreach ($recentCompetencias as $preset) {
-                echo $this->renderPostActionButton(
+                $chips .= $this->postButton(
                     'relatoriosExportZip',
                     (string) ($preset['label'] ?? ''),
                     [
@@ -319,83 +331,36 @@ final class ReportsController
                         'cliente' => '',
                         'zip_layout' => 'competencia',
                     ],
-                    'btn btn-success'
+                    'nfse-chip'
                 );
             }
-            echo '</div>';
-            echo '</div>';
-            echo '</div>';
-            echo '</div>';
+            echo '<section class="nfse-card nfse-rel-shortcuts" aria-labelledby="nfse-rel-competencia">';
+            echo '<div class="nfse-rel-shortcuts__text"><div class="nfse-rel-shortcuts__title" id="nfse-rel-competencia">Baixar XMLs por competência</div>';
+            echo '<div class="nfse-rel-shortcuts__summary">ZIP dos 3 últimos meses fechados, com as notas emitidas e canceladas de cada mês.</div></div>';
+            echo '<div class="nfse-chips" role="group" aria-label="Últimos 3 períodos fechados">' . $chips . '</div>';
+            echo '</section>';
         }
 
-        echo '<form method="get" action="addonmodules.php">';
-        echo '<input type="hidden" name="module" value="OpenNfse" />';
-        echo '<input type="hidden" name="action" value="relatorios" />';
-        echo '<input type="hidden" name="tab" value="emitidas" />';
-        echo '<input type="hidden" name="per_page" value="' . htmlspecialchars((string) $perPage, ENT_QUOTES, 'UTF-8') . '" />';
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;flex:1 1 860px;">';
-        echo '<div style="min-width:130px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Invoice ID</div>';
-        echo '<input type="text" name="invoiceid" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" style="width:130px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="min-width:160px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data inicial</div>';
-        echo '<input type="date" name="data_inicial" value="' . htmlspecialchars($dataInicial, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="min-width:160px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data final</div>';
-        echo '<input type="date" name="data_final" value="' . htmlspecialchars($dataFinal, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="min-width:220px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Status</div>';
-        echo '<select name="status" style="width:220px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
-        $statusOptions = [
-            '' => 'Todos os status',
-            'EMITIDA,CANCELADA' => 'Emitidas e Canceladas',
-            'EMITIDA' => 'Emitida',
-            'CANCELADA' => 'Cancelada',
-            'PROCESSANDO' => 'Processando',
-            'REJEITADA' => 'Rejeitada',
-            'ERRO' => 'Erro',
-        ];
-        foreach ($statusOptions as $val => $label) {
-            $sel = $val === $status ? ' selected' : '';
-            echo '<option value="' . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . '"' . $sel . '>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
+        $statusParts = array_values(array_filter(array_map('trim', explode(',', $status)), static fn (string $v): bool => $v !== ''));
+        $showSplitTotals = count($statusParts) === 2 && in_array('EMITIDA', $statusParts, true) && in_array('CANCELADA', $statusParts, true);
+        $kpis = [['label' => 'Total de notas', 'value' => (int) ($summary['total_notas'] ?? 0)]];
+        if ($showSplitTotals) {
+            $filtersEmitidas = $filters;
+            $filtersEmitidas['status'] = 'EMITIDA';
+            $filtersCanceladas = $filters;
+            $filtersCanceladas['status'] = 'CANCELADA';
+            $sumEmitidas = $repo->summaryNotas($filtersEmitidas);
+            $sumCanceladas = $repo->summaryNotas($filtersCanceladas);
+            $kpis[] = ['label' => 'Valor emitidas', 'value' => $this->formatMoney((float) ($sumEmitidas['total_valor'] ?? 0), 'R$ ', '')];
+            $kpis[] = ['label' => 'Valor canceladas', 'value' => $this->formatMoney((float) ($sumCanceladas['total_valor'] ?? 0), 'R$ ', '')];
+        } else {
+            $kpis[] = ['label' => 'Valor total', 'value' => $this->formatMoney((float) ($summary['total_valor'] ?? 0), 'R$ ', '')];
         }
-        echo '</select>';
-        echo '</div>';
-        echo '<div style="flex:1 1 320px;min-width:320px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Cliente</div>';
-        echo '<input type="text" name="cliente" placeholder="Cliente (ID ou nome)" value="' . htmlspecialchars($cliente, ENT_QUOTES, 'UTF-8') . '" style="width:100%;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '</div>';
-        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas">Limpar</a>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
+        echo Ui::kpis($kpis);
 
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:12%;">Data</th>';
-        echo '<th style="width:10%;">NFS-e</th>';
-        echo '<th style="width:34%;">Cliente</th>';
-        echo '<th style="width:10%;">Invoice</th>';
-        echo '<th style="width:14%;">Valor</th>';
-        echo '<th style="width:20%;">Status</th>';
-        echo '</tr>';
-
-        if (empty($rows)) {
-            echo '<tr><td colspan="6" style="text-align:center;color:#666;">Nenhuma nota encontrada para os critérios selecionados.</td></tr>';
-        }
-
+        $rowsHtml = '';
         foreach ($rows as $row) {
             $invoiceId = (int) ($row['invoiceid'] ?? 0);
-            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
             $clienteNome = $this->resolveClientName($row);
             $numeroNfse = (string) ($row['numero_nf'] ?? '');
             $statusRow = (string) ($row['status'] ?? '');
@@ -405,53 +370,15 @@ final class ReportsController
             $prefix = (string) ($row['currency_prefix'] ?? 'R$ ');
             $suffix = (string) ($row['currency_suffix'] ?? '');
 
-            echo '<tr>';
-            echo '<td>' . htmlspecialchars($dataFmt, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($numeroNfse !== '' ? $numeroNfse : '-', ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($clienteNome, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
-            echo '<td>' . htmlspecialchars($this->formatMoney($valor, $prefix, $suffix), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($statusRow, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '</tr>';
+            $rowsHtml .= '<tr>'
+                . '<td class="nfse-nowrap">' . Ui::h($dataFmt) . '</td>'
+                . '<td>' . ($statusRow !== '' ? Ui::statusBadge($statusRow) : ReportView::orDash('')) . '</td>'
+                . '<td class="nfse-num">' . ReportView::orDash($numeroNfse) . '</td>'
+                . '<td>' . ReportView::invoiceLink($invoiceId) . '</td>'
+                . '<td class="nfse-break">' . Ui::h($clienteNome) . '</td>'
+                . '<td class="nfse-num nfse-nowrap">' . Ui::h($this->formatMoney($valor, $prefix, $suffix)) . '</td>'
+                . '</tr>';
         }
-
-        echo '</table>';
-
-        echo '<div style="margin-top:12px;padding:14px 16px;border:1px solid #e5e7eb;border-radius:8px;background:linear-gradient(180deg,#fbfcfe 0%,#f5f7fa 100%);">';
-        echo '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;">';
-        echo '<div style="min-width:180px;flex:1 1 180px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;">';
-        echo '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Total de notas</div>';
-        echo '<div style="font-size:17px;font-weight:700;color:#1f2937;">' . (int) ($summary['total_notas'] ?? 0) . '</div>';
-        echo '</div>';
-        $statusParts = array_values(array_filter(array_map('trim', explode(',', $status)), static fn (string $v): bool => $v !== ''));
-        $showSplitTotals = count($statusParts) === 2 && in_array('EMITIDA', $statusParts, true) && in_array('CANCELADA', $statusParts, true);
-        if ($showSplitTotals) {
-            $filtersEmitidas = $filters;
-            $filtersEmitidas['status'] = 'EMITIDA';
-            $filtersCanceladas = $filters;
-            $filtersCanceladas['status'] = 'CANCELADA';
-            $sumEmitidas = $repo->summaryNotas($filtersEmitidas);
-            $sumCanceladas = $repo->summaryNotas($filtersCanceladas);
-            echo '<div style="min-width:240px;flex:1 1 240px;padding:10px 12px;border:1px solid #d7eadc;border-radius:6px;background:#fff;">';
-            echo '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Valor Emitidas</div>';
-            echo '<div style="font-size:17px;font-weight:700;color:#166534;">' . htmlspecialchars($this->formatMoney((float) ($sumEmitidas['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</div>';
-            echo '</div>';
-            echo '<div style="min-width:240px;flex:1 1 240px;padding:10px 12px;border:1px solid #eadfd7;border-radius:6px;background:#fff;">';
-            echo '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Valor Canceladas</div>';
-            echo '<div style="font-size:17px;font-weight:700;color:#9a3412;">' . htmlspecialchars($this->formatMoney((float) ($sumCanceladas['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</div>';
-            echo '</div>';
-        } else {
-            echo '<div style="min-width:240px;flex:1 1 240px;padding:10px 12px;border:1px solid #dbe5f0;border-radius:6px;background:#fff;">';
-            echo '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Valor total</div>';
-            echo '<div style="font-size:17px;font-weight:700;color:#1d4ed8;">' . htmlspecialchars($this->formatMoney((float) ($summary['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</div>';
-            echo '</div>';
-        }
-        echo '</div>';
-        echo '</div>';
-        echo '<div style="margin-top:10px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
-        $firstItem = $totalNotas > 0 ? ($offset + 1) : 0;
-        $lastItem = min($offset + count($rows), $totalNotas);
-        echo '<div style="font-size:14px;color:#374151;">Exibindo <strong style="color:#111827;">' . $firstItem . '-' . $lastItem . '</strong> de <strong style="color:#111827;">' . $totalNotas . '</strong> registros</div>';
 
         $baseParams = [
             'module' => 'OpenNfse',
@@ -464,70 +391,44 @@ final class ReportsController
             'cliente' => $cliente,
             'per_page' => $perPage,
         ];
+        $exportParams = [
+            'tab' => 'emitidas',
+            'invoiceid' => $invoiceFilter,
+            'data_inicial' => $dataInicial,
+            'data_final' => $dataFinal,
+            'status' => $status,
+            'cliente' => $cliente,
+        ];
+        $firstItem = $totalNotas > 0 ? ($offset + 1) : 0;
+        $lastItem = min($offset + count($rows), $totalNotas);
+        $footer = $this->pagedFooter(
+            $firstItem,
+            $lastItem,
+            $totalNotas,
+            'registros',
+            $baseParams,
+            $page,
+            $totalPages,
+            Ui::pageForm(
+                ['module' => 'OpenNfse', 'action' => 'relatorios', 'tab' => 'emitidas', 'invoiceid' => $invoiceFilter, 'data_inicial' => $dataInicial, 'data_final' => $dataFinal, 'status' => $status, 'cliente' => $cliente],
+                $page,
+                $totalPages,
+                $perPage,
+                [50, 100, 500]
+            )
+            . $this->postButton('relatoriosExportZip', 'Baixar XMLs do período escolhido', $exportParams)
+            . $this->postButton('relatoriosExport', 'Exportar CSV', $exportParams)
+        );
 
-        echo '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
-        if ($page > 1) {
-            $prevParams = $baseParams;
-            $prevParams['page'] = $page - 1;
-            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a>';
-        }
-        echo '<span style="display:inline-flex;align-items:center;padding:6px 10px;border:1px solid #d1d5db;border-radius:999px;background:#f9fafb;font-size:13px;font-weight:600;color:#374151;">Página ' . $page . ' / ' . $totalPages . '</span>';
-        if ($page < $totalPages) {
-            $nextParams = $baseParams;
-            $nextParams['page'] = $page + 1;
-            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
-        }
-        echo '</div>';
-        echo '</div>';
-        echo '<div style="margin-top:10px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;">';
-        echo '<form method="get" action="addonmodules.php" style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin:0;">';
-        echo '<input type="hidden" name="module" value="OpenNfse" />';
-        echo '<input type="hidden" name="action" value="relatorios" />';
-        echo '<input type="hidden" name="tab" value="emitidas" />';
-        echo '<input type="hidden" name="invoiceid" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" />';
-        echo '<input type="hidden" name="data_inicial" value="' . htmlspecialchars($dataInicial, ENT_QUOTES, 'UTF-8') . '" />';
-        echo '<input type="hidden" name="data_final" value="' . htmlspecialchars($dataFinal, ENT_QUOTES, 'UTF-8') . '" />';
-        echo '<input type="hidden" name="status" value="' . htmlspecialchars($status, ENT_QUOTES, 'UTF-8') . '" />';
-        echo '<input type="hidden" name="cliente" value="' . htmlspecialchars($cliente, ENT_QUOTES, 'UTF-8') . '" />';
-        echo '<div style="min-width:190px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Página</div>';
-        echo '<select name="page" style="min-width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
-        for ($pageOption = 1; $pageOption <= $totalPages; $pageOption++) {
-            $selectedPage = $pageOption === $page ? ' selected' : '';
-            echo '<option value="' . $pageOption . '"' . $selectedPage . '>Página ' . $pageOption . ' de ' . $totalPages . '</option>';
-        }
-        echo '</select>';
-        echo '</div>';
-        echo '<div style="min-width:160px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Registros</div>';
-        echo '<select name="per_page" style="min-width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
-        foreach ([50, 100, 500] as $perPageOption) {
-            $selectedPerPage = $perPageOption === $perPage ? ' selected' : '';
-            echo '<option value="' . $perPageOption . '"' . $selectedPerPage . '>' . $perPageOption . ' por página</option>';
-        }
-        echo '</select>';
-        echo '</div>';
-        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Aplicar</button>';
-        echo '</form>';
-        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
-        echo $this->renderPostActionButton('relatoriosExportZip', 'Baixar XMLs do período escolhido', [
-            'tab' => 'emitidas',
-            'invoiceid' => $invoiceFilter,
-            'data_inicial' => $dataInicial,
-            'data_final' => $dataFinal,
-            'status' => $status,
-            'cliente' => $cliente,
-        ], 'btn btn-xs btn-default');
-        echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
-            'tab' => 'emitidas',
-            'invoiceid' => $invoiceFilter,
-            'data_inicial' => $dataInicial,
-            'data_final' => $dataFinal,
-            'status' => $status,
-            'cliente' => $cliente,
-        ], 'btn btn-xs btn-default');
-        echo '</div>';
-        echo '</div>';
+        echo ReportView::tableCard(
+            ['Data', 'Status', ['NFS-e', 'nfse-num'], 'Fatura', 'Cliente', ['Valor', 'nfse-num']],
+            $rowsHtml,
+            'Nenhuma nota encontrada para os critérios selecionados.',
+            '',
+            '',
+            $footer,
+            'nfse-rel-secao'
+        );
     }
 
 
@@ -549,53 +450,18 @@ final class ReportsController
 
         $rows = (new ReportRepository())->listFalhas($filters, 200);
 
-        echo '<form method="get" action="addonmodules.php">';
-        echo '<input type="hidden" name="module" value="OpenNfse" />';
-        echo '<input type="hidden" name="action" value="relatorios" />';
-        echo '<input type="hidden" name="tab" value="falhas" />';
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;flex:1 1 620px;">';
-        echo '<div style="min-width:160px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data inicial</div>';
-        echo '<input type="date" name="data_inicial" value="' . htmlspecialchars($dataInicial, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="min-width:160px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data final</div>';
-        echo '<input type="date" name="data_final" value="' . htmlspecialchars($dataFinal, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="flex:1 1 320px;min-width:320px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Cliente</div>';
-        echo '<input type="text" name="cliente" placeholder="Cliente (ID ou nome)" value="' . htmlspecialchars($cliente, ENT_QUOTES, 'UTF-8') . '" style="width:100%;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '</div>';
-        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas">Limpar</a>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
-        echo '<div style="margin-bottom:12px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;">';
-        echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
-            'tab' => 'falhas',
-            'data_inicial' => $dataInicial,
-            'data_final' => $dataFinal,
-            'cliente' => $cliente,
-        ], 'btn btn-xs btn-default');
-        echo '</div>';
+        echo Ui::filterBar(
+            ['hidden' => ['module' => 'OpenNfse', 'action' => 'relatorios', 'tab' => 'falhas']],
+            Ui::field('Data inicial', Ui::input('data_inicial', $dataInicial, 'date'))
+            . Ui::field('Data final', Ui::input('data_final', $dataFinal, 'date'))
+            . Ui::field('Cliente', Ui::input('cliente', $cliente, 'text', ['placeholder' => 'Cliente (ID ou nome)'], 'nfse-input--w-lg')),
+            Ui::button('Filtrar', ['primary']) . Ui::button('Limpar', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=relatorios&tab=falhas']),
+            'Filtros das falhas'
+        );
 
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:12%;">Data</th>';
-        echo '<th style="width:38%;">Cliente</th>';
-        echo '<th style="width:10%;">Invoice</th>';
-        echo '<th style="width:40%;">Erro</th>';
-        echo '</tr>';
-
+        $rowsHtml = '';
         foreach ($rows as $row) {
             $invoiceId = (int) ($row['invoiceid'] ?? 0);
-            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
             $clienteNome = $this->resolveClientName($row);
             $dataFmt = $this->formatDate((string) ($row['data'] ?? ''), 'd/m/Y');
             $erro = trim((string) ($row['erro'] ?? ''));
@@ -606,15 +472,32 @@ final class ReportsController
                 $erro = mb_substr($erro, 0, 220) . '...';
             }
 
-            echo '<tr>';
-            echo '<td>' . htmlspecialchars($dataFmt, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($clienteNome, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($erro, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '</tr>';
+            $rowsHtml .= '<tr>'
+                . '<td class="nfse-nowrap">' . Ui::h($dataFmt) . '</td>'
+                . '<td>' . ReportView::invoiceLink($invoiceId) . '</td>'
+                . '<td class="nfse-break">' . Ui::h($clienteNome) . '</td>'
+                . '<td class="nfse-break">' . Ui::h($erro) . '</td>'
+                . '</tr>';
         }
 
-        echo '</table>';
+        $count = count($rows);
+        echo ReportView::tableCard(
+            ['Data', 'Fatura', 'Cliente', 'Erro'],
+            $rowsHtml,
+            'Nenhuma falha encontrada para os critérios selecionados.',
+            '',
+            '',
+            Ui::tableFooter(
+                $count > 0 ? 'Exibindo <b>' . $count . '</b> falhas (até 200 mais recentes)' : 'Nenhum resultado',
+                $this->postButton('relatoriosExport', 'Exportar CSV', [
+                    'tab' => 'falhas',
+                    'data_inicial' => $dataInicial,
+                    'data_final' => $dataFinal,
+                    'cliente' => $cliente,
+                ])
+            ),
+            'nfse-rel-secao'
+        );
     }
 
 
@@ -640,61 +523,18 @@ final class ReportsController
         $repo = new ReportRepository();
         $rows = $repo->listCancelamentos($filters, 200);
 
-        echo '<form method="get" action="addonmodules.php">';
-        echo '<input type="hidden" name="module" value="OpenNfse" />';
-        echo '<input type="hidden" name="action" value="relatorios" />';
-        echo '<input type="hidden" name="tab" value="cancelamentos" />';
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;flex:1 1 620px;">';
-        echo '<div style="min-width:160px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data inicial</div>';
-        echo '<input type="date" name="data_inicial" value="' . htmlspecialchars($dataInicial, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="min-width:160px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data final</div>';
-        echo '<input type="date" name="data_final" value="' . htmlspecialchars($dataFinal, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="flex:1 1 320px;min-width:320px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Cliente</div>';
-        echo '<input type="text" name="cliente" placeholder="Cliente (ID ou nome)" value="' . htmlspecialchars($cliente, ENT_QUOTES, 'UTF-8') . '" style="width:100%;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '</div>';
-        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=cancelamentos">Limpar</a>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
-        echo '<div style="margin-bottom:12px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;">';
-        echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
-            'tab' => 'cancelamentos',
-            'data_inicial' => $dataInicial,
-            'data_final' => $dataFinal,
-            'cliente' => $cliente,
-        ], 'btn btn-xs btn-default');
-        echo $this->renderPostActionButton('relatoriosExportZip', 'Baixar XMLs ZIP', [
-            'tab' => 'cancelamentos',
-            'data_inicial' => $dataInicial,
-            'data_final' => $dataFinal,
-            'cliente' => $cliente,
-        ], 'btn btn-xs btn-default');
-        echo '</div>';
+        echo Ui::filterBar(
+            ['hidden' => ['module' => 'OpenNfse', 'action' => 'relatorios', 'tab' => 'cancelamentos']],
+            Ui::field('Data inicial', Ui::input('data_inicial', $dataInicial, 'date'))
+            . Ui::field('Data final', Ui::input('data_final', $dataFinal, 'date'))
+            . Ui::field('Cliente', Ui::input('cliente', $cliente, 'text', ['placeholder' => 'Cliente (ID ou nome)'], 'nfse-input--w-lg')),
+            Ui::button('Filtrar', ['primary']) . Ui::button('Limpar', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=relatorios&tab=cancelamentos']),
+            'Filtros dos cancelamentos'
+        );
 
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:14%;">Data Emissão</th>';
-        echo '<th style="width:14%;">Data Cancelamento</th>';
-        echo '<th style="width:10%;">NFS-e</th>';
-        echo '<th style="width:34%;">Cliente</th>';
-        echo '<th style="width:10%;">Invoice</th>';
-        echo '<th style="width:18%;">Valor</th>';
-        echo '</tr>';
-
+        $rowsHtml = '';
         foreach ($rows as $row) {
             $invoiceId = (int) ($row['invoiceid'] ?? 0);
-            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
             $clienteNome = $this->resolveClientName($row);
             $numeroNfse = (string) ($row['numero_nf'] ?? '');
             $emissaoFmt = $this->formatDate((string) ($row['emitida_em'] ?? ''), 'd/m/Y');
@@ -703,17 +543,36 @@ final class ReportsController
             $prefix = (string) ($row['currency_prefix'] ?? 'R$ ');
             $suffix = (string) ($row['currency_suffix'] ?? '');
 
-            echo '<tr>';
-            echo '<td>' . htmlspecialchars($emissaoFmt, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($cancelFmt, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($numeroNfse !== '' ? $numeroNfse : '-', ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($clienteNome, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
-            echo '<td>' . htmlspecialchars($this->formatMoney($valor, $prefix, $suffix), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '</tr>';
+            $rowsHtml .= '<tr>'
+                . '<td class="nfse-nowrap">' . Ui::h($emissaoFmt) . '</td>'
+                . '<td class="nfse-nowrap">' . Ui::h($cancelFmt) . '</td>'
+                . '<td class="nfse-num">' . ReportView::orDash($numeroNfse) . '</td>'
+                . '<td>' . ReportView::invoiceLink($invoiceId) . '</td>'
+                . '<td class="nfse-break">' . Ui::h($clienteNome) . '</td>'
+                . '<td class="nfse-num nfse-nowrap">' . Ui::h($this->formatMoney($valor, $prefix, $suffix)) . '</td>'
+                . '</tr>';
         }
 
-        echo '</table>';
+        $exportParams = [
+            'tab' => 'cancelamentos',
+            'data_inicial' => $dataInicial,
+            'data_final' => $dataFinal,
+            'cliente' => $cliente,
+        ];
+        $count = count($rows);
+        echo ReportView::tableCard(
+            ['Emissão', 'Cancelamento', ['NFS-e', 'nfse-num'], 'Fatura', 'Cliente', ['Valor', 'nfse-num']],
+            $rowsHtml,
+            'Nenhum cancelamento encontrado para os critérios selecionados.',
+            '',
+            '',
+            Ui::tableFooter(
+                $count > 0 ? 'Exibindo <b>' . $count . '</b> cancelamentos (até 200 mais recentes)' : 'Nenhum resultado',
+                $this->postButton('relatoriosExport', 'Exportar CSV', $exportParams)
+                . $this->postButton('relatoriosExportZip', 'Baixar XMLs ZIP', $exportParams)
+            ),
+            'nfse-rel-secao'
+        );
     }
 
 
@@ -740,52 +599,30 @@ final class ReportsController
         $summary = $repo->summaryAuditoriaInvoices($filters);
         $periodLabel = $this->formatAuditoriaMonthLabel($selectedMonth);
 
-        echo '<form method="get" action="addonmodules.php">';
-        echo '<input type="hidden" name="module" value="OpenNfse" />';
-        echo '<input type="hidden" name="action" value="relatorios" />';
-        echo '<input type="hidden" name="tab" value="auditoria" />';
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
-        echo '<div style="min-width:190px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Mês de referência</div>';
-        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria">Limpar</a>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
+        echo Ui::filterBar(
+            ['hidden' => ['module' => 'OpenNfse', 'action' => 'relatorios', 'tab' => 'auditoria']],
+            Ui::field('Mês de referência', Ui::input('mes', $selectedMonth, 'month')),
+            Ui::button('Filtrar', ['primary']) . Ui::button('Limpar', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria']),
+            'Filtro da auditoria de emissão'
+        );
         if (empty($gatewayKeys)) {
-            echo '<div class="alert alert-warning" style="margin-bottom:12px;">Nenhum gateway ativo e habilitado no addon foi encontrado para a auditoria.</div>';
+            echo Ui::callout('warn', 'Nenhum gateway ativo', 'Nenhum gateway ativo e habilitado no addon foi encontrado para a auditoria.');
         } else {
-            $notice = 'Exibindo o período de ' . htmlspecialchars($periodLabel, ENT_QUOTES, 'UTF-8') . ' para conferir faturas pagas que não foram emitidas NFS-e. Revise e emita manualmente cada uma delas se for o caso.';
-            echo '<div style="margin-bottom:14px;padding:14px 16px;border:1px solid #efd6d6;border-radius:8px;background:linear-gradient(180deg,#fffafa 0%,#fff4f4 100%);box-shadow:0 2px 8px rgba(127,29,29,0.06);">';
-            echo '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
-            echo '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9f3a38;">Atenção crítica</div>';
-            echo '<span style="display:inline-block;padding:3px 8px;border-radius:999px;background:#fdeaea;color:#9f3a38;font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;">Revisão manual</span>';
-            echo '</div>';
-            echo '<div style="margin-top:8px;font-size:13px;line-height:1.55;font-weight:600;color:#7f1d1d;">' . $notice . '</div>';
-            echo '</div>';
+            echo Ui::callout(
+                'danger',
+                'Revisão manual: faturas pagas sem NFS-e',
+                'Exibindo o período de ' . $periodLabel . ' para conferir faturas pagas que não foram emitidas NFS-e. Revise e emita manualmente cada uma delas se for o caso.'
+            );
         }
 
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:12%;">Fatura</th>';
-        echo '<th style="width:34%;">Cliente</th>';
-        echo '<th style="width:20%;">Pagamento</th>';
-        echo '<th style="width:18%;">Gateway</th>';
-        echo '<th style="width:16%;">Valor</th>';
-        echo '</tr>';
+        echo Ui::kpis([
+            ['label' => 'Total de faturas', 'value' => (int) ($summary['total_invoices'] ?? 0)],
+            ['label' => 'Valor total', 'value' => $this->formatMoney((float) ($summary['total_valor'] ?? 0), 'R$ ', '')],
+        ]);
 
-        if (empty($rows)) {
-            echo '<tr><td colspan="5" style="text-align:center;color:#666;">Nenhuma fatura encontrada para os critérios selecionados.</td></tr>';
-        }
-
+        $rowsHtml = '';
         foreach ($rows as $row) {
             $invoiceId = (int) ($row['invoice_id'] ?? 0);
-            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
             $clienteNome = $this->resolveClientName($row);
             $paidAt = $this->formatDate((string) ($row['paid_at'] ?? ''), 'd/m/Y H:i');
             $gatewayKey = strtolower(trim((string) ($row['paymentmethod'] ?? '')));
@@ -794,28 +631,24 @@ final class ReportsController
             $prefix = (string) ($row['currency_prefix'] ?? 'R$ ');
             $suffix = (string) ($row['currency_suffix'] ?? '');
 
-            echo '<tr>';
-            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($clienteNome, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($paidAt, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($gatewayLabel, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($this->formatMoney($valor, $prefix, $suffix), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '</tr>';
+            $rowsHtml .= '<tr>'
+                . '<td>' . ReportView::invoiceLink($invoiceId) . '</td>'
+                . '<td class="nfse-break">' . Ui::h($clienteNome) . '</td>'
+                . '<td class="nfse-nowrap">' . Ui::h($paidAt) . '</td>'
+                . '<td class="nfse-break">' . Ui::h($gatewayLabel) . '</td>'
+                . '<td class="nfse-num nfse-nowrap">' . Ui::h($this->formatMoney($valor, $prefix, $suffix)) . '</td>'
+                . '</tr>';
         }
 
-        echo '</table>';
-        echo '<div style="margin-top:12px;padding:14px 16px;border:1px solid #e5e7eb;border-radius:8px;background:linear-gradient(180deg,#fbfcfe 0%,#f5f7fa 100%);">';
-        echo '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;">';
-        echo '<div style="min-width:220px;flex:1 1 220px;padding:10px 12px;border:1px solid #dbe5f0;border-radius:6px;background:#fff;">';
-        echo '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Total de faturas</div>';
-        echo '<div style="font-size:17px;font-weight:700;color:#1f2937;">' . (int) ($summary['total_invoices'] ?? 0) . '</div>';
-        echo '</div>';
-        echo '<div style="min-width:240px;flex:1 1 240px;padding:10px 12px;border:1px solid #d7eadc;border-radius:6px;background:#fff;">';
-        echo '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Valor total</div>';
-        echo '<div style="font-size:17px;font-weight:700;color:#176b46;">' . htmlspecialchars($this->formatMoney((float) ($summary['total_valor'] ?? 0), 'R$ ', ''), ENT_QUOTES, 'UTF-8') . '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
+        echo ReportView::tableCard(
+            ['Fatura', 'Cliente', 'Pagamento', 'Gateway', ['Valor', 'nfse-num']],
+            $rowsHtml,
+            'Nenhuma fatura encontrada para os critérios selecionados.',
+            '',
+            '',
+            '',
+            'nfse-rel-secao'
+        );
     }
 
 
@@ -837,179 +670,95 @@ final class ReportsController
             + (int) ($audit['duplicate_reference_count'] ?? 0);
         $flashMessage = trim((string) ($_GET['msg'] ?? ''));
 
-        echo '<form method="get" action="addonmodules.php">';
-        echo '<input type="hidden" name="module" value="OpenNfse" />';
-        echo '<input type="hidden" name="action" value="relatorios" />';
-        echo '<input type="hidden" name="tab" value="xml_auditoria" />';
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
-        echo '<div style="min-width:190px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Mês de referência</div>';
-        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Auditar</button>';
-        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=xml_auditoria">Limpar</a>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
-
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fbfcfe 0%,#f5f8fb 100%);">';
-        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:6px;">Escopo da auditoria</div>';
-        echo '<div style="font-size:12px;color:#5b6776;line-height:1.55;">';
-        echo 'Comparando a pasta <strong>' . htmlspecialchars((string) ($audit['relative_dir'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</strong> referente a <strong>' . htmlspecialchars($periodLabel, ENT_QUOTES, 'UTF-8') . '</strong> ';
-        echo 'com o campo <code>xml_path</code> atual da base. Ambiente: <strong>' . htmlspecialchars((string) ($audit['environment_label'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
-        echo '&nbsp; Serie: <strong>' . htmlspecialchars((string) ($audit['serie_label'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</strong>. ';
-        echo 'Arquivos <code>cancelamento_nfse_*</code> sao contabilizados separadamente e nao entram como orfaos tecnicos.';
-        echo '</div>';
-        echo '</div>';
-
-        $metricCards = [
-            ['label' => 'Arquivos no disco', 'value' => (int) ($audit['physical_count'] ?? 0), 'color' => '#23527c'],
-            ['label' => 'Cancelamentos no disco', 'value' => (int) ($audit['cancelamento_file_count'] ?? 0), 'color' => '#a67c00'],
-            ['label' => 'XMLs referenciados', 'value' => (int) ($audit['db_reference_count'] ?? 0), 'color' => '#2e7d32'],
-            ['label' => 'Orfaos no disco', 'value' => (int) ($audit['orphan_count'] ?? 0), 'color' => '#b45f06'],
-            ['label' => 'Referencias quebradas', 'value' => (int) ($audit['missing_reference_count'] ?? 0), 'color' => '#a94442'],
-            ['label' => 'Status inconsistente', 'value' => (int) ($audit['unexpected_status_count'] ?? 0), 'color' => '#8a6d3b'],
-            ['label' => 'Referencias duplicadas', 'value' => (int) ($audit['duplicate_reference_count'] ?? 0), 'color' => '#6a1b9a'],
-        ];
-        echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">';
-        foreach ($metricCards as $card) {
-            echo '<div style="border:1px solid #dbe3ea;border-radius:8px;background:#fff;padding:12px 14px;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
-            echo '<div style="font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;">' . htmlspecialchars((string) $card['label'], ENT_QUOTES, 'UTF-8') . '</div>';
-            echo '<div style="font-size:26px;line-height:1.1;font-weight:700;color:' . htmlspecialchars((string) $card['color'], ENT_QUOTES, 'UTF-8') . ';">' . (int) $card['value'] . '</div>';
-            echo '</div>';
-        }
-        echo '</div>';
-
-        if ($issueCount > 0) {
-            echo '<div class="alert alert-warning" style="margin-bottom:14px;">Foram encontradas <strong>' . $issueCount . '</strong> divergencias tecnicas entre filesystem e base para este mes.</div>';
-        } else {
-            echo '<div class="alert alert-success" style="margin-bottom:14px;">Nenhuma divergencia tecnica foi encontrada entre a pasta mensal e o xml_path atual das notas.</div>';
-        }
         if ($flashMessage === 'orphan_cancel_done') {
-            echo '<div class="alert alert-success" style="margin-bottom:14px;">A NFS-e órfã foi cancelada e o evento foi registrado no histórico fiscal.</div>';
+            echo Ui::callout('ok', 'NFS-e órfã cancelada', 'O evento foi registrado no histórico fiscal.');
         }
+
+        echo Ui::filterBar(
+            ['hidden' => ['module' => 'OpenNfse', 'action' => 'relatorios', 'tab' => 'xml_auditoria']],
+            Ui::field('Mês de referência', Ui::input('mes', $selectedMonth, 'month')),
+            Ui::button('Auditar', ['primary']) . Ui::button('Limpar', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=relatorios&tab=xml_auditoria']),
+            'Filtro da auditoria XML'
+        );
+
+        echo ReportView::infoCard(
+            'Escopo da auditoria',
+            [
+                ['Pasta', (string) ($audit['relative_dir'] ?? '-')],
+                ['Mês', $periodLabel],
+                ['Ambiente', (string) ($audit['environment_label'] ?? '-')],
+                ['Série', (string) ($audit['serie_label'] ?? '-')],
+            ],
+            'Compara a pasta com o campo <code>xml_path</code> atual da base. Arquivos <code>cancelamento_nfse_*</code> são contabilizados separadamente e não entram como órfãos técnicos.'
+        );
+
+        $warnCount = static fn (int $n): string => $n > 0 ? 'warn' : '';
+        echo Ui::kpis([
+            ['label' => 'Arquivos no disco', 'value' => (int) ($audit['physical_count'] ?? 0)],
+            ['label' => 'Cancelamentos no disco', 'value' => (int) ($audit['cancelamento_file_count'] ?? 0)],
+            ['label' => 'XMLs referenciados', 'value' => (int) ($audit['db_reference_count'] ?? 0)],
+            ['label' => 'Órfãos no disco', 'value' => (int) ($audit['orphan_count'] ?? 0), 'tone' => $warnCount((int) ($audit['orphan_count'] ?? 0))],
+            ['label' => 'Referências quebradas', 'value' => (int) ($audit['missing_reference_count'] ?? 0), 'tone' => (int) ($audit['missing_reference_count'] ?? 0) > 0 ? 'danger' : ''],
+            ['label' => 'Status inconsistente', 'value' => (int) ($audit['unexpected_status_count'] ?? 0), 'tone' => $warnCount((int) ($audit['unexpected_status_count'] ?? 0))],
+            ['label' => 'Referências duplicadas', 'value' => (int) ($audit['duplicate_reference_count'] ?? 0), 'tone' => $warnCount((int) ($audit['duplicate_reference_count'] ?? 0))],
+        ]);
 
         $statusSummary = $this->buildXmlAuditStatusSummary((array) ($audit['status_counts'] ?? []));
-        if ($statusSummary !== '') {
-            echo '<div style="margin-bottom:14px;font-size:12px;color:#5b6776;">Status atuais das notas que apontam para esta pasta: ' . htmlspecialchars($statusSummary, ENT_QUOTES, 'UTF-8') . '.</div>';
+        $statusText = $statusSummary !== '' ? 'Status atuais das notas que apontam para esta pasta: ' . $statusSummary . '.' : '';
+        if ($issueCount > 0) {
+            echo Ui::callout('warn', 'Foram encontradas ' . $issueCount . ' divergências técnicas entre filesystem e base para este mês', $statusText);
+        } else {
+            echo Ui::callout('ok', 'Nenhuma divergência técnica entre a pasta mensal e o xml_path atual das notas', $statusText);
         }
+
+        $noteColumns = ['Data', 'Fatura', 'Cliente', 'Status', ['NFS-e', 'nfse-num'], 'xml_path'];
+        $noteRows = function (array $rows): string {
+            $html = '';
+            foreach ($rows as $row) {
+                $dataRef = (string) ($row['reference_date'] ?? $row['emitida_em'] ?? $row['nfse_updated_at'] ?? '');
+                $status = (string) ($row['status'] ?? '');
+                $html .= '<tr>'
+                    . '<td class="nfse-nowrap">' . Ui::h($this->formatDate($dataRef, 'd/m/Y')) . '</td>'
+                    . '<td>' . ReportView::invoiceLink((int) ($row['invoiceid'] ?? 0)) . '</td>'
+                    . '<td class="nfse-break">' . Ui::h($this->resolveClientName($row)) . '</td>'
+                    . '<td>' . ($status !== '' ? Ui::statusBadge($status) : ReportView::orDash('')) . '</td>'
+                    . '<td class="nfse-num">' . ReportView::orDash((string) ($row['numero_nf'] ?? '')) . '</td>'
+                    . '<td class="nfse-break nfse-mono">' . ReportView::orDash((string) ($row['xml_path_normalized'] ?? $row['xml_path'] ?? '')) . '</td>'
+                    . '</tr>';
+            }
+
+            return $html;
+        };
 
         $unexpectedRows = (array) ($audit['unexpected_status_rows'] ?? []);
-        echo '<div style="margin-bottom:16px;">';
-        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Notas com XML salvo e status diferente de Emitida/Cancelada</div>';
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:10%;">Data</th>';
-        echo '<th style="width:10%;">Invoice</th>';
-        echo '<th style="width:26%;">Cliente</th>';
-        echo '<th style="width:12%;">Status</th>';
-        echo '<th style="width:12%;">NFS-e</th>';
-        echo '<th style="width:30%;">xml_path</th>';
-        echo '</tr>';
-        if (empty($unexpectedRows)) {
-            echo '<tr><td colspan="6" style="text-align:center;color:#666;">Nenhuma nota inconsistente encontrada.</td></tr>';
-        }
-        foreach ($unexpectedRows as $row) {
-            $invoiceId = (int) ($row['invoiceid'] ?? 0);
-            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
-            $dataRef = (string) ($row['reference_date'] ?? $row['emitida_em'] ?? $row['nfse_updated_at'] ?? '');
-            echo '<tr>';
-            echo '<td>' . htmlspecialchars($this->formatDate($dataRef, 'd/m/Y'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($this->resolveClientName($row), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) ($row['status'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) (($row['numero_nf'] ?? '') !== '' ? $row['numero_nf'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($row['xml_path_normalized'] ?? $row['xml_path'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '</tr>';
-        }
-        echo '</table>';
-        echo '</div>';
+        echo ReportView::tableCard($noteColumns, $noteRows($unexpectedRows), 'Nenhuma nota inconsistente encontrada.', 'Notas com XML salvo e status diferente de Emitida/Cancelada', count($unexpectedRows) . ' notas', '', 'nfse-xml-inconsistentes');
 
         $missingRows = (array) ($audit['missing_reference_rows'] ?? []);
-        echo '<div style="margin-bottom:16px;">';
-        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Referencias quebradas na base</div>';
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:10%;">Data</th>';
-        echo '<th style="width:10%;">Invoice</th>';
-        echo '<th style="width:26%;">Cliente</th>';
-        echo '<th style="width:12%;">Status</th>';
-        echo '<th style="width:12%;">NFS-e</th>';
-        echo '<th style="width:30%;">xml_path</th>';
-        echo '</tr>';
-        if (empty($missingRows)) {
-            echo '<tr><td colspan="6" style="text-align:center;color:#666;">Nenhuma referencia quebrada encontrada.</td></tr>';
-        }
-        foreach ($missingRows as $row) {
-            $invoiceId = (int) ($row['invoiceid'] ?? 0);
-            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
-            $dataRef = (string) ($row['reference_date'] ?? $row['emitida_em'] ?? $row['nfse_updated_at'] ?? '');
-            echo '<tr>';
-            echo '<td>' . htmlspecialchars($this->formatDate($dataRef, 'd/m/Y'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($this->resolveClientName($row), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) ($row['status'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) (($row['numero_nf'] ?? '') !== '' ? $row['numero_nf'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($row['xml_path_normalized'] ?? $row['xml_path'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '</tr>';
-        }
-        echo '</table>';
-        echo '</div>';
+        echo ReportView::tableCard($noteColumns, $noteRows($missingRows), 'Nenhuma referência quebrada encontrada.', 'Referências quebradas na base', count($missingRows) . ' notas', '', 'nfse-xml-quebradas');
 
         $orphanFiles = (array) ($audit['orphan_files'] ?? []);
-        echo '<div style="margin-bottom:16px;">';
-        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Arquivos orfaos no disco</div>';
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:22%;">Arquivo</th>';
-        echo '<th style="width:40%;">Caminho</th>';
-        echo '<th style="width:13%;">Modificado em</th>';
-        echo '<th style="width:10%;">Tamanho</th>';
-        echo '<th style="width:15%;">Ação</th>';
-        echo '</tr>';
-        if (empty($orphanFiles)) {
-            echo '<tr><td colspan="5" style="text-align:center;color:#666;">Nenhum arquivo orfao encontrado.</td></tr>';
-        }
+        $orphanHtml = '';
         foreach ($orphanFiles as $file) {
             $xmlPath = (string) ($file['relative_path'] ?? '');
-            echo '<tr>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($file['filename'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($xmlPath !== '' ? $xmlPath : '-', ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) ($file['modified_at'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($this->formatAuditBytes((int) ($file['size'] ?? 0)), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>';
+            $action = '<span class="nfse-muted">-</span>';
             if ($xmlPath !== '') {
-                echo '<form method="get" action="addonmodules.php" style="margin:0;">';
-                echo '<input type="hidden" name="module" value="OpenNfse" />';
-                echo '<input type="hidden" name="action" value="cancelOrphanXmlForm" />';
-                echo '<input type="hidden" name="xml_path" value="' . htmlspecialchars($xmlPath, ENT_QUOTES, 'UTF-8') . '" />';
-                echo '<input type="hidden" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" />';
-                echo '<button type="submit" class="btn btn-xs btn-warning">Cancelar</button>';
-                echo '</form>';
-            } else {
-                echo '-';
+                $action = '<form class="nfse-inline-form" method="get" action="addonmodules.php">'
+                    . Ui::hidden(['module' => 'OpenNfse', 'action' => 'cancelOrphanXmlForm', 'xml_path' => $xmlPath, 'mes' => $selectedMonth])
+                    . Ui::button('Cancelar', ['sm', 'danger'])
+                    . '</form>';
             }
-            echo '</td>';
-            echo '</tr>';
+            $orphanHtml .= '<tr>'
+                . '<td class="nfse-break">' . ReportView::orDash((string) ($file['filename'] ?? '')) . '</td>'
+                . '<td class="nfse-break nfse-mono">' . ReportView::orDash($xmlPath) . '</td>'
+                . '<td class="nfse-nowrap">' . ReportView::orDash((string) ($file['modified_at'] ?? '')) . '</td>'
+                . '<td class="nfse-num nfse-nowrap">' . Ui::h($this->formatAuditBytes((int) ($file['size'] ?? 0))) . '</td>'
+                . '<td>' . $action . '</td>'
+                . '</tr>';
         }
-        echo '</table>';
-        echo '</div>';
+        echo ReportView::tableCard(['Arquivo', 'Caminho', 'Modificado em', ['Tamanho', 'nfse-num'], 'Ação'], $orphanHtml, 'Nenhum arquivo órfão encontrado.', 'Arquivos órfãos no disco', count($orphanFiles) . ' arquivos', '', 'nfse-xml-orfaos');
 
         $duplicateReferences = (array) ($audit['duplicate_references'] ?? []);
-        echo '<div style="margin-bottom:16px;">';
-        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Referencias duplicadas ao mesmo xml_path</div>';
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:46%;">xml_path</th>';
-        echo '<th style="width:14%;">Ocorrencias</th>';
-        echo '<th style="width:40%;">Invoices</th>';
-        echo '</tr>';
-        if (empty($duplicateReferences)) {
-            echo '<tr><td colspan="3" style="text-align:center;color:#666;">Nenhuma referencia duplicada encontrada.</td></tr>';
-        }
+        $duplicateHtml = '';
         foreach ($duplicateReferences as $duplicate) {
             $invoiceLinks = [];
             foreach ((array) ($duplicate['rows'] ?? []) as $row) {
@@ -1017,18 +766,16 @@ final class ReportsController
                 if ($invoiceId <= 0) {
                     continue;
                 }
-                $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
-                $invoiceLinks[] = '<a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a>';
+                $invoiceLinks[] = ReportView::invoiceLink($invoiceId);
             }
 
-            echo '<tr>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($duplicate['xml_path'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . (int) ($duplicate['count'] ?? 0) . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . (!empty($invoiceLinks) ? implode(', ', $invoiceLinks) : '-') . '</td>';
-            echo '</tr>';
+            $duplicateHtml .= '<tr>'
+                . '<td class="nfse-break nfse-mono">' . ReportView::orDash((string) ($duplicate['xml_path'] ?? '')) . '</td>'
+                . '<td class="nfse-num">' . (int) ($duplicate['count'] ?? 0) . '</td>'
+                . '<td class="nfse-break">' . (!empty($invoiceLinks) ? implode(', ', $invoiceLinks) : '<span class="nfse-muted">-</span>') . '</td>'
+                . '</tr>';
         }
-        echo '</table>';
-        echo '</div>';
+        echo ReportView::tableCard(['xml_path', ['Ocorrências', 'nfse-num'], 'Faturas'], $duplicateHtml, 'Nenhuma referência duplicada encontrada.', 'Referências duplicadas ao mesmo xml_path', count($duplicateReferences) . ' caminhos', '', 'nfse-xml-duplicadas');
     }
 
     public function showCancelOrphanXmlForm(): void
@@ -1057,36 +804,54 @@ final class ReportsController
 
         $token = (new TokenService())->token();
 
-        echo '<div style="margin-bottom:10px;"><a class="btn btn-default" href="' . htmlspecialchars($backUrl, ENT_QUOTES, 'UTF-8') . '">Voltar para Auditoria XML</a></div>';
-        echo '<div class="alert alert-warning" style="margin-bottom:14px;">Esta ação cancela a NFS-e representada pelo XML órfão, sem alterar automaticamente a nota operacional atual da invoice.</div>';
+        echo '<div class="nfse-ui nfse-page">';
+        echo Ui::sectionHeader(
+            'Dados do XML órfão',
+            'Confira a nota antes de cancelar.',
+            Ui::button('Voltar para Auditoria XML', ['ghost'], ['href' => $backUrl]),
+            'nfse-orfa-dados'
+        );
+        echo Ui::callout('warn', 'Operação fiscal', 'Esta ação cancela a NFS-e representada pelo XML órfão, sem alterar automaticamente a nota operacional atual da invoice.');
 
-        echo '<table class="form" width="100%" border="0" cellspacing="2" cellpadding="3" style="margin-bottom:14px;">';
-        echo '<tr><td class="fieldlabel" width="25%">Arquivo</td><td class="fieldarea">' . htmlspecialchars((string) ($context['filename'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td></tr>';
-        echo '<tr><td class="fieldlabel">Caminho</td><td class="fieldarea" style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($context['xml_path'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td></tr>';
-        echo '<tr><td class="fieldlabel">Invoice</td><td class="fieldarea">' . htmlspecialchars((string) (($context['invoiceid'] ?? 0) > 0 ? (string) $context['invoiceid'] : '-'), ENT_QUOTES, 'UTF-8') . '</td></tr>';
-        echo '<tr><td class="fieldlabel">NFS-e</td><td class="fieldarea">' . htmlspecialchars((string) (($context['numero_nf'] ?? '') !== '' ? $context['numero_nf'] : '-'), ENT_QUOTES, 'UTF-8') . '</td></tr>';
-        echo '<tr><td class="fieldlabel">ID DPS</td><td class="fieldarea" style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) (($context['id_dps'] ?? '') !== '' ? $context['id_dps'] : '-'), ENT_QUOTES, 'UTF-8') . '</td></tr>';
-        echo '<tr><td class="fieldlabel">Chave de acesso</td><td class="fieldarea" style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($context['chave_acesso'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td></tr>';
-        echo '<tr><td class="fieldlabel">Emitida em</td><td class="fieldarea">' . htmlspecialchars($this->formatDate((string) ($context['emitida_em'] ?? ''), 'd/m/Y H:i:s'), ENT_QUOTES, 'UTF-8') . '</td></tr>';
-        echo '</table>';
+        echo ReportView::infoCard('', [
+            ['Arquivo', (string) ($context['filename'] ?? '-')],
+            ['Fatura', (string) (($context['invoiceid'] ?? 0) > 0 ? (string) $context['invoiceid'] : '-')],
+            ['NFS-e', (string) (($context['numero_nf'] ?? '') !== '' ? $context['numero_nf'] : '-')],
+            ['Emitida em', $this->formatDate((string) ($context['emitida_em'] ?? ''), 'd/m/Y H:i:s')],
+            ['Caminho', (string) ($context['xml_path'] ?? '-')],
+            ['ID DPS', (string) (($context['id_dps'] ?? '') !== '' ? $context['id_dps'] : '-')],
+            ['Chave de acesso', (string) ($context['chave_acesso'] ?? '-')],
+        ]);
 
-        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=cancelOrphanXml">';
+        echo '<form method="post" action="addonmodules.php?module=OpenNfse&amp;action=cancelOrphanXml">';
         if ($token !== '') {
-            echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
+            echo Ui::hidden(['token' => $token]);
         }
-        echo '<input type="hidden" name="xml_path" value="' . htmlspecialchars((string) ($context['xml_path'] ?? ''), ENT_QUOTES, 'UTF-8') . '" />';
+        echo Ui::hidden(['xml_path' => (string) ($context['xml_path'] ?? '')]);
         if ($selectedMonth !== '') {
-            echo '<input type="hidden" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" />';
+            echo Ui::hidden(['mes' => $selectedMonth]);
         }
-        echo '<table class="form" width="100%" border="0" cellspacing="2" cellpadding="3">';
-        echo '<tr><td class="fieldlabel" width="25%">Código do motivo</td><td class="fieldarea"><select id="codigo_motivo" name="codigo_motivo" class="form-control">';
-        echo '<option value="1">1 - Erro na emissão da NFS-e (será emitida outra nota correta)</option>';
-        echo '<option value="2">2 - Serviço não prestado / cancelamento da prestação</option>';
-        echo '<option value="9" selected>9 - NFS-e emitida indevidamente</option>';
-        echo '</select></td></tr>';
-        echo '<tr><td class="fieldlabel" width="25%">Motivo</td><td class="fieldarea"><input id="motivo" type="text" name="motivo" class="form-control" value="Emissão indevida" /></td></tr>';
-        echo '<tr><td class="fieldlabel" width="25%">Descrição</td><td class="fieldarea"><input id="descricao" type="text" name="descricao" class="form-control" value="NFS-e cancelada por ter sido emitida indevidamente, pois outra nota fiscal já foi emitida corretamente para a mesma operação." /></td></tr>';
-        echo '</table>';
+        echo '<section class="nfse-card" aria-labelledby="nfse-orfa-motivo">';
+        echo '<div class="nfse-card__head"><h3 class="nfse-card__title" id="nfse-orfa-motivo">Motivo do cancelamento</h3></div>';
+        echo '<div class="nfse-form">';
+        echo Ui::formRow(
+            'Código do motivo',
+            Ui::select('codigo_motivo', [
+                '1' => '1 - Erro na emissão da NFS-e (será emitida outra nota correta)',
+                '2' => '2 - Serviço não prestado / cancelamento da prestação',
+                '9' => '9 - NFS-e emitida indevidamente',
+            ], '9', ['id' => 'codigo_motivo'], 'nfse-input--full'),
+            '',
+            ['id' => 'codigo_motivo']
+        );
+        echo Ui::formRow('Motivo', Ui::input('motivo', 'Emissão indevida', 'text', ['id' => 'motivo'], 'nfse-input--full'), '', ['id' => 'motivo']);
+        echo Ui::formRow('Descrição', Ui::input('descricao', 'NFS-e cancelada por ter sido emitida indevidamente, pois outra nota fiscal já foi emitida corretamente para a mesma operação.', 'text', ['id' => 'descricao'], 'nfse-input--full'), '', ['id' => 'descricao']);
+        echo '</div>';
+        echo Ui::saveBar(
+            Ui::button('Voltar', ['ghost'], ['href' => $backUrl])
+            . '<button type="submit" class="nfse-btn nfse-btn--danger" onclick="return confirm(\'Cancelar esta NFS-e órfã é uma operação fiscal. Continuar?\');">Cancelar NFS-e órfã</button>'
+        );
+        echo '</section>';
         echo '<script>';
         echo '(function(){';
         echo 'var map={';
@@ -1102,8 +867,8 @@ final class ReportsController
         echo 'sel.addEventListener("change", apply);';
         echo '})();';
         echo '</script>';
-        echo '<p><button type="submit" class="btn btn-danger" onclick="return confirm(\'Cancelar esta NFS-e órfã é uma operação fiscal. Continuar?\');">Cancelar NFS-e órfã</button></p>';
         echo '</form>';
+        echo '</div>';
 
         Module::ui()->renderFooter();
     }
@@ -1173,80 +938,31 @@ final class ReportsController
         $offset = ($page - 1) * $perPage;
         $rows = $repo->listHistory($filters, $perPage, $offset);
 
-        echo '<form method="get" action="addonmodules.php">';
-        echo '<input type="hidden" name="module" value="OpenNfse" />';
-        echo '<input type="hidden" name="action" value="relatorios" />';
-        echo '<input type="hidden" name="tab" value="historico_fiscal" />';
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;flex:1 1 640px;">';
-        echo '<div style="min-width:190px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Mês de referência</div>';
-        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="min-width:190px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Tipo</div>';
-        echo '<select name="tipo_registro" style="width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
         $typeOptions = [
             '' => 'Todos os registros',
             'EMISSAO' => 'Emissão',
             'CANCELAMENTO' => 'Cancelamento',
             'SNAPSHOT' => 'Snapshot legado',
         ];
-        foreach ($typeOptions as $value => $label) {
-            $selected = $value === $tipoRegistro ? ' selected' : '';
-            echo '<option value="' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '"' . $selected . '>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
-        }
-        echo '</select>';
-        echo '</div>';
-        echo '<div style="min-width:150px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Invoice ID</div>';
-        echo '<input type="text" name="invoiceid" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" style="width:150px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '</div>';
-        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=historico_fiscal">Limpar</a>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
+        echo Ui::filterBar(
+            ['hidden' => ['module' => 'OpenNfse', 'action' => 'relatorios', 'tab' => 'historico_fiscal']],
+            Ui::field('Mês de referência', Ui::input('mes', $selectedMonth, 'month'))
+            . Ui::field('Tipo', Ui::select('tipo_registro', $typeOptions, $tipoRegistro, [], 'nfse-input--w-md'))
+            . Ui::field('Fatura', Ui::input('invoiceid', $invoiceFilter, 'text', ['placeholder' => 'ID da fatura'], 'nfse-input--w-sm')),
+            Ui::button('Filtrar', ['primary']) . Ui::button('Limpar', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=relatorios&tab=historico_fiscal']),
+            'Filtros do histórico fiscal'
+        );
 
-        echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">';
-        $historyCards = [
-            ['label' => 'Documentos no periodo', 'value' => (int) ($summary['total_docs'] ?? 0), 'color' => '#23527c'],
-            ['label' => 'Emissoes', 'value' => (int) ($summary['total_emissoes'] ?? 0), 'color' => '#2e7d32'],
-            ['label' => 'Cancelamentos', 'value' => (int) ($summary['total_cancelamentos'] ?? 0), 'color' => '#a67c00'],
-            ['label' => 'Snapshots legado', 'value' => (int) ($summary['total_snapshots'] ?? 0), 'color' => '#6b7280'],
-        ];
-        foreach ($historyCards as $card) {
-            echo '<div style="border:1px solid #dbe3ea;border-radius:8px;background:#fff;padding:12px 14px;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
-            echo '<div style="font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;">' . htmlspecialchars((string) $card['label'], ENT_QUOTES, 'UTF-8') . '</div>';
-            echo '<div style="font-size:26px;line-height:1.1;font-weight:700;color:' . htmlspecialchars((string) $card['color'], ENT_QUOTES, 'UTF-8') . ';">' . (int) $card['value'] . '</div>';
-            echo '</div>';
-        }
-        echo '</div>';
+        echo Ui::kpis([
+            ['label' => 'Documentos no período', 'value' => (int) ($summary['total_docs'] ?? 0)],
+            ['label' => 'Emissões', 'value' => (int) ($summary['total_emissoes'] ?? 0)],
+            ['label' => 'Cancelamentos', 'value' => (int) ($summary['total_cancelamentos'] ?? 0)],
+            ['label' => 'Snapshots legado', 'value' => (int) ($summary['total_snapshots'] ?? 0)],
+        ]);
 
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:12%;">Data</th>';
-        echo '<th style="width:10%;">Tipo</th>';
-        echo '<th style="width:10%;">Status</th>';
-        echo '<th style="width:9%;">NFS-e</th>';
-        echo '<th style="width:23%;">Cliente</th>';
-        echo '<th style="width:8%;">Invoice</th>';
-        echo '<th style="width:10%;">Valor</th>';
-        echo '<th style="width:9%;">Origem</th>';
-        echo '<th style="width:9%;">XMLs</th>';
-        echo '</tr>';
-
-        if (empty($rows)) {
-            echo '<tr><td colspan="9" style="text-align:center;color:#666;">Nenhum registro fiscal encontrado para os critérios selecionados.</td></tr>';
-        }
-
+        $rowsHtml = '';
         foreach ($rows as $row) {
             $invoiceId = (int) ($row['invoiceid'] ?? 0);
-            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
             $eventDate = $this->resolveFiscalHistoryEventDate($row);
             $xmlBadges = [];
             if (trim((string) ($row['xml_path'] ?? '')) !== '') {
@@ -1255,26 +971,20 @@ final class ReportsController
             if (trim((string) ($row['cancel_xml_path'] ?? '')) !== '') {
                 $xmlBadges[] = 'CAN';
             }
+            $statusFiscal = (string) ($row['status_fiscal'] ?? '');
 
-            echo '<tr>';
-            echo '<td>' . htmlspecialchars($this->formatDate($eventDate, 'd/m/Y H:i'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) ($row['tipo_registro'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) ($row['status_fiscal'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) (($row['numero_nf'] ?? '') !== '' ? $row['numero_nf'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($this->resolveClientName($row), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
-            echo '<td>' . htmlspecialchars($this->formatMoney((float) ($row['invoice_total'] ?? 0), (string) ($row['currency_prefix'] ?? 'R$ '), (string) ($row['currency_suffix'] ?? '')), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) ($row['origem'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars(!empty($xmlBadges) ? implode(' / ', $xmlBadges) : '-', ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '</tr>';
+            $rowsHtml .= '<tr>'
+                . '<td class="nfse-nowrap">' . Ui::h($this->formatDate($eventDate, 'd/m/Y H:i')) . '</td>'
+                . '<td>' . ReportView::orDash((string) ($row['tipo_registro'] ?? '')) . '</td>'
+                . '<td>' . ($statusFiscal !== '' ? Ui::statusBadge($statusFiscal) : ReportView::orDash('')) . '</td>'
+                . '<td class="nfse-num">' . ReportView::orDash((string) ($row['numero_nf'] ?? '')) . '</td>'
+                . '<td class="nfse-break">' . Ui::h($this->resolveClientName($row)) . '</td>'
+                . '<td>' . ReportView::invoiceLink($invoiceId) . '</td>'
+                . '<td class="nfse-num nfse-nowrap">' . Ui::h($this->formatMoney((float) ($row['invoice_total'] ?? 0), (string) ($row['currency_prefix'] ?? 'R$ '), (string) ($row['currency_suffix'] ?? ''))) . '</td>'
+                . '<td>' . ReportView::orDash((string) ($row['origem'] ?? '')) . '</td>'
+                . '<td class="nfse-nowrap">' . ReportView::orDash(implode(' / ', $xmlBadges)) . '</td>'
+                . '</tr>';
         }
-
-        echo '</table>';
-
-        echo '<div style="margin-top:10px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
-        $firstItem = $totalDocs > 0 ? ($offset + 1) : 0;
-        $lastItem = min($offset + count($rows), $totalDocs);
-        echo '<div style="font-size:14px;color:#374151;">Exibindo <strong style="color:#111827;">' . $firstItem . '-' . $lastItem . '</strong> de <strong style="color:#111827;">' . $totalDocs . '</strong> registros</div>';
 
         $baseParams = [
             'module' => 'OpenNfse',
@@ -1284,20 +994,17 @@ final class ReportsController
             'tipo_registro' => $tipoRegistro,
             'invoiceid' => $invoiceFilter,
         ];
-        echo '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
-        if ($page > 1) {
-            $prevParams = $baseParams;
-            $prevParams['page'] = $page - 1;
-            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a>';
-        }
-        echo '<span style="display:inline-flex;align-items:center;padding:6px 10px;border:1px solid #d1d5db;border-radius:999px;background:#f9fafb;font-size:13px;font-weight:600;color:#374151;">Página ' . $page . ' / ' . $totalPages . '</span>';
-        if ($page < $totalPages) {
-            $nextParams = $baseParams;
-            $nextParams['page'] = $page + 1;
-            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
-        }
-        echo '</div>';
-        echo '</div>';
+        $firstItem = $totalDocs > 0 ? ($offset + 1) : 0;
+        $lastItem = min($offset + count($rows), $totalDocs);
+        echo ReportView::tableCard(
+            ['Data', 'Tipo', 'Status', ['NFS-e', 'nfse-num'], 'Cliente', 'Fatura', ['Valor', 'nfse-num'], 'Origem', 'XMLs'],
+            $rowsHtml,
+            'Nenhum registro fiscal encontrado para os critérios selecionados.',
+            '',
+            '',
+            $this->pagedFooter($firstItem, $lastItem, $totalDocs, 'registros', $baseParams, $page, $totalPages),
+            'nfse-rel-secao'
+        );
     }
 
     public function showRelatorioAuditoriaApiDps(bool $embedded = false): void
@@ -1358,42 +1065,32 @@ final class ReportsController
             $runId = (int) ($run['id'] ?? 0);
         }
 
-        echo '<form method="get" action="addonmodules.php">';
-        echo '<input type="hidden" name="module" value="OpenNfse" />';
-        echo '<input type="hidden" name="action" value="relatorios" />';
-        echo '<input type="hidden" name="tab" value="auditoria_api_dps" />';
+        $filterHidden = ['module' => 'OpenNfse', 'action' => 'relatorios', 'tab' => 'auditoria_api_dps'];
         if ($runId > 0 && is_array($run) && (string) ($run['audit_month'] ?? '') === $selectedMonth) {
-            echo '<input type="hidden" name="run_id" value="' . $runId . '" />';
+            $filterHidden['run_id'] = $runId;
         }
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
-        echo '<div style="min-width:190px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Mês de referência</div>';
-        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Atualizar</button>';
-        echo '<button type="submit" name="start_auditoria" value="1" class="btn btn-xs btn-success" style="height:34px;padding:0 12px;line-height:32px;">Iniciar auditoria assíncrona</button>';
-        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria_api_dps">Limpar</a>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
+        echo Ui::filterBar(
+            ['hidden' => $filterHidden],
+            Ui::field('Mês de referência', Ui::input('mes', $selectedMonth, 'month')),
+            Ui::button('Atualizar')
+            . Ui::button('Iniciar auditoria assíncrona', ['primary'], ['name' => 'start_auditoria', 'value' => '1'])
+            . Ui::button('Limpar', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria_api_dps']),
+            'Filtro da auditoria DPS'
+        );
 
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fbfcfe 0%,#f5f8fb 100%);">';
-        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:6px;">Por que esta função existe</div>';
-        echo '<div style="font-size:12px;color:#5b6776;line-height:1.6;">';
-        echo 'Esta auditoria existe para conferir se as DPS geradas localmente foram reconhecidas pela API, identificar divergências entre a chave local e a chave retornada pela consulta oficial, e apontar possíveis lacunas na sequência da DPS que indiquem tentativas perdidas, falhas de persistência ou saltos sem evidência técnica.';
-        echo '</div>';
-        echo '</div>';
+        echo ReportView::infoCard(
+            'Por que esta função existe',
+            [],
+            'Esta auditoria existe para conferir se as DPS geradas localmente foram reconhecidas pela API, identificar divergências entre a chave local e a chave retornada pela consulta oficial, e apontar possíveis lacunas na sequência da DPS que indiquem tentativas perdidas, falhas de persistência ou saltos sem evidência técnica.'
+        );
 
         if ($auditError !== null) {
-            echo '<div class="alert alert-danger" style="margin-bottom:14px;">Falha ao executar a auditoria API por DPS: ' . htmlspecialchars($auditError, ENT_QUOTES, 'UTF-8') . '</div>';
+            echo Ui::callout('danger', 'Falha ao executar a auditoria API por DPS', $auditError);
             return;
         }
 
         if (!is_array($run)) {
-            echo '<div class="alert alert-info" style="margin-bottom:14px;">Selecione o mês desejado e clique em <strong>Iniciar auditoria assíncrona</strong> para criar uma execução em lotes da conferência por DPS.</div>';
+            echo Ui::callout('info', 'Nenhuma execução neste mês', 'Selecione o mês desejado e clique em "Iniciar auditoria assíncrona" para criar uma execução em lotes da conferência por DPS.');
             return;
         }
 
@@ -1406,68 +1103,54 @@ final class ReportsController
             'ERRO_API' => (int) ($run['erro_api_count'] ?? 0),
             'SEM_ID_DPS' => (int) ($run['sem_id_dps_count'] ?? 0),
         ];
-        $statusCards = [
-            ['label' => 'DPS locais', 'value' => (int) ($run['total_items'] ?? 0), 'color' => '#23527c'],
-            ['label' => 'Processadas', 'value' => (int) ($run['processed_items'] ?? 0), 'color' => '#176b46'],
-            ['label' => 'OK', 'value' => (int) ($statusCounts['OK'] ?? 0), 'color' => '#2e7d32'],
-            ['label' => 'Sem chave local', 'value' => (int) ($statusCounts['LOCAL_SEM_CHAVE'] ?? 0), 'color' => '#176b46'],
-            ['label' => 'Sem chave na API', 'value' => (int) ($statusCounts['SEM_CHAVE_API'] ?? 0), 'color' => '#8a6d3b'],
-            ['label' => 'Não encontradas', 'value' => (int) ($statusCounts['NAO_ENCONTRADA'] ?? 0), 'color' => '#b45f06'],
-            ['label' => 'Divergentes', 'value' => (int) ($statusCounts['CHAVE_DIVERGENTE'] ?? 0), 'color' => '#a94442'],
-            ['label' => 'Erros API', 'value' => (int) ($statusCounts['ERRO_API'] ?? 0), 'color' => '#8e44ad'],
-            ['label' => 'Sem ID DPS', 'value' => (int) ($statusCounts['SEM_ID_DPS'] ?? 0), 'color' => '#6b7280'],
-        ];
-        echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">';
-        foreach ($statusCards as $card) {
-            echo '<div style="border:1px solid #dbe3ea;border-radius:8px;background:#fff;padding:12px 14px;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
-            echo '<div style="font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;">' . htmlspecialchars((string) $card['label'], ENT_QUOTES, 'UTF-8') . '</div>';
-            echo '<div style="font-size:26px;line-height:1.1;font-weight:700;color:' . htmlspecialchars((string) $card['color'], ENT_QUOTES, 'UTF-8') . ';">' . (int) $card['value'] . '</div>';
-            echo '</div>';
-        }
-        echo '</div>';
+        $issueTone = static fn (int $n, string $tone): string => $n > 0 ? $tone : '';
+        echo Ui::kpis([
+            ['label' => 'DPS locais', 'value' => (int) ($run['total_items'] ?? 0)],
+            ['label' => 'Processadas', 'value' => (int) ($run['processed_items'] ?? 0)],
+            ['label' => 'OK', 'value' => $statusCounts['OK'], 'tone' => $issueTone($statusCounts['OK'], 'ok')],
+            ['label' => 'Sem chave local', 'value' => $statusCounts['LOCAL_SEM_CHAVE']],
+            ['label' => 'Sem chave na API', 'value' => $statusCounts['SEM_CHAVE_API'], 'tone' => $issueTone($statusCounts['SEM_CHAVE_API'], 'warn')],
+            ['label' => 'Não encontradas', 'value' => $statusCounts['NAO_ENCONTRADA'], 'tone' => $issueTone($statusCounts['NAO_ENCONTRADA'], 'warn')],
+            ['label' => 'Divergentes', 'value' => $statusCounts['CHAVE_DIVERGENTE'], 'tone' => $issueTone($statusCounts['CHAVE_DIVERGENTE'], 'danger')],
+            ['label' => 'Erros API', 'value' => $statusCounts['ERRO_API'], 'tone' => $issueTone($statusCounts['ERRO_API'], 'danger')],
+            ['label' => 'Sem ID DPS', 'value' => $statusCounts['SEM_ID_DPS']],
+        ]);
 
         $status = (string) ($run['status'] ?? 'pending');
         $progressPercent = (int) ($run['total_items'] ?? 0) > 0
             ? round((((int) ($run['processed_items'] ?? 0)) / max(1, (int) ($run['total_items'] ?? 0))) * 100)
             : 100;
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
-        echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px;">';
-        echo '<div style="font-size:13px;font-weight:700;color:#334155;">Execução assíncrona</div>';
-        echo '<div style="font-size:12px;color:#5b6776;">Run ID <strong>' . $runId . '</strong> &nbsp; Status <strong id="dps-audit-status-label">' . htmlspecialchars($status, ENT_QUOTES, 'UTF-8') . '</strong></div>';
-        echo '</div>';
-        echo '<div style="height:10px;background:#eef2f7;border-radius:999px;overflow:hidden;margin-bottom:8px;">';
-        echo '<div id="dps-audit-progress-bar" style="height:10px;background:#176b46;width:' . $progressPercent . '%;"></div>';
-        echo '</div>';
-        echo '<div id="dps-audit-progress-text" style="font-size:12px;color:#5b6776;">' . (int) ($run['processed_items'] ?? 0) . ' de ' . (int) ($run['total_items'] ?? 0) . ' DPS processadas (' . $progressPercent . '%).</div>';
-        $runtimeHintDisplay = ($status === 'running' || $status === 'pending') ? 'block' : 'none';
+        $isRunning = $status === 'running' || $status === 'pending';
         $lastRunError = trim((string) ($run['last_error'] ?? ''));
-        if ($status === 'running' || $status === 'pending') {
-            echo '<div id="dps-audit-runtime-hint" style="margin-top:6px;font-size:12px;color:#8a6d3b;">Processamento em andamento por lotes curtos. Mantenha esta página aberta até a conclusão, pois os próximos lotes e as retentativas automáticas dependem desta aba ativa no navegador.</div>';
+        echo '<section class="nfse-card nfse-card--pad nfse-rel-info" aria-labelledby="nfse-dps-execucao">';
+        echo '<div class="nfse-sechead"><div class="nfse-sechead__text"><h3 class="nfse-card__title" id="nfse-dps-execucao">Execução assíncrona</h3></div>';
+        echo '<div class="nfse-card__summary">Run ID <b>' . $runId . '</b> · Status <b id="dps-audit-status-label">' . Ui::h($status) . '</b></div></div>';
+        echo ReportView::progress((int) $progressPercent, 'dps-audit-progress-bar');
+        echo '<div id="dps-audit-progress-text" class="nfse-rel-note">' . (int) ($run['processed_items'] ?? 0) . ' de ' . (int) ($run['total_items'] ?? 0) . ' DPS processadas (' . $progressPercent . '%).</div>';
+        if ($isRunning) {
+            echo '<div id="dps-audit-runtime-hint" class="nfse-rel-hint">Processamento em andamento por lotes curtos. Mantenha esta página aberta até a conclusão, pois os próximos lotes e as retentativas automáticas dependem desta aba ativa no navegador.</div>';
         }
-        echo '<div id="dps-audit-retry-state" style="display:' . $runtimeHintDisplay . ';margin-top:6px;font-size:12px;color:#8a6d3b;"></div>';
-        echo '<div id="dps-audit-last-error" style="display:' . ($lastRunError !== '' ? 'block' : 'none') . ';margin-top:8px;padding:10px 12px;border:1px solid #f2d6d6;background:#fff8f8;color:#8f2d2d;font-size:12px;line-height:1.5;white-space:pre-wrap;">' . htmlspecialchars($lastRunError, ENT_QUOTES, 'UTF-8') . '</div>';
-        echo '</div>';
+        echo '<div id="dps-audit-retry-state" class="nfse-rel-hint"' . ($isRunning ? '' : ' hidden') . '></div>';
+        echo '<div id="dps-audit-last-error" class="nfse-rel-error"' . ($lastRunError !== '' ? '' : ' hidden') . '>' . Ui::h($lastRunError) . '</div>';
+        echo '</section>';
 
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
-        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:6px;">Conferência da sequência DPS</div>';
-        echo '<div style="font-size:12px;color:#5b6776;line-height:1.6;">';
-        echo 'Primeiro número no período: <strong>' . htmlspecialchars((string) (($run['first_number'] ?? null) !== null ? $run['first_number'] : '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
-        echo '&nbsp; Último número no período: <strong>' . htmlspecialchars((string) (($run['last_number'] ?? null) !== null ? $run['last_number'] : '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
-        echo '&nbsp; Lacunas: <strong>' . (int) ($run['gap_count'] ?? 0) . '</strong> ';
-        echo '&nbsp; Último sequencial atual: <strong>' . htmlspecialchars((string) (($run['current_sequence_last_number'] ?? null) !== null ? $run['current_sequence_last_number'] : '-'), ENT_QUOTES, 'UTF-8') . '</strong>.';
-        echo '</div>';
-        echo '</div>';
+        echo ReportView::infoCard('Conferência da sequência DPS', [
+            ['Primeiro número no período', (string) (($run['first_number'] ?? null) !== null ? $run['first_number'] : '-')],
+            ['Último número no período', (string) (($run['last_number'] ?? null) !== null ? $run['last_number'] : '-')],
+            ['Lacunas', (int) ($run['gap_count'] ?? 0)],
+            ['Último sequencial atual', (string) (($run['current_sequence_last_number'] ?? null) !== null ? $run['current_sequence_last_number'] : '-')],
+        ]);
 
         $statusLabelMap = [
-            'OK' => ['OK', '#e8f5e9', '#2e7d32'],
-            'DIVERGENCIA_CANCELADA' => ['Diverg. cancelada', '#eef6ff', '#23527c'],
-            'DIVERGENCIA_REEMITIDA' => ['Diverg. reemitida', '#eef6ff', '#23527c'],
-            'LOCAL_SEM_CHAVE' => ['Local sem chave', '#eaf7f1', '#176b46'],
-            'SEM_CHAVE_API' => ['API sem chave', '#fff8e1', '#8a6d3b'],
-            'NAO_ENCONTRADA' => ['Não encontrada', '#fff3e0', '#b45f06'],
-            'CHAVE_DIVERGENTE' => ['Chave divergente', '#fdecec', '#a94442'],
-            'ERRO_API' => ['Erro API', '#f3e8ff', '#8e44ad'],
-            'SEM_ID_DPS' => ['Sem ID DPS', '#eef2f7', '#6b7280'],
+            'OK' => ['OK', 'ok'],
+            'DIVERGENCIA_CANCELADA' => ['Diverg. cancelada', 'emitida'],
+            'DIVERGENCIA_REEMITIDA' => ['Diverg. reemitida', 'emitida'],
+            'LOCAL_SEM_CHAVE' => ['Local sem chave', 'neutro'],
+            'SEM_CHAVE_API' => ['API sem chave', 'warn'],
+            'NAO_ENCONTRADA' => ['Não encontrada', 'warn'],
+            'CHAVE_DIVERGENTE' => ['Chave divergente', 'danger'],
+            'ERRO_API' => ['Erro API', 'erro'],
+            'SEM_ID_DPS' => ['Sem ID DPS', 'neutro'],
         ];
 
         $dpsPerPage = 100;
@@ -1478,43 +1161,27 @@ final class ReportsController
         }
         $dpsRows = $repo->listResults($runId, 'DPS', $dpsPerPage, ($dpsPage - 1) * $dpsPerPage);
 
-        echo '<div style="margin-bottom:16px;">';
-        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Conferência local vs API por DPS</div>';
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:10%;">Data</th>';
-        echo '<th style="width:10%;">Invoice</th>';
-        echo '<th style="width:18%;">Cliente</th>';
-        echo '<th style="width:17%;">ID DPS</th>';
-        echo '<th style="width:8%;">Seq.</th>';
-        echo '<th style="width:10%;">NFS-e</th>';
-        echo '<th style="width:10%;">Status</th>';
-        echo '<th style="width:17%;">Chave local / API</th>';
-        echo '</tr>';
-        if (empty($dpsRows)) {
-            echo '<tr><td colspan="8" style="text-align:center;color:#666;">Nenhuma emissão com DPS foi encontrada no período selecionado.</td></tr>';
-        }
+        $dpsHtml = '';
         foreach ($dpsRows as $row) {
-            $invoiceId = (int) ($row['invoiceid'] ?? 0);
-            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
             $statusKey = (string) ($row['audit_status'] ?? 'SEM_ID_DPS');
-            $statusMeta = $statusLabelMap[$statusKey] ?? [$statusKey, '#eef2f7', '#5f6b7a'];
+            $statusMeta = $statusLabelMap[$statusKey] ?? [$statusKey, ''];
             $eventDate = (string) (($row['event_date'] ?? '') !== '' ? $row['event_date'] : (($row['created_at'] ?? '') !== '' ? $row['created_at'] : ''));
             $localChave = trim((string) ($row['local_chave_acesso'] ?? ''));
             $apiChave = trim((string) ($row['api_chave_acesso'] ?? ''));
+            $message = trim((string) ($row['audit_message'] ?? ''));
 
-            echo '<tr>';
-            echo '<td>' . htmlspecialchars($this->formatDate($eventDate, 'd/m/Y H:i'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($this->resolveClientName($row), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) (($row['id_dps'] ?? '') !== '' ? $row['id_dps'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) (($row['numero_dps'] ?? null) !== null ? $row['numero_dps'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) (($row['numero_nf'] ?? '') !== '' ? $row['numero_nf'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td><span style="display:inline-block;padding:2px 8px;border-radius:999px;background:' . htmlspecialchars((string) $statusMeta[1], ENT_QUOTES, 'UTF-8') . ';color:' . htmlspecialchars((string) $statusMeta[2], ENT_QUOTES, 'UTF-8') . ';font-size:10px;font-weight:700;">' . htmlspecialchars((string) $statusMeta[0], ENT_QUOTES, 'UTF-8') . '</span><div style="margin-top:4px;color:#6b7280;">' . htmlspecialchars((string) ($row['audit_message'] ?? ''), ENT_QUOTES, 'UTF-8') . '</div></td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">Local: ' . htmlspecialchars($localChave !== '' ? $localChave : '-', ENT_QUOTES, 'UTF-8') . '<br />API: ' . htmlspecialchars($apiChave !== '' ? $apiChave : '-', ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '</tr>';
+            $dpsHtml .= '<tr>'
+                . '<td class="nfse-nowrap">' . Ui::h($this->formatDate($eventDate, 'd/m/Y H:i')) . '</td>'
+                . '<td>' . ReportView::invoiceLink((int) ($row['invoiceid'] ?? 0)) . '</td>'
+                . '<td class="nfse-break">' . Ui::h($this->resolveClientName($row)) . '</td>'
+                . '<td class="nfse-break nfse-mono">' . ReportView::orDash((string) ($row['id_dps'] ?? '')) . '</td>'
+                . '<td class="nfse-num">' . ReportView::orDash((string) (($row['numero_dps'] ?? null) !== null ? $row['numero_dps'] : '')) . '</td>'
+                . '<td class="nfse-num">' . ReportView::orDash((string) ($row['numero_nf'] ?? '')) . '</td>'
+                . '<td><div class="nfse-cell-stack">' . Ui::badge((string) $statusMeta[0], (string) $statusMeta[1])
+                . ($message !== '' ? '<span class="nfse-cell-meta">' . Ui::h($message) . '</span>' : '') . '</div></td>'
+                . '<td class="nfse-break nfse-mono"><div>Local: ' . Ui::h($localChave !== '' ? $localChave : '-') . '</div><div>API: ' . Ui::h($apiChave !== '' ? $apiChave : '-') . '</div></td>'
+                . '</tr>';
         }
-        echo '</table>';
         $baseDpsParams = [
             'module' => 'OpenNfse',
             'action' => 'relatorios',
@@ -1523,25 +1190,17 @@ final class ReportsController
             'run_id' => $runId,
             'gap_page' => $gapPage,
         ];
-        echo '<div style="margin-top:10px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
         $dpsFirst = $dpsTotal > 0 ? (($dpsPage - 1) * $dpsPerPage + 1) : 0;
         $dpsLast = min(($dpsPage - 1) * $dpsPerPage + count($dpsRows), $dpsTotal);
-        echo '<div style="font-size:14px;color:#374151;">Exibindo <strong style="color:#111827;">' . $dpsFirst . '-' . $dpsLast . '</strong> de <strong style="color:#111827;">' . $dpsTotal . '</strong> DPS</div>';
-        echo '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
-        if ($dpsPage > 1) {
-            $prevParams = $baseDpsParams;
-            $prevParams['dps_page'] = $dpsPage - 1;
-            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a>';
-        }
-        echo '<span style="display:inline-flex;align-items:center;padding:6px 10px;border:1px solid #d1d5db;border-radius:999px;background:#f9fafb;font-size:13px;font-weight:600;color:#374151;">Página ' . $dpsPage . ' / ' . $dpsPages . '</span>';
-        if ($dpsPage < $dpsPages) {
-            $nextParams = $baseDpsParams;
-            $nextParams['dps_page'] = $dpsPage + 1;
-            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
-        }
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
+        echo ReportView::tableCard(
+            ['Data', 'Fatura', 'Cliente', 'ID DPS', ['Seq.', 'nfse-num'], ['NFS-e', 'nfse-num'], 'Status', 'Chave local / API'],
+            $dpsHtml,
+            'Nenhuma emissão com DPS foi encontrada no período selecionado.',
+            'Conferência local vs API por DPS',
+            '',
+            $this->pagedFooter($dpsFirst, $dpsLast, $dpsTotal, 'DPS', $baseDpsParams, $dpsPage, $dpsPages, '', 'dps_page'),
+            'nfse-dps-conferencia'
+        );
 
         $gapPerPage = 100;
         $gapTotal = $repo->countResults($runId, 'GAP');
@@ -1550,29 +1209,16 @@ final class ReportsController
             $gapPage = $gapPages;
         }
         $gapRows = $repo->listResults($runId, 'GAP', $gapPerPage, ($gapPage - 1) * $gapPerPage);
-        echo '<div style="margin-bottom:16px;">';
-        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Lacunas na sequência DPS</div>';
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:10%;">Seq.</th>';
-        echo '<th style="width:24%;">ID DPS esperado</th>';
-        echo '<th style="width:18%;">Classificação</th>';
-        echo '<th style="width:12%;">Evidências</th>';
-        echo '<th style="width:36%;">Leitura</th>';
-        echo '</tr>';
-        if (empty($gapRows)) {
-            echo '<tr><td colspan="5" style="text-align:center;color:#666;">Nenhuma lacuna foi identificada na sequência das DPS do período.</td></tr>';
-        }
+        $gapHtml = '';
         foreach ($gapRows as $row) {
-            echo '<tr>';
-            echo '<td>' . htmlspecialchars((string) ($row['numero_dps'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) (($row['id_dps'] ?? '') !== '' ? $row['id_dps'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) ($row['evidence_classification'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . (int) ($row['evidence_count'] ?? 0) . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($row['audit_message'] ?? ''), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '</tr>';
+            $gapHtml .= '<tr>'
+                . '<td class="nfse-num">' . ReportView::orDash((string) ($row['numero_dps'] ?? '')) . '</td>'
+                . '<td class="nfse-break nfse-mono">' . ReportView::orDash((string) ($row['id_dps'] ?? '')) . '</td>'
+                . '<td>' . ReportView::orDash((string) ($row['evidence_classification'] ?? '')) . '</td>'
+                . '<td class="nfse-num">' . (int) ($row['evidence_count'] ?? 0) . '</td>'
+                . '<td class="nfse-break">' . Ui::h((string) ($row['audit_message'] ?? '')) . '</td>'
+                . '</tr>';
         }
-        echo '</table>';
         $baseGapParams = [
             'module' => 'OpenNfse',
             'action' => 'relatorios',
@@ -1581,25 +1227,17 @@ final class ReportsController
             'run_id' => $runId,
             'dps_page' => $dpsPage,
         ];
-        echo '<div style="margin-top:10px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
         $gapFirst = $gapTotal > 0 ? (($gapPage - 1) * $gapPerPage + 1) : 0;
         $gapLast = min(($gapPage - 1) * $gapPerPage + count($gapRows), $gapTotal);
-        echo '<div style="font-size:14px;color:#374151;">Exibindo <strong style="color:#111827;">' . $gapFirst . '-' . $gapLast . '</strong> de <strong style="color:#111827;">' . $gapTotal . '</strong> lacunas</div>';
-        echo '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
-        if ($gapPage > 1) {
-            $prevParams = $baseGapParams;
-            $prevParams['gap_page'] = $gapPage - 1;
-            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a>';
-        }
-        echo '<span style="display:inline-flex;align-items:center;padding:6px 10px;border:1px solid #d1d5db;border-radius:999px;background:#f9fafb;font-size:13px;font-weight:600;color:#374151;">Página ' . $gapPage . ' / ' . $gapPages . '</span>';
-        if ($gapPage < $gapPages) {
-            $nextParams = $baseGapParams;
-            $nextParams['gap_page'] = $gapPage + 1;
-            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
-        }
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
+        echo ReportView::tableCard(
+            [['Seq.', 'nfse-num'], 'ID DPS esperado', 'Classificação', ['Evidências', 'nfse-num'], 'Leitura'],
+            $gapHtml,
+            'Nenhuma lacuna foi identificada na sequência das DPS do período.',
+            'Lacunas na sequência DPS',
+            '',
+            $this->pagedFooter($gapFirst, $gapLast, $gapTotal, 'lacunas', $baseGapParams, $gapPage, $gapPages, '', 'gap_page'),
+            'nfse-dps-lacunas'
+        );
 
         if ($status === 'running' || $status === 'pending') {
             $ajaxBaseUrl = 'addonmodules.php?' . http_build_query([
@@ -1637,11 +1275,11 @@ final class ReportsController
       return;
     }
     if (!detail) {
-      lastErrorBox.style.display = 'none';
+      lastErrorBox.hidden = true;
       lastErrorBox.textContent = '';
       return;
     }
-    lastErrorBox.style.display = 'block';
+    lastErrorBox.hidden = false;
     lastErrorBox.textContent = detail;
   }
 
@@ -1653,7 +1291,7 @@ final class ReportsController
         : 'Falha de comunicação detectada. A retentativa automática permanece ativa.';
     }
     if (retryState) {
-      retryState.style.display = 'block';
+      retryState.hidden = false;
       retryState.textContent = 'Tentativa automática #' + retryCount + ' agendada para ' + (delayMs / 1000) + 's. A execução continuará do ponto já persistido.';
     }
     setLastError(detail || 'Erro sem detalhe retornado.');
@@ -1721,7 +1359,7 @@ final class ReportsController
       retryCount = 0;
       if (retryState) {
         retryState.textContent = '';
-        retryState.style.display = 'none';
+        retryState.hidden = true;
       }
       if (runtimeHint) {
         runtimeHint.textContent = 'Processamento em andamento por lotes curtos. Mantenha esta página aberta até a conclusão, pois os próximos lotes e as retentativas automáticas dependem desta aba ativa no navegador.';
@@ -1784,199 +1422,153 @@ final class ReportsController
         $localRows = $historyRepo->listComparableHistoryByMonth($selectedMonth);
         $comparison = $this->buildApiAuditComparison($apiRows, $localRows);
 
-        echo '<form method="get" action="addonmodules.php">';
-        echo '<input type="hidden" name="module" value="OpenNfse" />';
-        echo '<input type="hidden" name="action" value="relatorios" />';
-        echo '<input type="hidden" name="tab" value="auditoria_api" />';
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
-        echo '<div style="min-width:190px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Mês de referência</div>';
-        echo '<input type="month" name="mes" value="' . htmlspecialchars($selectedMonth, ENT_QUOTES, 'UTF-8') . '" style="width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
-        echo '<button type="submit" name="sync_nsu" value="1" class="btn btn-xs btn-success" style="height:34px;padding:0 12px;line-height:32px;">Sincronizar NSU agora</button>';
-        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria_api">Limpar</a>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
+        echo Ui::filterBar(
+            ['hidden' => ['module' => 'OpenNfse', 'action' => 'relatorios', 'tab' => 'auditoria_api']],
+            Ui::field('Mês de referência', Ui::input('mes', $selectedMonth, 'month')),
+            Ui::button('Filtrar')
+            . Ui::button('Sincronizar NSU agora', ['primary'], ['name' => 'sync_nsu', 'value' => '1'])
+            . Ui::button('Limpar', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=relatorios&tab=auditoria_api']),
+            'Filtro da auditoria API'
+        );
 
         if ($syncError !== null) {
-            echo '<div class="alert alert-danger" style="margin-bottom:14px;">Falha ao sincronizar a distribuicao da API: ' . htmlspecialchars($syncError, ENT_QUOTES, 'UTF-8') . '</div>';
+            echo Ui::callout('danger', 'Falha ao sincronizar a distribuição da API', $syncError);
         } elseif (is_array($syncResult)) {
             $processedCount = (int) ($syncResult['processed_count'] ?? 0);
-            $alertClass = $processedCount > 0 ? 'success' : 'warning';
-            $messagePrefix = $processedCount > 0 ? 'Sincronizacao concluida.' : 'Sincronizacao concluida sem retorno de documentos.';
-            echo '<div class="alert alert-' . $alertClass . '" style="margin-bottom:14px;">' . $messagePrefix . ' Foram processados <strong>' . $processedCount . '</strong> documentos em <strong>' . (int) ($syncResult['batch_count'] ?? 0) . '</strong> lote(s), usando o modo <strong>' . htmlspecialchars((string) ($syncResult['mode'] ?? 'com_cnpj'), ENT_QUOTES, 'UTF-8') . '</strong>.</div>';
+            echo Ui::callout(
+                $processedCount > 0 ? 'ok' : 'warn',
+                $processedCount > 0 ? 'Sincronização concluída' : 'Sincronização concluída sem retorno de documentos',
+                'Foram processados ' . $processedCount . ' documentos em ' . (int) ($syncResult['batch_count'] ?? 0) . ' lote(s), usando o modo ' . (string) ($syncResult['mode'] ?? 'com_cnpj') . '.'
+            );
         }
 
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fbfcfe 0%,#f5f8fb 100%);">';
-        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:6px;">Estado da sincronização</div>';
-        echo '<div style="font-size:12px;color:#5b6776;line-height:1.55;">';
-        echo 'Ambiente: <strong>' . htmlspecialchars($environment !== '' ? $environment : 'producao', ENT_QUOTES, 'UTF-8') . '</strong> ';
-        echo '&nbsp; CNPJ consulta: <strong>' . htmlspecialchars((string) (($state['cnpj_consulta'] ?? '') !== '' ? $state['cnpj_consulta'] : '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
-        echo '&nbsp; Ultimo NSU: <strong>' . (int) ($state['ultimo_nsu'] ?? 0) . '</strong> ';
-        echo '&nbsp; Maior NSU conhecido: <strong>' . (int) ($state['maior_nsu'] ?? 0) . '</strong> ';
-        echo '&nbsp; Ultimo sync: <strong>' . htmlspecialchars((string) (($state['ultimo_sync_em'] ?? '') !== '' ? $this->formatDate((string) $state['ultimo_sync_em'], 'd/m/Y H:i') : '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
-        echo '&nbsp; Modo usado: <strong>' . htmlspecialchars((string) (($state['last_sync_mode'] ?? '') !== '' ? $state['last_sync_mode'] : '-'), ENT_QUOTES, 'UTF-8') . '</strong>.';
-        echo '</div>';
-        echo '</div>';
+        echo ReportView::infoCard('Estado da sincronização', [
+            ['Ambiente', $environment !== '' ? $environment : 'producao'],
+            ['CNPJ consulta', (string) (($state['cnpj_consulta'] ?? '') !== '' ? $state['cnpj_consulta'] : '-')],
+            ['Último NSU', (int) ($state['ultimo_nsu'] ?? 0)],
+            ['Maior NSU conhecido', (int) ($state['maior_nsu'] ?? 0)],
+            ['Último sync', (string) (($state['ultimo_sync_em'] ?? '') !== '' ? $this->formatDate((string) $state['ultimo_sync_em'], 'd/m/Y H:i') : '-')],
+            ['Modo usado', (string) (($state['last_sync_mode'] ?? '') !== '' ? $state['last_sync_mode'] : '-')],
+        ]);
 
         if (!empty($diagnostics)) {
-            echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
-            echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Diagnostico da distribuicao</div>';
+            $note = '';
             if (!empty($diagnostics['tested_at'])) {
-                echo '<div style="font-size:12px;color:#5b6776;margin-bottom:10px;">Ultimo teste em <strong>' . htmlspecialchars($this->formatDate((string) $diagnostics['tested_at'], 'd/m/Y H:i:s'), ENT_QUOTES, 'UTF-8') . '</strong>, partindo do NSU <strong>' . (int) ($diagnostics['initial_nsu'] ?? 0) . '</strong>.</div>';
+                $note = 'Último teste em <b>' . Ui::h($this->formatDate((string) $diagnostics['tested_at'], 'd/m/Y H:i:s')) . '</b>, partindo do NSU <b>' . (int) ($diagnostics['initial_nsu'] ?? 0) . '</b>.';
             }
+            $joinMessages = static function (array $messages): string {
+                $parts = [];
+                foreach ($messages as $message) {
+                    if (!is_array($message)) {
+                        continue;
+                    }
+                    $text = trim((string) (($message['mensagem'] ?? '') !== '' ? $message['mensagem'] : ($message['descricao'] ?? '')));
+                    if ($text !== '') {
+                        $parts[] = $text;
+                    }
+                }
 
+                return !empty($parts) ? implode(' | ', $parts) : '-';
+            };
+
+            echo '<section class="nfse-card nfse-card--pad nfse-rel-info" aria-labelledby="nfse-api-diagnostico">';
+            echo '<h3 class="nfse-card__title" id="nfse-api-diagnostico">Diagnóstico da distribuição</h3>';
+            if ($note !== '') {
+                echo '<div class="nfse-rel-note">' . $note . '</div>';
+            }
             $diagModes = [
                 'with_cnpj' => 'Consulta com CNPJ',
                 'without_cnpj' => 'Consulta sem CNPJ',
             ];
-
             foreach ($diagModes as $diagKey => $diagLabel) {
                 $diag = $diagnostics[$diagKey] ?? null;
                 if (!is_array($diag)) {
                     continue;
                 }
 
-                echo '<div style="border:1px solid #e5edf5;border-radius:8px;background:#fbfcfe;padding:10px 12px;margin-bottom:10px;">';
-                echo '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px;">' . htmlspecialchars($diagLabel, ENT_QUOTES, 'UTF-8') . '</div>';
-                echo '<div style="font-size:12px;color:#5b6776;line-height:1.6;">';
-                echo 'Modo: <strong>' . htmlspecialchars((string) ($diag['mode'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
-                echo '&nbsp; CNPJ: <strong>' . htmlspecialchars((string) (($diag['cnpj_consulta'] ?? '') !== '' ? $diag['cnpj_consulta'] : '-'), ENT_QUOTES, 'UTF-8') . '</strong> ';
-                echo '&nbsp; Processados: <strong>' . (int) ($diag['processed_count'] ?? 0) . '</strong> ';
-                echo '&nbsp; Lotes: <strong>' . (int) ($diag['batch_count'] ?? 0) . '</strong> ';
-                echo '&nbsp; Respostas vazias: <strong>' . (int) ($diag['empty_response_count'] ?? 0) . '</strong> ';
-                echo '&nbsp; Ultimo NSU: <strong>' . (int) ($diag['ultimo_nsu'] ?? 0) . '</strong> ';
-                echo '&nbsp; Maior NSU: <strong>' . (int) ($diag['maior_nsu'] ?? 0) . '</strong>.';
-                echo '</div>';
-
+                echo '<div class="nfse-rel-sub">';
+                echo '<div class="nfse-rel-sub__title">' . Ui::h($diagLabel) . '</div>';
+                echo ReportView::keyValues([
+                    ['Modo', (string) ($diag['mode'] ?? '-')],
+                    ['CNPJ', (string) (($diag['cnpj_consulta'] ?? '') !== '' ? $diag['cnpj_consulta'] : '-')],
+                    ['Processados', (int) ($diag['processed_count'] ?? 0)],
+                    ['Lotes', (int) ($diag['batch_count'] ?? 0)],
+                    ['Respostas vazias', (int) ($diag['empty_response_count'] ?? 0)],
+                    ['Último NSU', (int) ($diag['ultimo_nsu'] ?? 0)],
+                    ['Maior NSU', (int) ($diag['maior_nsu'] ?? 0)],
+                ]);
                 if (!empty($diag['error_message'])) {
-                    echo '<div class="alert alert-danger" style="margin:10px 0 0 0;">' . htmlspecialchars((string) $diag['error_message'], ENT_QUOTES, 'UTF-8') . '</div>';
+                    echo Ui::callout('danger', 'Erro', (string) $diag['error_message']);
                 }
-
                 $alerts = is_array($diag['alertas'] ?? null) ? $diag['alertas'] : [];
                 if (!empty($alerts)) {
-                    echo '<div style="margin-top:8px;font-size:12px;color:#8a6d3b;"><strong>Alertas:</strong> ';
-                    $parts = [];
-                    foreach ($alerts as $message) {
-                        if (!is_array($message)) {
-                            continue;
-                        }
-                        $text = trim((string) (($message['mensagem'] ?? '') !== '' ? $message['mensagem'] : ($message['descricao'] ?? '')));
-                        if ($text !== '') {
-                            $parts[] = $text;
-                        }
-                    }
-                    echo htmlspecialchars(!empty($parts) ? implode(' | ', $parts) : '-', ENT_QUOTES, 'UTF-8');
-                    echo '</div>';
+                    echo '<div class="nfse-rel-note"><b>Alertas:</b> ' . Ui::h($joinMessages($alerts)) . '</div>';
                 }
-
                 $errors = is_array($diag['errors'] ?? null) ? $diag['errors'] : [];
                 if (!empty($errors)) {
-                    echo '<div style="margin-top:8px;font-size:12px;color:#a94442;"><strong>Erros:</strong> ';
-                    $parts = [];
-                    foreach ($errors as $message) {
-                        if (!is_array($message)) {
-                            continue;
-                        }
-                        $text = trim((string) (($message['mensagem'] ?? '') !== '' ? $message['mensagem'] : ($message['descricao'] ?? '')));
-                        if ($text !== '') {
-                            $parts[] = $text;
-                        }
-                    }
-                    echo htmlspecialchars(!empty($parts) ? implode(' | ', $parts) : '-', ENT_QUOTES, 'UTF-8');
-                    echo '</div>';
+                    echo '<div class="nfse-rel-note nfse-text-danger"><b>Erros:</b> ' . Ui::h($joinMessages($errors)) . '</div>';
                 }
-
                 if (!empty($diag['raw_response_summary'])) {
-                    echo '<div style="margin-top:8px;font-size:12px;color:#5b6776;word-break:break-word;overflow-wrap:anywhere;"><strong>Resumo bruto:</strong> ' . htmlspecialchars((string) $diag['raw_response_summary'], ENT_QUOTES, 'UTF-8') . '</div>';
+                    echo '<div class="nfse-rel-note nfse-break"><b>Resumo bruto:</b> ' . Ui::h((string) $diag['raw_response_summary']) . '</div>';
                 }
                 echo '</div>';
             }
-            echo '</div>';
+            echo '</section>';
         }
 
-        $cards = [
-            ['label' => 'API no periodo', 'value' => (int) ($apiSummary['total_docs'] ?? 0), 'color' => '#176b46'],
-            ['label' => 'Local no periodo', 'value' => (int) ($localSummary['total_docs'] ?? 0), 'color' => '#23527c'],
-            ['label' => 'API sem local', 'value' => count((array) ($comparison['missing_local'] ?? [])), 'color' => '#b45f06'],
-            ['label' => 'Local sem API', 'value' => count((array) ($comparison['missing_api'] ?? [])), 'color' => '#a94442'],
-            ['label' => 'Correspondencias', 'value' => (int) ($comparison['matched_count'] ?? 0), 'color' => '#2e7d32'],
-        ];
-        echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">';
-        foreach ($cards as $card) {
-            echo '<div style="border:1px solid #dbe3ea;border-radius:8px;background:#fff;padding:12px 14px;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
-            echo '<div style="font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;">' . htmlspecialchars((string) $card['label'], ENT_QUOTES, 'UTF-8') . '</div>';
-            echo '<div style="font-size:26px;line-height:1.1;font-weight:700;color:' . htmlspecialchars((string) $card['color'], ENT_QUOTES, 'UTF-8') . ';">' . (int) $card['value'] . '</div>';
-            echo '</div>';
-        }
-        echo '</div>';
-
-        echo '<div style="margin-bottom:16px;">';
-        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Documentos recebidos da API sem correspondente local</div>';
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:10%;">Data</th>';
-        echo '<th style="width:10%;">Tipo</th>';
-        echo '<th style="width:14%;">NSU</th>';
-        echo '<th style="width:16%;">Chave</th>';
-        echo '<th style="width:10%;">NFS-e</th>';
-        echo '<th style="width:14%;">Evento</th>';
-        echo '<th style="width:26%;">Chave de comparacao</th>';
-        echo '</tr>';
         $missingLocal = (array) ($comparison['missing_local'] ?? []);
-        if (empty($missingLocal)) {
-            echo '<tr><td colspan="7" style="text-align:center;color:#666;">Nenhum documento da API ficou sem correspondente local no período.</td></tr>';
-        }
-        foreach ($missingLocal as $row) {
-            echo '<tr>';
-            echo '<td>' . htmlspecialchars($this->formatDate((string) ($row['referencia_em'] ?? ''), 'd/m/Y H:i'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) ($row['tipo_documento'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . (int) ($row['nsu'] ?? 0) . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) (($row['chave_acesso'] ?? '') !== '' ? $row['chave_acesso'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) (($row['numero_nf'] ?? '') !== '' ? $row['numero_nf'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) (($row['tipo_evento'] ?? '') !== '' ? $row['tipo_evento'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($row['_compare_key'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '</tr>';
-        }
-        echo '</table>';
-        echo '</div>';
-
-        echo '<div style="margin-bottom:16px;">';
-        echo '<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;">Historico local sem correspondente na API distribuida</div>';
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:10%;">Data</th>';
-        echo '<th style="width:10%;">Tipo</th>';
-        echo '<th style="width:16%;">Chave</th>';
-        echo '<th style="width:10%;">NFS-e</th>';
-        echo '<th style="width:12%;">Invoice</th>';
-        echo '<th style="width:20%;">Cliente</th>';
-        echo '<th style="width:22%;">Chave de comparacao</th>';
-        echo '</tr>';
         $missingApi = (array) ($comparison['missing_api'] ?? []);
-        if (empty($missingApi)) {
-            echo '<tr><td colspan="7" style="text-align:center;color:#666;">Nenhum registro local ficou sem correspondente na API distribuida para o período.</td></tr>';
+        echo Ui::kpis([
+            ['label' => 'API no período', 'value' => (int) ($apiSummary['total_docs'] ?? 0)],
+            ['label' => 'Local no período', 'value' => (int) ($localSummary['total_docs'] ?? 0)],
+            ['label' => 'API sem local', 'value' => count($missingLocal), 'tone' => count($missingLocal) > 0 ? 'warn' : ''],
+            ['label' => 'Local sem API', 'value' => count($missingApi), 'tone' => count($missingApi) > 0 ? 'danger' : ''],
+            ['label' => 'Correspondências', 'value' => (int) ($comparison['matched_count'] ?? 0)],
+        ]);
+
+        $localHtml = '';
+        foreach ($missingLocal as $row) {
+            $localHtml .= '<tr>'
+                . '<td class="nfse-nowrap">' . Ui::h($this->formatDate((string) ($row['referencia_em'] ?? ''), 'd/m/Y H:i')) . '</td>'
+                . '<td>' . ReportView::orDash((string) ($row['tipo_documento'] ?? '')) . '</td>'
+                . '<td class="nfse-num">' . (int) ($row['nsu'] ?? 0) . '</td>'
+                . '<td class="nfse-break nfse-mono">' . ReportView::orDash((string) ($row['chave_acesso'] ?? '')) . '</td>'
+                . '<td class="nfse-num">' . ReportView::orDash((string) ($row['numero_nf'] ?? '')) . '</td>'
+                . '<td>' . ReportView::orDash((string) ($row['tipo_evento'] ?? '')) . '</td>'
+                . '<td class="nfse-break nfse-mono">' . ReportView::orDash((string) ($row['_compare_key'] ?? '')) . '</td>'
+                . '</tr>';
         }
+        echo ReportView::tableCard(
+            ['Data', 'Tipo', ['NSU', 'nfse-num'], 'Chave', ['NFS-e', 'nfse-num'], 'Evento', 'Chave de comparação'],
+            $localHtml,
+            'Nenhum documento da API ficou sem correspondente local no período.',
+            'Documentos recebidos da API sem correspondente local',
+            count($missingLocal) . ' documentos',
+            '',
+            'nfse-api-sem-local'
+        );
+
+        $apiHtml = '';
         foreach ($missingApi as $row) {
-            $invoiceId = (int) ($row['invoiceid'] ?? 0);
-            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
-            echo '<tr>';
-            echo '<td>' . htmlspecialchars($this->formatDate((string) ($row['_event_date'] ?? ''), 'd/m/Y H:i'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) ($row['tipo_registro'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) (($row['chave_acesso'] ?? '') !== '' ? $row['chave_acesso'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars((string) (($row['numero_nf'] ?? '') !== '' ? $row['numero_nf'] : '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($this->resolveClientName($row), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($row['_compare_key'] ?? '-'), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '</tr>';
+            $apiHtml .= '<tr>'
+                . '<td class="nfse-nowrap">' . Ui::h($this->formatDate((string) ($row['_event_date'] ?? ''), 'd/m/Y H:i')) . '</td>'
+                . '<td>' . ReportView::orDash((string) ($row['tipo_registro'] ?? '')) . '</td>'
+                . '<td class="nfse-break nfse-mono">' . ReportView::orDash((string) ($row['chave_acesso'] ?? '')) . '</td>'
+                . '<td class="nfse-num">' . ReportView::orDash((string) ($row['numero_nf'] ?? '')) . '</td>'
+                . '<td>' . ReportView::invoiceLink((int) ($row['invoiceid'] ?? 0)) . '</td>'
+                . '<td class="nfse-break">' . Ui::h($this->resolveClientName($row)) . '</td>'
+                . '<td class="nfse-break nfse-mono">' . ReportView::orDash((string) ($row['_compare_key'] ?? '')) . '</td>'
+                . '</tr>';
         }
-        echo '</table>';
-        echo '</div>';
+        echo ReportView::tableCard(
+            ['Data', 'Tipo', 'Chave', ['NFS-e', 'nfse-num'], 'Fatura', 'Cliente', 'Chave de comparação'],
+            $apiHtml,
+            'Nenhum registro local ficou sem correspondente na API distribuida para o período.',
+            'Histórico local sem correspondente na API distribuída',
+            count($missingApi) . ' registros',
+            '',
+            'nfse-api-sem-api'
+        );
     }
 
 
@@ -2063,57 +1655,20 @@ final class ReportsController
             ->limit($perPage)
             ->get();
 
-        echo '<form method="get" action="addonmodules.php">';
-        echo '<input type="hidden" name="module" value="OpenNfse" />';
-        echo '<input type="hidden" name="action" value="relatorios" />';
-        echo '<input type="hidden" name="tab" value="logs" />';
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;flex:1 1 860px;">';
-        echo '<div style="min-width:160px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data inicial</div>';
-        echo '<input type="date" name="data_inicial" value="' . htmlspecialchars($dataInicial, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="min-width:160px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Data final</div>';
-        echo '<input type="date" name="data_final" value="' . htmlspecialchars($dataFinal, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="min-width:130px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Invoice ID</div>';
-        echo '<input type="text" name="invoiceid" placeholder="Invoice ID" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" style="width:130px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="min-width:250px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Tipo</div>';
-        echo '<select name="tipo" style="width:250px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
-        echo '<option value="">Todos os tipos</option>';
+        $tipoSelect = ['' => 'Todos os tipos'];
         foreach ($tipoOptions as $t) {
-            $sel = $t === $tipoFilter ? ' selected' : '';
-            echo '<option value="' . htmlspecialchars($t, ENT_QUOTES, 'UTF-8') . '"' . $sel . '>' . htmlspecialchars($t, ENT_QUOTES, 'UTF-8') . '</option>';
+            $tipoSelect[$t] = $t;
         }
-        echo '</select>';
-        echo '</div>';
-        echo '<div style="flex:1 1 320px;min-width:320px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Buscar em request/response</div>';
-        echo '<input type="text" name="q" placeholder="Buscar (request/response)" value="' . htmlspecialchars($qFilter, ENT_QUOTES, 'UTF-8') . '" style="width:100%;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '</div>';
-        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=logs">Limpar</a>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
-        echo '<div style="margin-bottom:12px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;">';
-        echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
-            'tab' => 'logs',
-            'data_inicial' => $dataInicial,
-            'data_final' => $dataFinal,
-            'invoiceid' => $invoiceFilter,
-            'tipo' => $tipoFilter,
-            'q' => $qFilter,
-        ], 'btn btn-xs btn-default');
-        echo '</div>';
+        echo Ui::filterBar(
+            ['hidden' => ['module' => 'OpenNfse', 'action' => 'relatorios', 'tab' => 'logs']],
+            Ui::field('Data inicial', Ui::input('data_inicial', $dataInicial, 'date'))
+            . Ui::field('Data final', Ui::input('data_final', $dataFinal, 'date'))
+            . Ui::field('Fatura', Ui::input('invoiceid', $invoiceFilter, 'text', ['placeholder' => 'ID da fatura'], 'nfse-input--w-sm'))
+            . Ui::field('Tipo', Ui::select('tipo', $tipoSelect, $tipoFilter, [], 'nfse-input--w-md'))
+            . Ui::field('Buscar em request/response', Ui::input('q', $qFilter, 'text', ['placeholder' => 'Texto no request ou response'], 'nfse-input--w-lg')),
+            Ui::button('Filtrar', ['primary']) . Ui::button('Limpar', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=relatorios&tab=logs']),
+            'Filtros dos logs'
+        );
 
         $extractInvoiceId = static function (?string $json): ?int {
             $json = (string) $json;
@@ -2129,21 +1684,17 @@ final class ReportsController
             }
             return null;
         };
+        $preview = static function (string $value, string $label): string {
+            if ($value === '') {
+                return '<span class="nfse-muted">-</span>';
+            }
 
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:6%;text-align:center;">ID</th>';
-        echo '<th style="width:14%;">Data</th>';
-        echo '<th style="width:14%;">Tipo</th>';
-        echo '<th style="width:8%;">Invoice</th>';
-        echo '<th style="width:26%;">Request</th>';
-        echo '<th style="width:26%;">Response</th>';
-        echo '<th style="width:6%;"></th>';
-        echo '</tr>';
+            return '<textarea class="nfse-code-preview" readonly rows="1" aria-label="' . Ui::h($label) . '">' . Ui::h($value) . '</textarea>';
+        };
 
+        $rowsHtml = '';
         foreach ($rows as $r) {
             $id = (int) ($r->id ?? 0);
-            $notaId = (int) ($r->nota_id ?? 0);
             $tipo = (string) ($r->tipo ?? '');
             $created = (string) ($r->created_at ?? '');
             $req = (string) ($r->request ?? '');
@@ -2151,32 +1702,17 @@ final class ReportsController
             $notaInvoiceId = (int) ($r->nota_invoiceid ?? 0);
 
             $invoiceId = $notaInvoiceId > 0 ? $notaInvoiceId : ($extractInvoiceId($req) ?? $extractInvoiceId($resp) ?? 0);
-            $invoiceCell = '-';
-            if ($invoiceId > 0) {
-                $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
-                $invoiceCell = '<a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a>';
-            }
 
-            echo '<tr>';
-            echo '<td style="font-size:12px;text-align:center;">' . $id . '</td>';
-            echo '<td style="font-size:12px;">' . htmlspecialchars($created, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="font-size:12px;word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($tipo, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td style="font-size:12px;">' . $invoiceCell . '</td>';
-            if ($req !== '') {
-                echo '<td><textarea readonly rows="1" style="width:100%;max-width:100%;box-sizing:border-box;height:26px;resize:none;white-space:pre-wrap;overflow-y:auto;overflow-x:hidden;word-break:break-word;">' . htmlspecialchars($req, ENT_QUOTES, 'UTF-8') . '</textarea></td>';
-            } else {
-                echo '<td>-</td>';
-            }
-            if ($resp !== '') {
-                echo '<td><textarea readonly rows="1" style="width:100%;max-width:100%;box-sizing:border-box;height:26px;resize:none;white-space:pre-wrap;overflow-y:auto;overflow-x:hidden;word-break:break-word;">' . htmlspecialchars($resp, ENT_QUOTES, 'UTF-8') . '</textarea></td>';
-            } else {
-                echo '<td>-</td>';
-            }
-            echo '<td style="font-size:12px;">' . $this->renderPostActionButton('logView', 'Abrir', ['id' => $id], 'btn btn-xs btn-default') . '</td>';
-            echo '</tr>';
+            $rowsHtml .= '<tr>'
+                . '<td class="nfse-num">' . $id . '</td>'
+                . '<td class="nfse-nowrap">' . Ui::h($created) . '</td>'
+                . '<td class="nfse-break">' . Ui::h($tipo) . '</td>'
+                . '<td>' . ReportView::invoiceLink($invoiceId) . '</td>'
+                . '<td>' . $preview($req, 'Request do log ' . $id) . '</td>'
+                . '<td>' . $preview($resp, 'Response do log ' . $id) . '</td>'
+                . '<td>' . $this->postButton('logView', 'Abrir', ['id' => $id]) . '</td>'
+                . '</tr>';
         }
-
-        echo '</table>';
 
         $totalPages = (int) ceil($total / $perPage);
         if ($totalPages < 1) {
@@ -2185,9 +1721,6 @@ final class ReportsController
         if ($page > $totalPages) {
             $page = $totalPages;
         }
-
-        echo '<div style="margin-top:10px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
-        echo '<div style="font-size:14px;color:#374151;">Total: <strong style="color:#111827;">' . $total . '</strong></div>';
 
         $baseParams = [
             'module' => 'OpenNfse',
@@ -2199,21 +1732,33 @@ final class ReportsController
             'data_final' => $dataFinal,
             'q' => $qFilter,
         ];
-
-        echo '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
-        if ($page > 1) {
-            $p = $baseParams;
-            $p['page'] = $page - 1;
-            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($p, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a>';
-        }
-        echo '<span style="display:inline-flex;align-items:center;padding:6px 10px;border:1px solid #d1d5db;border-radius:999px;background:#f9fafb;font-size:13px;font-weight:600;color:#374151;">Página ' . $page . ' / ' . $totalPages . '</span>';
-        if ($page < $totalPages) {
-            $p = $baseParams;
-            $p['page'] = $page + 1;
-            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($p, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
-        }
-        echo '</div>';
-        echo '</div>';
+        $firstItem = $total > 0 ? ($offset + 1) : 0;
+        $lastItem = min($offset + count($rows), $total);
+        echo ReportView::tableCard(
+            [['ID', 'nfse-num'], 'Data', 'Tipo', 'Fatura', 'Request', 'Response', ''],
+            $rowsHtml,
+            'Nenhum log encontrado para os critérios selecionados.',
+            '',
+            '',
+            $this->pagedFooter(
+                $firstItem,
+                $lastItem,
+                $total,
+                'logs',
+                $baseParams,
+                $page,
+                $totalPages,
+                $this->postButton('relatoriosExport', 'Exportar CSV', [
+                    'tab' => 'logs',
+                    'data_inicial' => $dataInicial,
+                    'data_final' => $dataFinal,
+                    'invoiceid' => $invoiceFilter,
+                    'tipo' => $tipoFilter,
+                    'q' => $qFilter,
+                ])
+            ),
+            'nfse-rel-secao'
+        );
     }
 
 
@@ -3123,22 +2668,19 @@ final class ReportsController
 
         $invoiceId = (int) ($row->invoiceid ?? 0);
         $back = 'addonmodules.php?module=OpenNfse&action=relatorios&tab=logs';
-        echo '<div style="margin-bottom:10px;"><a class="btn btn-default" href="' . htmlspecialchars($back, ENT_QUOTES, 'UTF-8') . '">Voltar</a></div>';
-        if ($invoiceId > 0) {
-            $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
-            echo '<div style="margin-bottom:10px;">Invoice: <a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">' . $invoiceId . '</a></div>';
-        }
-        echo '<div style="margin-bottom:10px;">Tipo: <strong>' . htmlspecialchars((string) ($row->tipo ?? ''), ENT_QUOTES, 'UTF-8') . '</strong> &nbsp; Data: <strong>' . htmlspecialchars((string) ($row->created_at ?? ''), ENT_QUOTES, 'UTF-8') . '</strong></div>';
-
-        echo '<div style="display:flex;gap:10px;flex-wrap:wrap;">';
-        echo '<div style="flex:1;min-width:420px;">';
-        echo '<div style="margin-bottom:6px;"><strong>Request</strong></div>';
-        echo '<textarea readonly style="width:100%;height:320px;resize:none;white-space:pre-wrap;overflow:auto;overflow-wrap:anywhere;word-break:break-word;">' . htmlspecialchars((string) ($row->request ?? ''), ENT_QUOTES, 'UTF-8') . '</textarea>';
-        echo '</div>';
-        echo '<div style="flex:1;min-width:420px;">';
-        echo '<div style="margin-bottom:6px;"><strong>Response</strong></div>';
-        echo '<textarea readonly style="width:100%;height:320px;resize:none;white-space:pre-wrap;overflow:auto;overflow-wrap:anywhere;word-break:break-word;">' . htmlspecialchars((string) ($row->response ?? ''), ENT_QUOTES, 'UTF-8') . '</textarea>';
-        echo '</div>';
+        echo '<div class="nfse-ui nfse-page">';
+        echo Ui::sectionHeader('Log #' . (int) ($row->id ?? $id), (string) ($row->tipo ?? ''), Ui::button('Voltar', ['ghost'], ['href' => $back]), 'nfse-log-titulo');
+        echo ReportView::infoCard('', [
+            ['Tipo', (string) ($row->tipo ?? '')],
+            ['Data', (string) ($row->created_at ?? '')],
+            ['Fatura', $invoiceId > 0 ? ReportView::invoiceLink($invoiceId) : '-', $invoiceId > 0],
+        ]);
+        echo '<section class="nfse-card nfse-card--pad" aria-labelledby="nfse-log-titulo"><div class="nfse-rel-split">';
+        echo '<div class="nfse-rel-block"><label class="nfse-rel-block__title" for="nfse-log-request">Request</label>';
+        echo '<textarea id="nfse-log-request" class="nfse-code" readonly>' . Ui::h((string) ($row->request ?? '')) . '</textarea></div>';
+        echo '<div class="nfse-rel-block"><label class="nfse-rel-block__title" for="nfse-log-response">Response</label>';
+        echo '<textarea id="nfse-log-response" class="nfse-code" readonly>' . Ui::h((string) ($row->response ?? '')) . '</textarea></div>';
+        echo '</div></section>';
         echo '</div>';
 
         Module::ui()->renderFooter();
@@ -3170,7 +2712,11 @@ final class ReportsController
         $this->renderTabs('relatorios', 'Logs da nota');
 
         $back = 'invoices.php?action=edit&id=' . $invoiceId;
-        echo '<div style="margin-bottom:10px;"><a href="' . htmlspecialchars($back, ENT_QUOTES, 'UTF-8') . '">Voltar</a></div>';
+        echo '<div class="nfse-ui nfse-page">';
+        echo Ui::sectionHeader('Fatura #' . $invoiceId, 'Até 100 registros mais recentes da nota desta fatura.', Ui::button('Voltar para a fatura', ['ghost'], ['href' => $back]));
+        if (count($rows) === 0) {
+            echo Ui::callout('info', 'Nenhum log registrado para esta nota.');
+        }
 
         foreach ($rows as $r) {
             $tipo = (string) ($r->tipo ?? '');
@@ -3178,18 +2724,19 @@ final class ReportsController
             $req = (string) ($r->request ?? '');
             $resp = (string) ($r->response ?? '');
 
-            echo '<div style="border:1px solid #ddd;padding:10px;margin-bottom:10px;background:#fff;">';
-            echo '<div style="margin-bottom:6px;"><strong>' . htmlspecialchars($tipo, ENT_QUOTES, 'UTF-8') . '</strong> <span style="color:#666;">' . htmlspecialchars($created, ENT_QUOTES, 'UTF-8') . '</span></div>';
+            echo '<section class="nfse-card">';
+            echo '<div class="nfse-card__head"><h3 class="nfse-card__title">' . Ui::h($tipo) . '</h3><span class="nfse-card__summary">' . Ui::h($created) . '</span></div>';
+            echo '<div class="nfse-card--pad nfse-rel-split">';
             if ($req !== '') {
-                echo '<div style="margin-bottom:6px;"><strong>Request</strong></div>';
-                echo '<pre style="white-space:pre-wrap;word-break:break-word;">' . htmlspecialchars($req, ENT_QUOTES, 'UTF-8') . '</pre>';
+                echo '<div class="nfse-rel-block"><div class="nfse-rel-block__title">Request</div><pre class="nfse-code">' . Ui::h($req) . '</pre></div>';
             }
             if ($resp !== '') {
-                echo '<div style="margin-bottom:6px;"><strong>Response</strong></div>';
-                echo '<pre style="white-space:pre-wrap;word-break:break-word;">' . htmlspecialchars($resp, ENT_QUOTES, 'UTF-8') . '</pre>';
+                echo '<div class="nfse-rel-block"><div class="nfse-rel-block__title">Response</div><pre class="nfse-code">' . Ui::h($resp) . '</pre></div>';
             }
             echo '</div>';
+            echo '</section>';
         }
+        echo '</div>';
 
         Module::ui()->renderFooter();
     }
