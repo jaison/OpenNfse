@@ -6,6 +6,7 @@ namespace OpenNfse\Services;
 
 use OpenNfse\Exceptions\NfseModuleException;
 use OpenNfse\Exceptions\NfseValidationException;
+use OpenNfse\Helpers\AddonVersion;
 use WHMCS\Database\Capsule;
 
 final class DpsBuilderService
@@ -293,7 +294,7 @@ final class DpsBuilderService
             '@attributes' => ['Id' => $idDps],
             'tpAmb' => $tpAmb,
             'dhEmi' => (new \DateTimeImmutable('now'))->format('Y-m-d\TH:i:sP'),
-            'verAplic' => 'whmcs-nfse/0.1.20',
+            'verAplic' => AddonVersion::verAplic(),
             'serie' => $serieDps,
             'nDPS' => (string) $numeroDps,
             'dCompet' => date('Y-m-d'),

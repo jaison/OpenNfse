@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenNfse\Tests\Services;
 
+use OpenNfse\Helpers\AddonVersion;
 use OpenNfse\Services\DpsBuilderService;
 use OpenNfse\Services\DpsLayoutService;
 use PHPUnit\Framework\TestCase;
@@ -82,6 +83,15 @@ final class DpsBuilderServiceTest extends TestCase
         $this->assertStringNotContainsString('finNFSe', $xml);
         $this->assertMatchesRegularExpression('#<tpEmit>1</tpEmit><cLocEmi>#', $xml);
         $this->assertMatchesRegularExpression('#</xDescServ><cNBS>115031000</cNBS>#', $xml);
+    }
+
+    public function testVerAplicFollowsAddonVersionWithinTwentyCharacters(): void
+    {
+        $xml = $this->buildXml($this->config(DpsLayoutService::MODE_NT009), $this->clientePfSemEndereco(), '100.00');
+
+        $this->assertSame(1, preg_match('#<verAplic>([^<]*)</verAplic>#', $xml, $m));
+        $this->assertSame('whmcs-nfse/' . AddonVersion::current(), $m[1]);
+        $this->assertLessThanOrEqual(20, strlen($m[1]));
     }
 
     public function testVServMoedaAlwaysHasTwoDecimals(): void

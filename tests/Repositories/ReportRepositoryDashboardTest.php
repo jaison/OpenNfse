@@ -35,6 +35,49 @@ final class ReportRepositoryDashboardTest extends TestCase
         $this->assertCount(2, $series);
     }
 
+    public function testHistoryCancellationsCountOncePerDocument(): void
+    {
+        $docs = ReportRepository::cancelamentosPorDocumento([
+            (object) ['invoiceid' => 1, 'chave_acesso' => 'CHAVE-A', 'cancelado_em' => '2026-10-01 23:59:00'],
+            (object) ['invoiceid' => 1, 'chave_acesso' => 'CHAVE-A', 'cancelado_em' => '2026-10-02 00:01:00'],
+            ['invoiceid' => 2, 'chave_acesso' => 'CHAVE-B', 'cancelado_em' => '2026-10-01 10:00:00'],
+            ['invoiceid' => 3, 'chave_acesso' => '', 'cancelado_em' => '2026-10-01 11:00:00'],
+            ['invoiceid' => 3, 'chave_acesso' => null, 'cancelado_em' => '2026-10-01 11:00:00'],
+            ['invoiceid' => 4, 'chave_acesso' => '', 'cancelado_em' => '2026-10-02 09:00:00'],
+            ['invoiceid' => 5, 'chave_acesso' => 'CHAVE-C', 'cancelado_em' => null],
+        ]);
+
+        $this->assertCount(4, $docs);
+        $this->assertSame('2026-10-02 00:01:00', $docs['chave:CHAVE-A']);
+
+        $series = [
+            '2026-10-01' => ['date' => '2026-10-01', 'canceladas' => 1],
+            '2026-10-02' => ['date' => '2026-10-02', 'canceladas' => 0],
+        ];
+        $series = ReportRepository::addDailyCounts($series, ReportRepository::countByDay($docs), 'canceladas');
+
+        $this->assertSame(3, $series['2026-10-01']['canceladas']);
+        $this->assertSame(2, $series['2026-10-02']['canceladas']);
+    }
+
+    public function testRecentHistoryCancellationsShowEachDocumentOnce(): void
+    {
+        $historico = ReportRepository::recentesPorDocumento([
+            ['invoiceid' => 1, 'chave_acesso' => 'CHAVE-A', 'data' => '2026-10-05 10:00:00'],
+            ['invoiceid' => 1, 'chave_acesso' => 'CHAVE-A', 'data' => '2026-10-05 10:00:03'],
+            ['invoiceid' => 2, 'chave_acesso' => 'CHAVE-B', 'data' => '2026-10-04 10:00:00'],
+            ['invoiceid' => 3, 'chave_acesso' => '', 'data' => '2026-10-03 10:00:00'],
+            ['invoiceid' => 3, 'chave_acesso' => null, 'data' => '2026-10-03 10:00:00'],
+            ['invoiceid' => 4, 'chave_acesso' => '', 'data' => ''],
+        ]);
+        $rows = ReportRepository::mergeRecentByDate($historico, [
+            ['invoiceid' => 9, 'data' => '2026-10-04 12:00:00'],
+        ], 5);
+
+        $this->assertSame([1, 9, 2, 3], array_column($rows, 'invoiceid'));
+        $this->assertSame('2026-10-05 10:00:03', $rows[0]['data']);
+    }
+
     public function testRecentMergesBothSourcesNewestFirst(): void
     {
         $historico = [

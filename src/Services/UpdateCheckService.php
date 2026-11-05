@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenNfse\Services;
 
+use OpenNfse\Helpers\AddonVersion;
 use OpenNfse\Repositories\ConfigRepository;
 
 final class UpdateCheckService
@@ -116,22 +117,7 @@ final class UpdateCheckService
 
     public function getCurrentVersion(): string
     {
-        static $version = null;
-        if (is_string($version) && $version !== '') {
-            return $version;
-        }
-
-        $moduleFile = dirname(__DIR__, 2) . '/OpenNfse.php';
-        $contents = @file_get_contents($moduleFile);
-        if (is_string($contents) && preg_match("/'version'\s*=>\s*'([^']+)'/", $contents, $matches)) {
-            $version = trim((string) ($matches[1] ?? ''));
-        }
-
-        if (!is_string($version) || $version === '') {
-            $version = '0.0.0';
-        }
-
-        return $version;
+        return AddonVersion::current() ?? '0.0.0';
     }
 
     private function fetchManifest(): array
