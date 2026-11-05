@@ -7,6 +7,9 @@ namespace OpenNfse\Controllers;
 use OpenNfse\Controllers\Support\AdminHelpersTrait;
 use OpenNfse\Helpers\CsvSanitizer;
 use OpenNfse\Repositories\UnpaidNfseReportRepository;
+use OpenNfse\Services\TokenService;
+use OpenNfse\Views\ReportView;
+use OpenNfse\Views\Ui;
 
 /**
  * Aba "NFS-e de faturas não pagas" dos relatórios e o export CSV dela.
@@ -32,67 +35,31 @@ final class NfseNaoPagasReportController
         $rows = $repo->list($filters, self::LIST_LIMIT);
         $summary = $repo->summary($filters);
 
-        $h = static function ($value): string {
-            return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-        };
-        $labelStyle = 'font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;';
-        $inputStyle = 'height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;';
+        echo Ui::filterBar(
+            ['hidden' => ['module' => 'OpenNfse', 'action' => 'relatorios', 'tab' => self::TAB]],
+            Ui::field('Emitida de', Ui::input('data_inicial', $filters['data_inicial'], 'date'))
+            . Ui::field('Emitida até', Ui::input('data_final', $filters['data_final'], 'date'))
+            . Ui::field('Situação', Ui::select('situacao', self::SITUACOES, $filters['situacao'], [], 'nfse-input--w-md'))
+            . Ui::field('Cliente', Ui::input('cliente', $filters['cliente'], 'text', ['placeholder' => 'Cliente (ID ou nome)'], 'nfse-input--w-lg')),
+            Ui::button('Filtrar', ['primary']) . Ui::button('Limpar', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=relatorios&tab=' . self::TAB]),
+            'Filtros das NFS-e de faturas não pagas'
+        );
 
-        echo '<form method="get" action="addonmodules.php">';
-        echo '<input type="hidden" name="module" value="OpenNfse" />';
-        echo '<input type="hidden" name="action" value="relatorios" />';
-        echo '<input type="hidden" name="tab" value="' . $h(self::TAB) . '" />';
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;flex:1 1 620px;">';
-        echo '<div><div style="' . $labelStyle . '">Emitida de</div><input type="date" name="data_inicial" value="' . $h($filters['data_inicial']) . '" style="width:160px;' . $inputStyle . '" /></div>';
-        echo '<div><div style="' . $labelStyle . '">Emitida até</div><input type="date" name="data_final" value="' . $h($filters['data_final']) . '" style="width:160px;' . $inputStyle . '" /></div>';
-        echo '<div><div style="' . $labelStyle . '">Situação</div><select name="situacao" style="' . $inputStyle . '">';
-        foreach (self::SITUACOES as $key => $label) {
-            echo '<option value="' . $h($key) . '"' . ($key === $filters['situacao'] ? ' selected' : '') . '>' . $h($label) . '</option>';
-        }
-        echo '</select></div>';
-        echo '<div style="flex:1 1 240px;min-width:240px;"><div style="' . $labelStyle . '">Cliente</div><input type="text" name="cliente" placeholder="Cliente (ID ou nome)" value="' . $h($filters['cliente']) . '" style="width:100%;' . $inputStyle . '" /></div>';
-        echo '</div>';
-        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=relatorios&tab=' . $h(self::TAB) . '">Limpar</a>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
+        echo Ui::callout(
+            'info',
+            'Cancelamento manual',
+            'Notas EMITIDA cuja fatura não está Paid e notas emitidas antes do pagamento. O cancelamento da NFS-e, quando cabível, é manual. Veja também os ',
+            '<a href="addonmodules.php?module=OpenNfse&amp;action=alertas">alertas de NFS-e</a>.'
+        );
 
-        echo '<div style="margin-bottom:12px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">';
-        echo '<div style="font-size:12px;color:#4b5563;">Notas EMITIDA cuja fatura não está Paid e notas emitidas antes do pagamento. O cancelamento da NFS-e, quando cabível, é manual. Veja também os <a href="addonmodules.php?module=OpenNfse&action=alertas">alertas de NFS-e</a>.</div>';
-        echo $this->renderPostActionButton('relatoriosExport', 'Exportar CSV', [
-            'tab' => self::TAB,
-            'data_inicial' => $filters['data_inicial'],
-            'data_final' => $filters['data_final'],
-            'situacao' => $filters['situacao'],
-            'cliente' => $filters['cliente'],
-        ], 'btn btn-xs btn-default');
-        echo '</div>';
+        echo Ui::kpis([
+            ['label' => 'Total de notas', 'value' => (int) $summary['total_notas']],
+            ['label' => 'Fatura não paga', 'value' => (int) $summary['total_nao_pagas'], 'tone' => (int) $summary['total_nao_pagas'] > 0 ? 'warn' : ''],
+            ['label' => 'Paga após a emissão', 'value' => (int) $summary['total_pagas_depois']],
+            ['label' => 'Valor das faturas', 'value' => $this->formatMoney((float) $summary['total_valor'], 'R$ ', '')],
+        ]);
 
-        if ((int) $summary['total_notas'] > count($rows)) {
-            echo '<div class="alert alert-info" style="margin-bottom:10px;">Exibindo as ' . count($rows) . ' notas mais recentes de ' . (int) $summary['total_notas'] . '. Use os filtros ou o CSV para ver as demais.</div>';
-        }
-
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:11%;">Emitida em</th>';
-        echo '<th style="width:8%;">Fatura</th>';
-        echo '<th style="width:20%;">Cliente</th>';
-        echo '<th style="width:17%;">NFS-e</th>';
-        echo '<th style="width:10%;">Status da fatura</th>';
-        echo '<th style="width:11%;">Pago em</th>';
-        echo '<th style="width:10%;">Valor</th>';
-        echo '<th style="width:13%;">Situação</th>';
-        echo '</tr>';
-
-        if (empty($rows)) {
-            echo '<tr><td colspan="8" style="text-align:center;color:#666;">Nenhuma nota encontrada para os critérios selecionados.</td></tr>';
-        }
-
+        $rowsHtml = '';
         foreach ($rows as $row) {
             $invoiceId = (int) ($row['invoiceid'] ?? 0);
             $numeroNf = trim((string) ($row['numero_nf'] ?? ''));
@@ -102,34 +69,42 @@ final class NfseNaoPagasReportController
             $prefix = (string) ($row['currency_prefix'] ?? 'R$ ');
             $suffix = (string) ($row['currency_suffix'] ?? '');
 
-            echo '<tr>';
-            echo '<td>' . $h($this->formatDate((string) ($row['emitida_em'] ?? ''), 'd/m/Y H:i')) . '</td>';
-            echo '<td><a href="' . $h('invoices.php?action=edit&id=' . $invoiceId) . '">' . $h((string) $invoiceId) . '</a></td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . $h($this->resolveClientName($row)) . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . ($numeroNf !== '' ? '<div><strong>Nº ' . $h($numeroNf) . '</strong></div>' : '')
-                . '<div title="' . $h($chave) . '">' . $h($chave !== '' ? $chaveShort : '-') . '</div></td>';
-            echo '<td>' . $h((string) ($row['invoice_status'] ?? '')) . '</td>';
-            echo '<td>' . $h($this->formatPaidDate((string) ($row['datepaid'] ?? ''))) . '</td>';
-            echo '<td>' . $h($this->formatMoney((float) ($row['invoice_total'] ?? 0), $prefix, $suffix)) . '</td>';
-            echo '<td>' . $h(self::SITUACOES[$situacao] ?? $situacao) . '</td>';
-            echo '</tr>';
+            $rowsHtml .= '<tr>'
+                . '<td class="nfse-nowrap">' . Ui::h($this->formatDate((string) ($row['emitida_em'] ?? ''), 'd/m/Y H:i')) . '</td>'
+                . '<td>' . ReportView::invoiceLink($invoiceId) . '</td>'
+                . '<td class="nfse-break">' . Ui::h($this->resolveClientName($row)) . '</td>'
+                . '<td class="nfse-break"><div class="nfse-cell-stack">' . ($numeroNf !== '' ? '<b>Nº ' . Ui::h($numeroNf) . '</b>' : '')
+                . '<span class="nfse-mono" title="' . Ui::h($chave) . '">' . Ui::h($chave !== '' ? $chaveShort : '-') . '</span></div></td>'
+                . '<td>' . ReportView::orDash((string) ($row['invoice_status'] ?? '')) . '</td>'
+                . '<td class="nfse-nowrap">' . Ui::h($this->formatPaidDate((string) ($row['datepaid'] ?? ''))) . '</td>'
+                . '<td class="nfse-num nfse-nowrap">' . Ui::h($this->formatMoney((float) ($row['invoice_total'] ?? 0), $prefix, $suffix)) . '</td>'
+                . '<td>' . Ui::badge(self::SITUACOES[$situacao] ?? $situacao, $situacao === UnpaidNfseReportRepository::SITUACAO_NAO_PAGA ? 'warn' : '') . '</td>'
+                . '</tr>';
         }
-        echo '</table>';
 
-        echo '<div style="margin-top:12px;padding:14px 16px;border:1px solid #e5e7eb;border-radius:8px;background:linear-gradient(180deg,#fbfcfe 0%,#f5f7fa 100%);display:flex;gap:10px;flex-wrap:wrap;">';
-        $cards = [
-            'Total de notas' => (string) $summary['total_notas'],
-            'Fatura não paga' => (string) $summary['total_nao_pagas'],
-            'Paga após a emissão' => (string) $summary['total_pagas_depois'],
-            'Valor das faturas' => $this->formatMoney((float) $summary['total_valor'], 'R$ ', ''),
-        ];
-        foreach ($cards as $label => $value) {
-            echo '<div style="min-width:180px;flex:1 1 180px;padding:10px 12px;border:1px solid #dbe5f0;border-radius:6px;background:#fff;">';
-            echo '<div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">' . $h($label) . '</div>';
-            echo '<div style="font-size:17px;font-weight:700;color:#1f2937;">' . $h($value) . '</div>';
-            echo '</div>';
-        }
-        echo '</div>';
+        $total = (int) $summary['total_notas'];
+        $shown = count($rows);
+        $summaryText = $shown === 0
+            ? 'Nenhum resultado'
+            : ($total > $shown
+                ? 'Exibindo as <b>' . $shown . '</b> notas mais recentes de <b>' . $total . '</b>. Use os filtros ou o CSV para ver as demais.'
+                : Ui::rangeText(1, $shown, $total, 'notas'));
+        $token = (new TokenService())->token();
+        echo ReportView::tableCard(
+            ['Emitida em', 'Fatura', 'Cliente', 'NFS-e', 'Status da fatura', 'Pago em', ['Valor', 'nfse-num'], 'Situação'],
+            $rowsHtml,
+            'Nenhuma nota encontrada para os critérios selecionados.',
+            '',
+            '',
+            Ui::tableFooter($summaryText, ReportView::postButton('relatoriosExport', 'Exportar CSV', [
+                'tab' => self::TAB,
+                'data_inicial' => $filters['data_inicial'],
+                'data_final' => $filters['data_final'],
+                'situacao' => $filters['situacao'],
+                'cliente' => $filters['cliente'],
+            ], $token)),
+            'nfse-rel-secao'
+        );
     }
 
     /**

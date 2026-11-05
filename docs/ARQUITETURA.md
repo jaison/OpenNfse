@@ -143,6 +143,10 @@ O uso dos campos do WHMCS está em [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_
 - `ActionFormRenderer`: formulários `POST` com token para as ações das telas.
 - `NameNormalizer` e `UfNormalizer`: normalização de nomes de município e UF.
 
+### Componentes de tela (`src/Views/Ui.php`)
+
+Funções puras, testadas em `tests/Views/UiTest.php`, que montam o HTML dos componentes de tela do admin (cabeçalho de seção, submenu, barra de filtros, indicadores, tabela com rodapé e paginação, avisos, linhas de formulário, barra de salvar, chips e badges de status) com as classes da seção "Componentes de tela" de `assets/nfse-ui.css`. Uso e exemplos em [UI.md](UI.md). `UiService::renderError()`/`renderSuccess()` usam o aviso (`Ui::callout`).
+
 ### Navegação do admin (`src/Views/AdminNav.php`)
 
 Classe pura, testada em `tests/Views/AdminNavTest.php`: barra de navegação das telas do addon (logo, título da tela, abas, estado da fila e versão) e o estilo que esconde o título "OpenNfse" do WHMCS só nas telas do addon (hook `AdminAreaHeadOutput`).
