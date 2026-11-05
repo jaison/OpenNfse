@@ -94,6 +94,7 @@ Alertas:
 
 Auditoria e apoio:
 
+- `FiscalDocumentReportService`: monta, sem acesso ao banco, os documentos fiscais dos relatórios a partir do histórico fiscal e da tabela atual, um por chave de acesso: pastas e arquivos do ZIP por competência e a lista de cancelamentos (aba Cancelamentos e painel).
 - `ApiAuditService`: sincroniza a distribuição de documentos da API por NSU (tela `auditoria_api` do `ReportsController`, que hoje não está na lista de abas do relatório).
 - `DpsApiAuditService`: confere as DPS de uma competência diretamente na API e procura lacunas na sequência (relatório "Auditoria DPS > API").
 - `IbgeService`: catálogo local de municípios IBGE (sincronização a partir da fonte primária, com aprovação de hash) e resolução do código IBGE por nome/UF, com ViaCEP como apoio pelo CEP.
@@ -169,7 +170,7 @@ Status da fila (`mod_opennfse_queue.status`): `PENDING`, `RUNNING`, `WAIT_STATUS
 - Fallback do XML: se o `xml_path` salvo não resolver na geração do PDF, `StorageService::findLatestXmlAbsolutePath()` só considera arquivos cujo nome contém o ID exato da fatura e só aceita o XML cuja chave de acesso e/ou número da NFS-e confere com a nota. Encontrado o arquivo, o `xml_path` é regravado. Sem chave nem número na nota, não há fallback.
 - PDF do DANFS-e: gerado a cada download ou envio, sem cópia em disco.
 - Logs técnicos: `mod_opennfse_logs` (tipo, request, response e `correlation_id`).
-- Histórico fiscal: `mod_opennfse_notas_history` guarda cada emissão, cancelamento e snapshot. Já `mod_opennfse_notas` tem uma única linha por fatura, sobrescrita numa reemissão.
+- Histórico fiscal: `mod_opennfse_notas_history` guarda cada emissão, cancelamento e snapshot. Já `mod_opennfse_notas` tem uma única linha por fatura, sobrescrita numa reemissão; a reemissão também limpa da linha os campos de cancelamento da nota anterior. A migration 047 corrige as linhas e os registros de emissão do histórico que herdaram o cancelamento de outra chave da mesma fatura.
 
 ## Controles de segurança
 

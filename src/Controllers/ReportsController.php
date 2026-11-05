@@ -21,6 +21,7 @@ use OpenNfse\Repositories\WhmcsPaymentGatewayRepository;
 use OpenNfse\Services\CryptoService;
 use OpenNfse\Services\ApiAuditService;
 use OpenNfse\Services\DpsApiAuditService;
+use OpenNfse\Services\FiscalDocumentReportService;
 use OpenNfse\Services\InvoiceEmailService;
 use OpenNfse\Services\NfseService;
 use OpenNfse\Services\QueueErrorClassifierService;
@@ -635,8 +636,9 @@ final class ReportsController
             'date_field' => 'cancelado',
         ];
 
+        $this->ensureFiscalHistoryReady();
         $repo = new ReportRepository();
-        $rows = $repo->listNotas($filters, 200);
+        $rows = $repo->listCancelamentos($filters, 200);
 
         echo '<form method="get" action="addonmodules.php">';
         echo '<input type="hidden" name="module" value="OpenNfse" />';
@@ -2291,12 +2293,11 @@ final class ReportsController
             $dataInicial = trim((string) ($_REQUEST['data_inicial'] ?? ''));
             $dataFinal = trim((string) ($_REQUEST['data_final'] ?? ''));
             $cliente = trim((string) ($_REQUEST['cliente'] ?? ''));
-            $rows = (new ReportRepository())->listNotas([
+            $this->ensureFiscalHistoryReady();
+            $rows = (new ReportRepository())->listCancelamentos([
                 'data_inicial' => $dataInicial,
                 'data_final' => $dataFinal,
-                'status' => '',
                 'cliente' => $cliente,
-                'date_field' => 'cancelado',
             ], 5000);
 
             fputcsv($out, ['emitida_em', 'cancelado_em', 'numero_nf', 'cliente', 'invoiceid', 'valor', 'status'], ';');
@@ -2427,11 +2428,28 @@ final class ReportsController
             'status' => $status,
             'cliente' => $cliente,
         ];
-        if ($tab === 'cancelamentos') {
-            $filters['date_field'] = 'cancelado';
+        $useCompetenciaLayout = $zipLayout === 'competencia' && $tab === 'emitidas';
+        $this->ensureFiscalHistoryReady();
+        $repo = new ReportRepository();
+        $documentService = new FiscalDocumentReportService();
+        if ($useCompetenciaLayout) {
+            // Por competência, um documento por chave de acesso, a partir do histórico fiscal.
+            $notaRows = $repo->listNotas($filters, 5000);
+            $documents = $documentService->buildCompetenciaZipDocuments(
+                $repo->listHistoryDocuments($filters, 20000),
+                $notaRows,
+                explode(',', $status),
+                $repo->listHistoryChaves(array_column($notaRows, 'chave_acesso'))
+            );
+        } else {
+            $rows = $tab === 'cancelamentos'
+                ? $repo->listCancelamentos($filters, 5000)
+                : $repo->listNotas($filters, 5000);
+            $documents = [];
+            foreach ($rows as $row) {
+                $documents[] = ['directory' => '', 'paths' => $this->extractZipXmlPathsFromRow($row), 'row' => $row];
+            }
         }
-
-        $rows = (new ReportRepository())->listNotas($filters, 5000);
         $storage = new StorageService();
 
         $tmpBase = tempnam(sys_get_temp_dir(), 'nfse_zip_');
@@ -2446,22 +2464,17 @@ final class ReportsController
             throw new NfseModuleException('Não foi possível criar o arquivo ZIP.');
         }
 
-        $useCompetenciaLayout = $zipLayout === 'competencia' && $tab === 'emitidas';
         if ($useCompetenciaLayout) {
-            foreach ($this->getCompetenciaZipDirectories() as $directory) {
+            foreach (FiscalDocumentReportService::competenciaZipDirectories() as $directory) {
                 $zip->addEmptyDir($directory);
             }
         }
 
         $added = 0;
-        foreach ($rows as $row) {
-            $paths = $this->extractZipXmlPathsFromRow($row);
-            if (empty($paths)) {
-                continue;
-            }
-
-            $directory = $useCompetenciaLayout ? $this->resolveCompetenciaZipDirectory($row) : '';
-            foreach ($paths as $xmlPath) {
+        foreach ($documents as $document) {
+            $row = $document['row'];
+            $directory = $document['directory'];
+            foreach ($document['paths'] as $xmlPath) {
                 try {
                     $absPath = $storage->resolveAbsolutePath($xmlPath);
                 } catch (\Throwable $e) {
@@ -3011,29 +3024,6 @@ final class ReportsController
         return $presets;
     }
 
-    private function getCompetenciaZipDirectories(): array
-    {
-        return [
-            'Emitidas',
-            'Canceladas',
-            'Emitidas para Estrangeiros',
-        ];
-    }
-
-    private function resolveCompetenciaZipDirectory(array $row): string
-    {
-        $status = strtoupper(trim((string) ($row['status'] ?? '')));
-        if ($status === 'CANCELADA') {
-            return 'Canceladas';
-        }
-
-        if ($this->isExteriorReportRow($row)) {
-            return 'Emitidas para Estrangeiros';
-        }
-
-        return 'Emitidas';
-    }
-
     private function extractZipXmlPathsFromRow(array $row): array
     {
         $paths = [];
@@ -3047,12 +3037,6 @@ final class ReportsController
         }
 
         return array_values($paths);
-    }
-
-    private function isExteriorReportRow(array $row): bool
-    {
-        $country = strtoupper(trim((string) ($row['country'] ?? '')));
-        return $country !== 'BR';
     }
 
     private function buildZipEntryName(\ZipArchive $zip, array $row, string $absPath, string $directory = ''): string

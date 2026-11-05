@@ -50,7 +50,7 @@ stateDiagram-v2
 - `ERRO`: falha técnica na emissão ou erro na consulta de status.
 - `CANCELADA`: cancelamento registrado.
 
-Toda emissão e cancelamento também é gravado em `mod_opennfse_notas_history` (`FiscalHistoryRepository`), porque uma reemissão sobrescreve a linha da nota.
+Toda emissão e cancelamento também é gravado em `mod_opennfse_notas_history` (`FiscalHistoryRepository`), porque uma reemissão sobrescreve a linha da nota. Ao iniciar uma DPS nova, a emissão limpa da linha os campos de cancelamento (`cancelado_em`, `cancel_xml_path`, `cancel_codigo_motivo`, `cancel_motivo`, `cancel_descricao`, `cancel_erro`). Antes, se a linha estiver `CANCELADA`, grava o cancelamento no histórico caso a chave ainda não tenha um. A nota cancelada segue no histórico, e a nota nova não herda o cancelamento.
 
 ### Estados da fila
 
@@ -621,8 +621,9 @@ Na lista de alertas, cada alerta aberto tem duas ações:
 
 Em **Addons > OpenNfse > Relatórios** (`ReportsController`), por abas:
 
-- **NFS-e Emitidas**: notas emitidas e canceladas no período, com totais, ações por nota (consultar, reemitir, cancelar) e ZIP dos XMLs. O ZIP por competência separa os arquivos em `Emitidas/`, `Canceladas/` e `Emitidas para Estrangeiros/`.
-- **Falhas** e **Cancelamentos**.
+- **NFS-e Emitidas**: notas emitidas e canceladas no período, com totais, ações por nota (consultar, reemitir, cancelar) e ZIP dos XMLs. A lista e os totais mostram a situação atual de cada fatura (`mod_opennfse_notas`); numa fatura reemitida, aparece só a nota nova. O ZIP por competência parte do histórico fiscal, com um documento por chave de acesso, na mesma janela de datas e com os mesmos filtros: chave com cancelamento (registro `CANCELAMENTO` com `cancelado_em`) vai para `Canceladas/` com o XML da nota e o do cancelamento; as demais vão para `Emitidas/` ou `Emitidas para Estrangeiros/` (país do cliente diferente de `BR`), só com o XML da nota. Linhas da tabela atual cuja chave não está no histórico em data nenhuma, e as sem chave, completam o ZIP. No histórico, a data de referência é `emitida_em`, depois `competencia`, depois a da linha atual da mesma chave e, por último, a data de gravação do registro.
+- **Falhas**.
+- **Cancelamentos**: cancelamentos do período pela data do cancelamento, a partir dos registros de cancelamento do histórico fiscal e das linhas atuais com `cancelado_em`, sem repetir a chave. A nota cancelada e depois substituída por reemissão continua na lista, no CSV e no ZIP. Os indicadores e a lista de cancelamentos recentes do painel somam os registros `CANCELAMENTO` do histórico com as linhas atuais com `cancelado_em` cuja chave não tem cancelamento no histórico.
 - **Auditoria Emissão**: faturas pagas em gateways ativos que não geraram NFS-e nem entraram na fila.
 - **NFS-e de faturas não pagas**: notas `EMITIDA` de faturas não pagas ou pagas depois da emissão (ver [abaixo](#nfs-e-de-faturas-não-pagas)).
 - **Auditoria XML**: compara a pasta mensal de XMLs com o `xml_path` das notas para achar órfãos e referências inconsistentes.
@@ -631,7 +632,7 @@ Em **Addons > OpenNfse > Relatórios** (`ReportsController`), por abas:
 - **Histórico Fiscal**: emissões, cancelamentos e snapshots de cada fatura ao longo do tempo.
 - **Logs**: logs técnicos com visualização detalhada (`logView`).
 
-Exportação CSV disponível para as abas Emitidas, Falhas, Cancelamentos, Auditoria Emissão, NFS-e de faturas não pagas e Logs (`relatoriosExport`), e ZIP de XMLs pela aba Emitidas (`relatoriosExportZip`).
+Exportação CSV disponível para as abas Emitidas, Falhas, Cancelamentos, Auditoria Emissão, NFS-e de faturas não pagas e Logs (`relatoriosExport`), e ZIP de XMLs pelas abas Emitidas e Cancelamentos (`relatoriosExportZip`).
 
 ### NFS-e de faturas não pagas
 
