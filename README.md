@@ -104,8 +104,6 @@ Este projeto utiliza bibliotecas de terceiros para integração com a NFS-e Naci
   SDK principal de integração com a API Nacional da NFS-e.
 - [`paseto/nfse-nacional-pdf`](https://github.com/paseto/nfse-nacional-pdf):
   biblioteca base para geração do DANFS-e em PDF.
-- [`cweagans/composer-patches`](https://github.com/cweagans/composer-patches):
-  plugin de build que aplica os patches de `patches/` na SDK antes de gerar o `vendor-scoped/`.
 - [`humbug/php-scoper`](https://github.com/humbug/php-scoper):
   utilizada no processo de build para gerar a pasta `vendor-scoped/` e reduzir conflitos de dependências com outros módulos do WHMCS.
 - [`phpunit/phpunit`](https://github.com/sebastianbergmann/phpunit):
@@ -134,8 +132,6 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
   migrations de banco do addon.
 - `docs/`:
   documentação complementar técnica e operacional, com índice em [`docs/README.md`](docs/README.md).
-- `patches/`:
-  correções aplicadas sobre a SDK `nfse-nacional/nfse-php` durante o build.
 - `vendor-scoped/`:
   dependências prontas para uso no ambiente final.
 
@@ -239,7 +235,7 @@ composer install
 composer run scope
 ```
 
-Isso reconstrói a pasta `vendor-scoped/`. O `composer install` precisa incluir as dependências de desenvolvimento (sem `--no-dev`), porque o `php-scoper` e o plugin que aplica os patches da SDK são de desenvolvimento.
+Isso reconstrói a pasta `vendor-scoped/`. O `composer install` precisa incluir as dependências de desenvolvimento (sem `--no-dev`), porque o `php-scoper` é dependência de desenvolvimento.
 
 O `vendor-scoped/` leva só as dependências de produção:
 
@@ -250,28 +246,9 @@ O `vendor-scoped/` leva só as dependências de produção:
 
 ### Versão da SDK nfse-php
 
-A SDK está fixada no commit `a9bdf8c` da `main` (`dev-main#a9bdf8cc58c333b4bbda791fd20ab77cfdcabab3`), que traz o `finNFSe` da NT 009 (PR #65), o suporte a certificado NSS (PR #60) e o `totTrib` com `pTotTribSN` igual a 0 (PR #62) e ainda não tem release (a última é a `v1.23.0-beta`). Quando sair a tag que inclua esses PRs, volte o `composer.json` para a versão estável (ex.: `^1.24`), confira se os patches abaixo ainda se aplicam ou já foram incorporados e regere o `vendor-scoped/`.
+O módulo usa a release oficial `v1.24.0-beta` da SDK, fixada no `composer.json` (`"nfse-nacional/nfse-php": "1.24.0-beta"`), sem patches locais. Essa versão já traz as correções que antes eram aplicadas por patch: `vServMoeda` com duas casas, verificação TLS de cadeia e nome (com o IP de Catanduva fixado via `CURLOPT_RESOLVE`), connect timeout de 10s e a ordem de `xDescServ` e `finNFSe` do leiaute da NT 009.
 
-### Patches da SDK
-
-Os patches em `patches/` são aplicados automaticamente no `vendor/` pelo `cweagans/composer-patches` (1.7.3) durante o `composer install`/`composer update`, antes do `composer run scope`. A lista fica em `extra.patches` do `composer.json` e a ordem importa (cada patch parte do anterior). Com `composer-exit-on-patch-failure`, o Composer para se algum patch não aplicar.
-
-| Patch | Motivo |
-| --- | --- |
-| `nfse-php-01-vservmoeda-duas-casas.patch` | `vServMoeda` com duas casas (o XSD rejeita `99.9`). |
-| `nfse-php-02-tls-verificacao.patch` | Verificação TLS de cadeia e nome nos clients SEFIN, ADN e CNC. O endpoint de Catanduva usa o nome do certificado com o IP fixado via `CURLOPT_RESOLVE`. |
-| `nfse-php-03-connect-timeout.patch` | Connect timeout de 30s para 10s (o retry de GET multiplica a espera por 3). |
-| `nfse-php-04-nt009-ordem-campos.patch` | Leiaute da NT 009: `xDescServ` depois de `cNBS` e `finNFSe` depois de `cMotivoEmisTI`. |
-
-Para adicionar um patch:
-
-1. Gere o diff a partir da raiz da SDK, com caminhos `a/src/...` e `b/src/...` (ex.: `git diff` num clone do `nfse-nacional/nfse-php` no mesmo commit, com os patches anteriores aplicados).
-2. Salve em `patches/nfse-php-NN-descricao.patch`, com um cabeçalho curto explicando o motivo.
-3. Acrescente a entrada em `extra.patches."nfse-nacional/nfse-php"` no `composer.json`.
-4. Rode `composer reinstall nfse-nacional/nfse-php` (ou `composer install`), confira o `vendor/nfse-nacional/nfse-php/PATCHES.txt` e rode `composer test`.
-5. Rode `composer run scope` e confira se o diff de `vendor-scoped/` só traz o que o patch muda.
-
-O plugin é dependência de desenvolvimento e por isso fica fora do `vendor-scoped/`, porque só é usado no build.
+Para trocar de versão, altere o `composer.json`, rode `composer update nfse-nacional/nfse-php`, `composer test` e `composer run scope`, e confira se o diff de `vendor-scoped/` só traz o que mudou na SDK.
 
 ## Desenvolvimento Local
 
