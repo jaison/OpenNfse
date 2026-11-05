@@ -445,6 +445,12 @@ final class DashboardView
         $html .= '</div></div>';
         $html .= '<span></span><div class="nfse-tl__axis" aria-hidden="true">';
         foreach ($data['days'] as $day) {
+            if ($day['today']) {
+                // Hoje sempre tem a data no eixo, mesmo quando o rótulo do dia cairia fora da sequência.
+                $axis = $day['axis'] !== '' ? $day['axis'] : substr($day['label'], 0, 2);
+                $html .= '<span class="nfse-tl__axis-today">' . self::h($axis) . '</span>';
+                continue;
+            }
             $html .= '<span' . ($day['future'] ? ' class="nfse-tl__axis-future"' : '') . '>' . self::h($day['axis']) . '</span>';
         }
         $html .= '</div>';
