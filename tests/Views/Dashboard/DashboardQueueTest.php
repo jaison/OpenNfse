@@ -48,7 +48,7 @@ final class DashboardQueueTest extends TestCase
         $this->assertTrue($cron['ran']);
         $this->assertFalse($cron['stale']);
         $this->assertSame('Cron executado há 2 min (WHMCS)', $cron['text']);
-        $this->assertSame('Cron há 2 min', $cron['short']);
+        $this->assertSame('cron há 2 min', $cron['short']);
         $this->assertNull(DashboardQueue::cronHealthItem($cron, 'cfg-url'));
 
         $this->assertSame('Cron executado há 2 min (CLI)', DashboardQueue::cronState('2026-11-05 09:58:00', 'standalone', self::now())['text']);
@@ -80,7 +80,7 @@ final class DashboardQueueTest extends TestCase
         $this->assertFalse($cron['ran']);
         $this->assertTrue($cron['stale']);
         $this->assertSame('Cron nunca executado', $cron['text']);
-        $this->assertSame('Cron nunca executado', $cron['short']);
+        $this->assertSame('cron nunca executado', $cron['short']);
         $this->assertSame('Cron nunca executado', DashboardQueue::cronHealthItem($cron, 'cfg-url')['title']);
     }
 
@@ -89,7 +89,7 @@ final class DashboardQueueTest extends TestCase
         $cells = DashboardQueue::cells([], ['PENDING' => 'p', 'RUNNING' => 'r', 'WAIT_STATUS' => 'w', 'ERROR' => 'e']);
 
         $this->assertSame(['Pendentes', 'Processando', 'Aguardando status', 'Com erro'], array_column($cells, 'label'));
-        $this->assertSame(['pendentes', 'processando', 'aguardando status', 'com erro'], array_column($cells, 'noun'));
+        $this->assertSame(['Pendentes', 'Processando', 'Aguard. status', 'Com erro'], array_column($cells, 'short'));
         $this->assertSame(['0', '0', '0', '0'], array_column($cells, 'value'));
         $this->assertSame(['zero', 'zero', 'zero', 'zero'], array_column($cells, 'tone'));
         $this->assertSame(['p', 'r', 'w', 'e'], array_column($cells, 'href'));
@@ -100,15 +100,13 @@ final class DashboardQueueTest extends TestCase
         $cells = DashboardQueue::cells(['PENDING' => 3, 'RUNNING' => 1, 'WAIT_STATUS' => 0, 'ERROR' => 1200], []);
 
         $this->assertSame(['3', '1', '0', '1.200'], array_column($cells, 'value'));
-        $this->assertSame(['pendentes', 'processando', 'aguardando status', 'com erro'], array_column($cells, 'noun'));
-        $this->assertSame('pendente', DashboardQueue::cells(['PENDING' => 1], [])[0]['noun']);
         $this->assertSame(['', '', 'zero', 'danger'], array_column($cells, 'tone'), 'só "Com erro" acima de zero usa o destaque de perigo');
     }
 
     public function testOldestPendingText(): void
     {
-        $this->assertSame('mais antigo há 12 min', DashboardQueue::oldestPendingText(['PENDING' => 3], '2026-11-05 09:48:00', self::now()));
-        $this->assertSame('mais antigo há 2 dias', DashboardQueue::oldestPendingText(['PENDING' => 1], '2026-11-03 09:00:00', self::now()));
+        $this->assertSame('Mais antigo há 12 min', DashboardQueue::oldestPendingText(['PENDING' => 3], '2026-11-05 09:48:00', self::now()));
+        $this->assertSame('Mais antigo há 2 dias', DashboardQueue::oldestPendingText(['PENDING' => 1], '2026-11-03 09:00:00', self::now()));
         $this->assertSame('', DashboardQueue::oldestPendingText(['PENDING' => 0], '2026-11-05 09:48:00', self::now()), 'sem PENDING, a data antiga é ignorada');
         $this->assertSame('', DashboardQueue::oldestPendingText([], '', self::now()));
         $this->assertSame('', DashboardQueue::oldestPendingText(['PENDING' => 2], '', self::now()));

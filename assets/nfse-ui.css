@@ -373,36 +373,53 @@
 .nfse-strip__bar--future { background: transparent; }
 .nfse-strip__axis .nfse-strip__day--future { opacity: 0.55; }
 .nfse-text-danger { color: var(--danger-ink); font-weight: 600; }
-/* KpiBar (período) e Fila agora na mesma linha, 75% / 25%. As larguras vêm da área da Dashboard
-   (container nfse-page), e não da janela: o menu lateral do WHMCS também conta. */
+/* Barra única: indicadores do período (3fr) e Fila agora (1fr) no mesmo card. As larguras vêm da área
+   da Dashboard (container nfse-page), e não da janela: o menu lateral do WHMCS também conta. */
 .nfse-ui.nfse-page { container: nfse-page / inline-size; }
-.nfse-kpi-row { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
-.nfse-kpi-row > .nfse-kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-.nfse-kpi-row > .nfse-kpis .nfse-kpi { min-width: 0; padding-inline: var(--space-3); }
-.nfse-kpi-row > .nfse-kpis .nfse-kpi:last-child { border-right: 0; }
-.nfse-kpi-row > .nfse-kpis .nfse-kpi__value { font-size: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nfse-queue { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-3); min-width: 0; }
-.nfse-queue__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-.nfse-queue__actions { display: flex; align-items: center; gap: var(--space-2); font-size: 12px; white-space: nowrap; }
-.nfse-ui form.nfse-queue__form { margin: 0; }
-.nfse-btn--sm { min-height: 24px; height: 24px; }
-.nfse-btn--sm.nfse-btn--icon { width: 24px; }
-.nfse-btn--sm svg { width: 12px; height: 12px; }
-.nfse-queue__counts { font-size: 12px; line-height: 18px; color: var(--muted); }
-.nfse-queue__line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nfse-ui a.nfse-queue__item, .nfse-ui a.nfse-queue__item:hover { color: inherit; text-decoration: none; }
-.nfse-ui a.nfse-queue__item:hover { text-decoration: underline; }
-.nfse-queue__n { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
-.nfse-queue__item--zero .nfse-queue__n { color: var(--zero); font-weight: 600; }
-.nfse-queue__item--danger, .nfse-queue__item--danger .nfse-queue__n { color: var(--danger-ink); }
-.nfse-queue__foot { font-size: 11px; line-height: 14px; color: var(--muted); }
-/* Área abaixo de ~1620px: os 6 indicadores não cabem lado a lado em 75% (ex.: R$ 1.258.700,87); ficam em 2 linhas de 3. */
-@container nfse-page (max-width: 1619px) {
-  .nfse-kpi-row > .nfse-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .nfse-kpi-row > .nfse-kpis .nfse-kpi:nth-child(3n) { border-right: 0; }
-  .nfse-kpi-row > .nfse-kpis .nfse-kpi:nth-child(-n+3) { border-bottom: 1px solid var(--divider); }
+.nfse-bar { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); align-items: stretch; background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-xl); overflow: hidden; }
+.nfse-bar__period { display: flex; flex-direction: column; min-width: 0; padding: 14px 0 16px; }
+.nfse-bar__head { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4) 10px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.nfse-bar__head-title { font-weight: 600; color: var(--ink-2); }
+.nfse-bar__kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); row-gap: 14px; }
+.nfse-bar__kpis .nfse-kpi { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 var(--space-4); border-right: 1px solid var(--divider); }
+.nfse-bar__kpis .nfse-kpi:last-child { border-right: 0; }
+.nfse-bar__kpis .nfse-kpi__value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nfse-bar__queue { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: var(--space-3) var(--space-4); background: var(--surface-subtle); border-left: 1px solid var(--border); }
+.nfse-queue__head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+/* Ponto, título e cron; num card estreito, o cron desce para a linha de baixo em vez de ser cortado. */
+.nfse-queue__status { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2); flex: 1; min-width: 0; }
+.nfse-dot { width: 8px; height: 8px; border-radius: var(--radius-pill); flex: none; }
+.nfse-dot--ok { background: var(--ok-ink); }
+.nfse-dot--danger { background: var(--danger-ink); }
+.nfse-queue__title { margin: 0; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.nfse-queue__cron { font-size: 11px; line-height: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.nfse-ui form.nfse-queue__form { margin: 0; flex: none; }
+.nfse-btn--sm { min-height: 28px; height: 28px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
+.nfse-queue__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--space-4); row-gap: var(--space-1); }
+.nfse-queue__row { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); min-width: 0; font-size: 12px; color: var(--ink-2); }
+.nfse-ui a.nfse-queue__row, .nfse-ui a.nfse-queue__row:hover { color: var(--ink-2); text-decoration: none; }
+.nfse-ui a.nfse-queue__row:hover span:first-child { text-decoration: underline; }
+.nfse-queue__row > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nfse-queue__n { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+.nfse-queue__row--zero .nfse-queue__n { color: var(--zero); }
+.nfse-ui a.nfse-queue__row--danger, .nfse-ui a.nfse-queue__row--danger:hover, .nfse-queue__row--danger .nfse-queue__n { color: var(--danger-ink); }
+.nfse-queue__foot { display: flex; justify-content: space-between; gap: var(--space-2); font-size: 11px; line-height: 14px; color: var(--muted); }
+.nfse-queue__foot a { margin-left: auto; font-weight: 600; }
+/* Área abaixo de ~1840px: os 6 indicadores a 24px não cabem um valor como R$ 1.258.700,87; passam a 22px. */
+@container nfse-page (max-width: 1839px) {
+  .nfse-bar__kpis .nfse-kpi { padding: 0 var(--space-3); }
+  .nfse-bar__kpis .nfse-kpi:first-child { padding-left: var(--space-4); }
+  .nfse-bar__kpis .nfse-kpi__value { font-size: 22px; }
 }
-/* Área abaixo de 1000px: a Fila agora desce para baixo dos indicadores, em largura total. */
+/* Área abaixo de ~1640px: 2 linhas de 3 indicadores, de volta a 24px. */
+@container nfse-page (max-width: 1639px) {
+  .nfse-bar__kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .nfse-bar__kpis .nfse-kpi, .nfse-bar__kpis .nfse-kpi:first-child { padding: 0 var(--space-4); }
+  .nfse-bar__kpis .nfse-kpi:nth-child(3n) { border-right: 0; }
+  .nfse-bar__kpis .nfse-kpi__value { font-size: 24px; }
+}
+/* Área abaixo de 1000px: a Fila agora desce para baixo dos indicadores, no mesmo card. */
 @container nfse-page (max-width: 999px) {
-  .nfse-kpi-row { grid-template-columns: minmax(0, 1fr); }
+  .nfse-bar { grid-template-columns: minmax(0, 1fr); }
+  .nfse-bar__queue { border-left: 0; border-top: 1px solid var(--border); }
 }

@@ -26,12 +26,9 @@ final class DashboardQueue
         'ERROR' => 'Com erro',
     ];
 
-    /** Rótulo na lista compacta do card: singular e plural. */
-    private const NOUNS = [
-        'PENDING' => ['pendente', 'pendentes'],
-        'RUNNING' => ['processando', 'processando'],
-        'WAIT_STATUS' => ['aguardando status', 'aguardando status'],
-        'ERROR' => ['com erro', 'com erro'],
+    /** Rótulo curto no card, quando o nome do status não cabe (o nome completo vai no title). */
+    private const SHORT_LABELS = [
+        'WAIT_STATUS' => 'Aguard. status',
     ];
 
     private const CRON_SOURCES = [
@@ -78,7 +75,7 @@ final class DashboardQueue
     }
 
     /**
-     * text é a frase completa ("Cron executado há 2 min (WHMCS)"); short, a versão do rodapé do card ("Cron há 2 min").
+     * text é a frase completa ("Cron executado há 2 min (WHMCS)"); short, a versão do card ("cron há 2 min").
      *
      * @return array{ran: bool, seconds: int, stale: bool, text: string, short: string}
      */
@@ -86,7 +83,7 @@ final class DashboardQueue
     {
         $seconds = self::secondsSince($lastRunAt, $now);
         if ($seconds === null) {
-            return ['ran' => false, 'seconds' => 0, 'stale' => true, 'text' => 'Cron nunca executado', 'short' => 'Cron nunca executado'];
+            return ['ran' => false, 'seconds' => 0, 'stale' => true, 'text' => 'Cron nunca executado', 'short' => 'cron nunca executado'];
         }
 
         $source = trim($source);
@@ -98,7 +95,7 @@ final class DashboardQueue
             'seconds' => $seconds,
             'stale' => $seconds > self::CRON_STALE_MINUTES * 60,
             'text' => $text,
-            'short' => 'Cron há ' . self::age($seconds),
+            'short' => 'cron há ' . self::age($seconds),
         ];
     }
 
@@ -127,12 +124,12 @@ final class DashboardQueue
     }
 
     /**
-     * Itens do card, um por status, com link para a Fila filtrada. noun é o texto da lista
-     * compacta ("3 pendentes", "1 com erro"); label, o nome do status.
+     * Itens do card, um por status, com link para a Fila filtrada. label é o nome do status;
+     * short, o rótulo mostrado no card ("Aguard. status").
      *
      * @param array<string, int> $counts contagem por status (PENDING, RUNNING, WAIT_STATUS, ERROR)
      * @param array<string, string> $urls link por status
-     * @return array<int, array{label: string, noun: string, value: string, tone: string, href: string}>
+     * @return array<int, array{label: string, short: string, value: string, tone: string, href: string}>
      */
     public static function cells(array $counts, array $urls): array
     {
@@ -141,7 +138,7 @@ final class DashboardQueue
             $n = max(0, (int) ($counts[$status] ?? 0));
             $cells[] = [
                 'label' => $label,
-                'noun' => self::NOUNS[$status][$n === 1 ? 0 : 1],
+                'short' => self::SHORT_LABELS[$status] ?? $label,
                 'value' => number_format($n, 0, ',', '.'),
                 'tone' => $n === 0 ? 'zero' : ($status === 'ERROR' ? 'danger' : ''),
                 'href' => (string) ($urls[$status] ?? ''),
@@ -152,7 +149,7 @@ final class DashboardQueue
     }
 
     /**
-     * "mais antigo há 12 min" para o PENDING mais antigo; vazio quando não há pendentes.
+     * "Mais antigo há 12 min" para o PENDING mais antigo; vazio quando não há pendentes.
      *
      * @param array<string, int> $counts
      */
@@ -163,6 +160,6 @@ final class DashboardQueue
         }
         $seconds = self::secondsSince($oldestPending, $now);
 
-        return $seconds === null ? '' : 'mais antigo há ' . self::age($seconds);
+        return $seconds === null ? '' : 'Mais antigo há ' . self::age($seconds);
     }
 }
