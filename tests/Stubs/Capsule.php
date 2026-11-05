@@ -44,12 +44,21 @@ final class Capsule
 
 final class CapsuleQueryStub
 {
+    /** @var array<string, mixed> igualdades simples recebidas por where(), usadas só por exists() */
+    private array $equals = [];
+
     public function __construct(private string $table)
     {
     }
 
     public function where(...$args): self
     {
+        if (count($args) === 2 && is_string($args[0]) && is_scalar($args[1])) {
+            $this->equals[$args[0]] = $args[1];
+        } elseif (count($args) === 3 && is_string($args[0]) && $args[1] === '=' && is_scalar($args[2])) {
+            $this->equals[$args[0]] = $args[2];
+        }
+
         return $this;
     }
 
@@ -74,9 +83,24 @@ final class CapsuleQueryStub
         return Capsule::$rows[$this->table] ?? [];
     }
 
+    /** Considera só as igualdades simples do where(); a linha precisa ter a coluna com o mesmo valor. */
     public function exists(): bool
     {
-        return !empty(Capsule::$rows[$this->table]);
+        foreach (Capsule::$rows[$this->table] ?? [] as $row) {
+            $row = (array) $row;
+            $matches = true;
+            foreach ($this->equals as $column => $value) {
+                if (!array_key_exists($column, $row) || (string) $row[$column] !== (string) $value) {
+                    $matches = false;
+                    break;
+                }
+            }
+            if ($matches) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function update(array $data): int

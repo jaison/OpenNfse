@@ -106,11 +106,27 @@ final class NfseServiceReemissionTest extends TestCase
 
     public function testReemissionDoesNotDuplicateCancellationAlreadyInHistory(): void
     {
-        Capsule::$rows['mod_opennfse_notas_history'] = [(object) ['id' => 1, 'tipo_registro' => 'CANCELAMENTO']];
+        Capsule::$rows['mod_opennfse_notas_history'] = [
+            (object) ['id' => 1, 'tipo_registro' => 'CANCELAMENTO', 'chave_acesso' => 'CHAVE_ANTIGA'],
+        ];
 
         $this->invoke('preserveCancellationBeforeReemission', $this->notaCancelada());
 
         $this->assertSame([], Capsule::$inserts['mod_opennfse_notas_history'] ?? []);
+    }
+
+    public function testCancellationOfAnotherKeyDoesNotPreventRecording(): void
+    {
+        Capsule::$rows['mod_opennfse_notas_history'] = [
+            (object) ['id' => 1, 'tipo_registro' => 'CANCELAMENTO', 'chave_acesso' => 'OUTRA_CHAVE', 'fingerprint' => 'outro'],
+            (object) ['id' => 2, 'tipo_registro' => 'EMISSAO', 'chave_acesso' => 'CHAVE_ANTIGA', 'fingerprint' => 'emissao'],
+        ];
+
+        $this->invoke('preserveCancellationBeforeReemission', $this->notaCancelada());
+
+        $inserts = Capsule::$inserts['mod_opennfse_notas_history'] ?? [];
+        $this->assertCount(1, $inserts);
+        $this->assertSame('CHAVE_ANTIGA', $inserts[0]['chave_acesso']);
     }
 
     /**
