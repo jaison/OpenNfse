@@ -280,7 +280,6 @@ final class ConfigController
         $this->renderTextRow('certificate_path', 'Caminho do Certificado A1 (.pfx)', $config['certificate_path'] ?? '');
         $this->renderPasswordRow('certificate_password', 'Senha do Certificado', '');
         $this->renderConfigFormTableEnd();
-        $this->renderConfigBlock('A senha não é exibida após salvar. Preencha novamente apenas quando precisar atualizar o certificado.', 'nfse-cfg-note');
         $this->renderConfigSectionEnd();
 
         $certInfo = $this->evaluateCertificateFromConfig($config);

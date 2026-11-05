@@ -432,7 +432,7 @@ trait AdminHelpersTrait
         $help = [
             'environment' => 'Use homologação para testes e produção somente quando toda a configuração fiscal já estiver validada.',
             'certificate_path' => 'Informe o caminho absoluto do arquivo .pfx disponível no servidor do WHMCS.',
-            'certificate_password' => 'Preencha apenas quando desejar atualizar a senha armazenada para o certificado atual.',
+            'certificate_password' => 'Não aparece depois de salva. Preencha só para trocar a senha.',
             'cnpj_emissor' => 'Digite apenas números para manter o CNPJ no formato esperado pelas validações do módulo.',
             'prestador_informar_im' => 'Defina se a inscrição municipal deve ser enviada de forma obrigatória ao prestador.',
             'inscricao_municipal' => 'Obrigatória quando a prefeitura ou o ambiente nacional exigirem a IM do prestador.',
