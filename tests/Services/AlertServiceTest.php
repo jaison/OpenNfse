@@ -6,6 +6,7 @@ namespace OpenNfse\Tests\Services;
 
 use OpenNfse\Services\AlertService;
 use PHPUnit\Framework\TestCase;
+use WHMCS\Database\Capsule;
 
 final class AlertServiceTest extends TestCase
 {
@@ -20,6 +21,12 @@ final class AlertServiceTest extends TestCase
         parent::setUp();
         $this->repo = new InMemoryAlertRepository();
         $this->schemaRuns = 0;
+        Capsule::reset();
+    }
+
+    protected function tearDown(): void
+    {
+        Capsule::reset();
     }
 
     private function service(): AlertService
@@ -140,5 +147,20 @@ final class AlertServiceTest extends TestCase
         $this->assertNotNull($service->raise(100, $transaction['tipo'], self::NOTA, $transaction['detalhes']));
         $this->assertNull($service->raise(100, $refunded['tipo'], self::NOTA, $refunded['detalhes']));
         $this->assertCount(1, $this->repo->rows);
+    }
+
+    public function testAlertGoesToAddonLogAndNotToInvoiceNotes(): void
+    {
+        Capsule::$rows['tblinvoices'] = [(object) ['id' => 100, 'notes' => '']];
+        $service = $this->service();
+
+        $id = (int) $service->raise(100, AlertService::FATURA_CANCELADA_COM_NFSE, self::NOTA, 'Fatura cancelada.');
+        $this->assertTrue($service->resolve($id, 7));
+
+        $this->assertArrayNotHasKey('tblinvoices', Capsule::$updates);
+        $tipos = array_column(Capsule::$inserts['mod_opennfse_logs'] ?? [], 'tipo');
+        $this->assertSame(['NFSE_ALERTA_CRIADO', 'NFSE_ALERTA_RESOLVIDO'], $tipos);
+        $resolved = json_decode((string) Capsule::$inserts['mod_opennfse_logs'][1]['request'], true);
+        $this->assertSame(7, $resolved['admin_id']);
     }
 }

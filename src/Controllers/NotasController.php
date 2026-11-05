@@ -15,7 +15,6 @@ use OpenNfse\Repositories\WhmcsInvoiceRepository;
 use OpenNfse\Services\EmissionPolicyContextLoader;
 use OpenNfse\Services\EmissionPolicyService;
 use OpenNfse\Services\InvoiceEmailService;
-use OpenNfse\Services\InvoiceHistoryService;
 use OpenNfse\Services\NfseService;
 use OpenNfse\Services\QueueService;
 use OpenNfse\Services\StorageService;
@@ -271,10 +270,6 @@ final class NotasController
                     'ADMIN_REEMITIR_ENQUEUE',
                     ['origin' => $origin]
                 );
-                (new InvoiceHistoryService())->append(
-                    $invoiceId,
-                    'Reemissão manual enfileirada pelo administrador via ' . $this->describeAdminActionOrigin($origin) . '.'
-                );
                 if ($return === 'emitidas') {
                     $this->redirectRelatorioEmitidas(['msg' => 'reemitir_enqueued'], true);
                 }
@@ -289,10 +284,6 @@ final class NotasController
                 ['origin' => $origin]
             );
             (new NfseService())->emitir($invoiceId);
-            (new InvoiceHistoryService())->append(
-                $invoiceId,
-                'Reemissão manual solicitada pelo administrador via ' . $this->describeAdminActionOrigin($origin) . '.'
-            );
             if ($return === 'emitidas') {
                 $this->redirectRelatorioEmitidas(['msg' => 'reemitir_requested'], true);
             }
@@ -394,11 +385,6 @@ final class NotasController
     private function resolveAdminActionOrigin(string $return): string
     {
         return $return === 'emitidas' ? 'relatorio_emitidas' : 'invoice';
-    }
-
-    private function describeAdminActionOrigin(string $origin): string
-    {
-        return $origin === 'relatorio_emitidas' ? 'Relatorios > NFS-e Emitidas' : 'a propria invoice';
     }
 
     private function logAdminAction(?array $nota, int $invoiceId, string $type, array $request = [], ?string $response = null): void

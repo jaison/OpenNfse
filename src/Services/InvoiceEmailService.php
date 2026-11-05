@@ -112,7 +112,6 @@ final class InvoiceEmailService
                     null,
                     json_encode(['result' => 'success', 'invoiceid' => $invoiceId, 'transport' => $transport], JSON_UNESCAPED_UNICODE)
                 );
-                (new InvoiceHistoryService())->append($invoiceId, 'E-mail da NFS-e enviado ao cliente com XML e PDF anexados.');
                 $this->cancelPendingAutomaticRetry($notaRepo, $invoiceId);
                 return;
             }
@@ -184,10 +183,6 @@ final class InvoiceEmailService
         } catch (\Throwable $e) {
             $errorMessage = $e->getMessage() !== '' ? $e->getMessage() : 'Falha ao enviar e-mail pelo WHMCS.';
             $logRepo->insert($notaId > 0 ? $notaId : null, 'EMAIL_NFSE_RESPONSE', null, $errorMessage);
-            (new InvoiceHistoryService())->append(
-                $invoiceId,
-                'Falha no envio por e-mail da NFS-e. Motivo: ' . $errorMessage
-            );
             throw new NfseModuleException($errorMessage);
         } finally {
             if (is_file($pdfTempPath)) {
@@ -201,7 +196,6 @@ final class InvoiceEmailService
             null,
             json_encode(['result' => 'success', 'invoiceid' => $invoiceId, 'transport' => 'sendmessage'], JSON_UNESCAPED_UNICODE)
         );
-        (new InvoiceHistoryService())->append($invoiceId, 'E-mail da NFS-e enviado ao cliente com XML e PDF anexados.');
         $this->cancelPendingAutomaticRetry($notaRepo, $invoiceId);
     }
 

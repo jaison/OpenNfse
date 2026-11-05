@@ -33,10 +33,14 @@ final class Capsule
     /** @var array<int, string> tabelas que receberam delete() */
     public static array $deletes = [];
 
+    /** @var array<string, array<int, array>> dados recebidos por update(), por tabela */
+    public static array $updates = [];
+
     public static function reset(): void
     {
         self::$inserts = [];
         self::$deletes = [];
+        self::$updates = [];
         self::$rows = [];
         self::$statements = [];
     }
@@ -68,6 +72,11 @@ final class CapsuleQueryStub
     }
 
     public function whereIn(...$args): self
+    {
+        return $this;
+    }
+
+    public function select(...$args): self
     {
         return $this;
     }
@@ -105,6 +114,7 @@ final class CapsuleQueryStub
 
     public function update(array $data): int
     {
+        Capsule::$updates[$this->table][] = $data;
         return 0;
     }
 
