@@ -16,6 +16,7 @@ final class DashboardView
         'clock' => '<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>',
         'prev' => '<path d="M15 6l-6 6 6 6"></path>',
         'next' => '<path d="M9 6l6 6-6 6"></path>',
+        'play' => '<path d="M8 5l11 7-11 7z"></path>',
     ];
 
     private const FEED_ANCHOR = 'nfse-atividade';
@@ -86,9 +87,12 @@ final class DashboardView
         $html .= self::header($d, $period, $today);
         $html .= self::health($health);
         if (isset($d['queue'])) {
-            $html .= self::queue($d['queue'], $cron, $now, $today, (string) ($d['token'] ?? ''));
+            // Período (KpiBar) e estado atual da fila na mesma linha.
+            $html .= '<div class="nfse-kpi-row">' . self::kpis($metrics)
+                . self::queue($d['queue'], $cron, $now, $today, (string) ($d['token'] ?? '')) . '</div>';
+        } else {
+            $html .= self::kpis($metrics);
         }
-        $html .= self::kpis($metrics);
         $html .= '<div class="nfse-split">';
         $html .= self::calendar($series, $start, $end, $today, $dia, $feedFilter, $periodParams);
         $html .= self::weekdays($series, $today, $start, $end);
@@ -205,10 +209,10 @@ final class DashboardView
     }
 
     /**
-     * Card "Fila agora": estado atual, fora do filtro de período.
+     * Card "Fila agora", compacto ao lado da KpiBar: estado atual, fora do filtro de período.
      *
      * @param array{counts?: array<string, int>, oldest_pending?: string} $queue
-     * @param array{ran: bool, seconds: int, stale: bool, text: string}|null $cron
+     * @param array{ran: bool, seconds: int, stale: bool, text: string, short: string}|null $cron
      */
     private static function queue(array $queue, ?array $cron, int $now, string $today, string $token): string
     {
@@ -218,35 +222,46 @@ final class DashboardView
         foreach (array_keys(DashboardQueue::STATUSES) as $status) {
             $urls[$status] = self::url(['action' => 'fila', 'status' => $status] + $allTime);
         }
-        $cells = DashboardQueue::cells($queue['counts'] ?? [], (string) ($queue['oldest_pending'] ?? ''), $now, $urls);
+        $counts = $queue['counts'] ?? [];
 
-        $html = '<section class="nfse-card nfse-card--clip" aria-labelledby="nfse-fila-agora">';
-        $html .= '<div class="nfse-card__head"><div><h2 class="nfse-card__title" id="nfse-fila-agora">Fila agora</h2>';
-        $html .= '<div class="nfse-card__summary">Estado atual, fora do período';
-        if ($cron !== null) {
-            $html .= ' · <span' . ($cron['stale'] ? ' class="nfse-text-danger"' : '') . '>' . self::h($cron['text']) . '</span>';
-        }
-        $html .= '</div></div>';
+        $html = '<section class="nfse-card nfse-queue" aria-labelledby="nfse-fila-agora">';
+        $html .= '<div class="nfse-queue__head">';
+        $html .= '<h2 class="nfse-card__title" id="nfse-fila-agora" title="Estado atual, fora do período">Fila agora</h2>';
         $html .= '<div class="nfse-queue__actions">';
-        $html .= '<a class="nfse-btn" href="' . self::h(self::url(['action' => 'fila'])) . '">Abrir fila</a>';
         $html .= '<form class="nfse-queue__form" method="post" action="addonmodules.php?module=OpenNfse&amp;action=filaProcessNow">';
         if ($token !== '') {
             $html .= self::hidden(['token' => $token]);
         }
-        $html .= '<button class="nfse-btn nfse-btn--primary" type="submit">Processar fila agora</button></form>';
+        $html .= '<button class="nfse-btn nfse-btn--icon nfse-btn--sm" type="submit" aria-label="Processar fila agora" title="Processar fila agora">'
+            . self::icon('play') . '</button></form>';
+        $html .= '<a href="' . self::h(self::url(['action' => 'fila'])) . '">Abrir fila</a>';
         $html .= '</div></div>';
 
-        $html .= '<div class="nfse-kpis nfse-kpis--flush">';
-        foreach ($cells as $cell) {
-            $class = 'nfse-kpi__value' . ($cell['tone'] !== '' ? ' nfse-kpi__value--' . $cell['tone'] : '');
-            $inner = '<div class="nfse-kpi__label">' . self::h($cell['label']) . '</div>'
-                . '<div class="' . $class . '">' . self::h($cell['value']) . '</div>';
+        $html .= '<div class="nfse-queue__counts">';
+        foreach (DashboardQueue::cells($counts, $urls) as $cell) {
+            $class = 'nfse-queue__value' . ($cell['tone'] !== '' ? ' nfse-queue__value--' . $cell['tone'] : '');
+            $inner = '<span class="nfse-queue__label">' . self::h($cell['label']) . '</span>'
+                . '<span class="' . $class . '">' . self::h($cell['value']) . '</span>';
             $html .= $cell['href'] !== ''
-                ? '<a class="nfse-kpi nfse-kpi--link" href="' . self::h($cell['href']) . '">' . $inner . '</a>'
-                : '<div class="nfse-kpi">' . $inner . '</div>';
+                ? '<a class="nfse-queue__cell" href="' . self::h($cell['href']) . '">' . $inner . '</a>'
+                : '<span class="nfse-queue__cell">' . $inner . '</span>';
+        }
+        $html .= '</div>';
+
+        $foot = [];
+        if ($cron !== null) {
+            $foot[] = '<span' . ($cron['stale'] ? ' class="nfse-text-danger"' : '') . ' title="' . self::h($cron['text']) . '">'
+                . self::h($cron['short']) . '</span>';
+        }
+        $oldest = DashboardQueue::oldestPendingText($counts, (string) ($queue['oldest_pending'] ?? ''), $now);
+        if ($oldest !== '') {
+            $foot[] = self::h($oldest);
+        }
+        if ($foot !== []) {
+            $html .= '<div class="nfse-queue__foot">' . implode(' · ', $foot) . '</div>';
         }
 
-        return $html . '</div></section>';
+        return $html . '</section>';
     }
 
     /**

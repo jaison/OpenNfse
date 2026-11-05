@@ -70,13 +70,15 @@ final class DashboardQueue
     }
 
     /**
-     * @return array{ran: bool, seconds: int, stale: bool, text: string}
+     * text é a frase completa ("Cron executado há 2 min (WHMCS)"); short, a versão do rodapé do card ("Cron há 2 min").
+     *
+     * @return array{ran: bool, seconds: int, stale: bool, text: string, short: string}
      */
     public static function cronState(string $lastRunAt, string $source, int $now): array
     {
         $seconds = self::secondsSince($lastRunAt, $now);
         if ($seconds === null) {
-            return ['ran' => false, 'seconds' => 0, 'stale' => true, 'text' => 'Cron nunca executado'];
+            return ['ran' => false, 'seconds' => 0, 'stale' => true, 'text' => 'Cron nunca executado', 'short' => 'Cron nunca executado'];
         }
 
         $source = trim($source);
@@ -88,13 +90,14 @@ final class DashboardQueue
             'seconds' => $seconds,
             'stale' => $seconds > self::CRON_STALE_MINUTES * 60,
             'text' => $text,
+            'short' => 'Cron há ' . self::age($seconds),
         ];
     }
 
     /**
      * Item crítico da barra de saúde quando o cron está parado ou nunca rodou.
      *
-     * @param array{ran: bool, seconds: int, stale: bool, text: string} $cron
+     * @param array{ran: bool, seconds: int, stale: bool, text: string, short: string} $cron
      * @return array{tone: string, icon: string, title: string, text: string, action: string, href: string,
      *     parts: array<int, array{label: string, href: string}>}|null
      */
@@ -116,13 +119,13 @@ final class DashboardQueue
     }
 
     /**
-     * Células do card: uma por status, com link para a Fila filtrada, e a idade do PENDING mais antigo.
+     * Células do card: uma por status, com link para a Fila filtrada.
      *
      * @param array<string, int> $counts contagem por status (PENDING, RUNNING, WAIT_STATUS, ERROR)
      * @param array<string, string> $urls link por status
      * @return array<int, array{label: string, value: string, tone: string, href: string}>
      */
-    public static function cells(array $counts, string $oldestPending, int $now, array $urls): array
+    public static function cells(array $counts, array $urls): array
     {
         $cells = [];
         foreach (self::STATUSES as $status => $label) {
@@ -135,14 +138,21 @@ final class DashboardQueue
             ];
         }
 
-        $seconds = (int) ($counts['PENDING'] ?? 0) > 0 ? self::secondsSince($oldestPending, $now) : null;
-        $cells[] = [
-            'label' => 'Pendente mais antigo',
-            'value' => $seconds === null ? '—' : 'há ' . self::age($seconds),
-            'tone' => $seconds === null ? 'zero' : '',
-            'href' => '',
-        ];
-
         return $cells;
+    }
+
+    /**
+     * "mais antigo há 12 min" para o PENDING mais antigo; vazio quando não há pendentes.
+     *
+     * @param array<string, int> $counts
+     */
+    public static function oldestPendingText(array $counts, string $oldestPending, int $now): string
+    {
+        if ((int) ($counts['PENDING'] ?? 0) <= 0) {
+            return '';
+        }
+        $seconds = self::secondsSince($oldestPending, $now);
+
+        return $seconds === null ? '' : 'mais antigo há ' . self::age($seconds);
     }
 }

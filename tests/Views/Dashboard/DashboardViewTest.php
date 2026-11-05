@@ -181,16 +181,20 @@ final class DashboardViewTest extends TestCase
         ]);
     }
 
-    public function testQueueCardSitsBetweenHealthAndKpis(): void
+    public function testQueueCardSitsNextToKpisBelowHealth(): void
     {
         $html = DashboardView::render(self::withQueue(['PENDING' => 3, 'ERROR' => 1], '2026-11-05 09:58:00'));
 
         $health = strpos($html, 'class="nfse-health"');
-        $queue = strpos($html, '<h2 class="nfse-card__title" id="nfse-fila-agora">Fila agora</h2>');
-        $kpis = strpos($html, '<div class="nfse-kpis">');
+        $row = strpos($html, '<div class="nfse-kpi-row"><div class="nfse-kpis">');
+        $queue = strpos($html, '<section class="nfse-card nfse-queue" aria-labelledby="nfse-fila-agora">');
+        $calendar = strpos($html, 'Emissões por dia');
+        $this->assertNotFalse($row, 'KpiBar e Fila agora abrem a mesma linha, a KpiBar primeiro');
         $this->assertNotFalse($queue);
-        $this->assertTrue($health < $queue && $queue < $kpis);
-        $this->assertStringContainsString('Estado atual, fora do período · <span>Cron executado há 2 min (WHMCS)</span>', $html);
+        $this->assertTrue($health < $row && $row < $queue && $queue < $calendar);
+        $this->assertStringContainsString('</section></div>', substr($html, $queue, (int) strpos($html, '<div class="nfse-split">') - $queue), 'a linha fecha logo depois do card');
+        $this->assertStringContainsString('<h2 class="nfse-card__title" id="nfse-fila-agora" title="Estado atual, fora do período">Fila agora</h2>', $html);
+        $this->assertStringNotContainsString('<div class="nfse-card__summary">Estado atual', $html);
         $this->assertStringNotContainsString('Cron parado', $html);
     }
 
@@ -200,24 +204,27 @@ final class DashboardViewTest extends TestCase
         $all = '&amp;updated_from=2000-01-01&amp;updated_to=2026-11-05';
 
         $this->assertStringContainsString(
-            '<a class="nfse-kpi nfse-kpi--link" href="addonmodules.php?module=OpenNfse&amp;action=fila&amp;status=PENDING' . $all . '">'
-            . '<div class="nfse-kpi__label">Pendentes</div><div class="nfse-kpi__value">3</div></a>',
+            '<a class="nfse-queue__cell" href="addonmodules.php?module=OpenNfse&amp;action=fila&amp;status=PENDING' . $all . '">'
+            . '<span class="nfse-queue__label">Pendentes</span><span class="nfse-queue__value">3</span></a>',
             $html
         );
-        $this->assertStringContainsString('status=RUNNING' . $all . '"><div class="nfse-kpi__label">Processando</div><div class="nfse-kpi__value nfse-kpi__value--zero">0</div>', $html);
-        $this->assertStringContainsString('status=WAIT_STATUS' . $all . '"><div class="nfse-kpi__label">Aguardando status</div><div class="nfse-kpi__value nfse-kpi__value--zero">0</div>', $html);
-        $this->assertStringContainsString('status=ERROR' . $all . '"><div class="nfse-kpi__label">Com erro</div><div class="nfse-kpi__value nfse-kpi__value--danger">1</div>', $html);
-        $this->assertStringContainsString('<div class="nfse-kpi"><div class="nfse-kpi__label">Pendente mais antigo</div><div class="nfse-kpi__value">há 12 min</div></div>', $html);
-        $this->assertStringContainsString('<a class="nfse-btn" href="addonmodules.php?module=OpenNfse&amp;action=fila">Abrir fila</a>', $html);
+        $this->assertStringContainsString('status=RUNNING' . $all . '"><span class="nfse-queue__label">Processando</span><span class="nfse-queue__value nfse-queue__value--zero">0</span>', $html);
+        $this->assertStringContainsString('status=WAIT_STATUS' . $all . '"><span class="nfse-queue__label">Aguardando status</span><span class="nfse-queue__value nfse-queue__value--zero">0</span>', $html);
+        $this->assertStringContainsString('status=ERROR' . $all . '"><span class="nfse-queue__label">Com erro</span><span class="nfse-queue__value nfse-queue__value--danger">1</span>', $html);
+        $this->assertStringContainsString('<a href="addonmodules.php?module=OpenNfse&amp;action=fila">Abrir fila</a>', $html);
+        $this->assertStringContainsString(
+            '<div class="nfse-queue__foot"><span title="Cron executado há 2 min (WHMCS)">Cron há 2 min</span> · mais antigo há 12 min</div>',
+            $html
+        );
     }
 
     public function testQueueCardZero(): void
     {
         $html = DashboardView::render(self::withQueue([], '2026-11-05 09:58:00'));
 
-        $this->assertSame(4, substr_count($html, 'nfse-kpi__value nfse-kpi__value--zero">0<'));
-        $this->assertStringContainsString('Pendente mais antigo</div><div class="nfse-kpi__value nfse-kpi__value--zero">—</div>', $html);
-        $this->assertStringNotContainsString('nfse-kpi__value--danger', $html);
+        $this->assertSame(4, substr_count($html, 'nfse-queue__value nfse-queue__value--zero">0<'));
+        $this->assertStringNotContainsString('nfse-queue__value--danger', $html);
+        $this->assertStringContainsString('<div class="nfse-queue__foot"><span title="Cron executado há 2 min (WHMCS)">Cron há 2 min</span></div>', $html, 'sem pendentes, o rodapé mostra só o cron');
     }
 
     public function testProcessButtonPostsToFilaProcessNowWithToken(): void
@@ -227,7 +234,7 @@ final class DashboardViewTest extends TestCase
         $this->assertStringContainsString(
             '<form class="nfse-queue__form" method="post" action="addonmodules.php?module=OpenNfse&amp;action=filaProcessNow">'
             . '<input type="hidden" name="token" value="tok&quot;&lt;en&gt;">'
-            . '<button class="nfse-btn nfse-btn--primary" type="submit">Processar fila agora</button></form>',
+            . '<button class="nfse-btn nfse-btn--icon nfse-btn--sm" type="submit" aria-label="Processar fila agora" title="Processar fila agora"><svg',
             $html
         );
         $this->assertStringNotContainsString('tok"<en>', $html, 'o token sai escapado');
@@ -240,10 +247,11 @@ final class DashboardViewTest extends TestCase
         $this->assertStringContainsString('nfse-health__item nfse-health__item--danger', $html);
         $this->assertStringContainsString('<div class="nfse-health__title">Cron parado há 30 min</div>', $html);
         $this->assertStringContainsString('href="addonmodules.php?module=OpenNfse&amp;action=config&amp;tab=processamento">Ver configuração do cron</a>', $html);
-        $this->assertStringContainsString('<span class="nfse-text-danger">Cron executado há 30 min (WHMCS)</span>', $html);
+        $this->assertStringContainsString('<span class="nfse-text-danger" title="Cron executado há 30 min (WHMCS)">Cron há 30 min</span>', $html);
 
         $html = DashboardView::render(self::withQueue([], ''));
         $this->assertStringContainsString('<div class="nfse-health__title">Cron nunca executado</div>', $html);
+        $this->assertStringContainsString('<span class="nfse-text-danger" title="Cron nunca executado">Cron nunca executado</span>', $html);
     }
 
     public function testQueueCardEscapesCronSource(): void
@@ -252,7 +260,7 @@ final class DashboardViewTest extends TestCase
         $data['cron']['source'] = '<b>x</b>';
         $html = DashboardView::render($data);
 
-        $this->assertStringContainsString('Cron executado há 2 min (&lt;b&gt;x&lt;/b&gt;)', $html);
+        $this->assertStringContainsString('title="Cron executado há 2 min (&lt;b&gt;x&lt;/b&gt;)"', $html);
         $this->assertStringNotContainsString('<b>x</b>', $html);
     }
 
@@ -262,6 +270,8 @@ final class DashboardViewTest extends TestCase
 
         $this->assertStringNotContainsString('Fila agora', $html);
         $this->assertStringNotContainsString('Cron', $html);
+        $this->assertStringNotContainsString('nfse-kpi-row', $html, 'sem a fila, a KpiBar ocupa a linha inteira');
+        $this->assertStringContainsString('<div class="nfse-kpis">', $html);
     }
 
     public function testNextArrowDisabledForFutureMonth(): void
