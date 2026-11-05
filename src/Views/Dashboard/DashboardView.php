@@ -34,7 +34,11 @@ final class DashboardView
      *     nao_emitidas?: int,
      *     alertas_abertos?: int,
      *     certificate?: array<string, mixed>,
-     *     customfield_missing?: bool
+     *     customfield_missing?: bool,
+     *     now?: int,
+     *     queue?: array{counts: array<string, int>, oldest_pending: string},
+     *     cron?: array{last_run_at: string, source: string},
+     *     token?: string
      * } $d
      */
     public static function render(array $d): string
@@ -68,9 +72,22 @@ final class DashboardView
             ]
         );
 
+        $now = (int) ($d['now'] ?? time());
+        $cron = null;
+        if (isset($d['cron'])) {
+            $cron = DashboardQueue::cronState((string) ($d['cron']['last_run_at'] ?? ''), (string) ($d['cron']['source'] ?? ''), $now);
+            $cronItem = DashboardQueue::cronHealthItem($cron, self::url(['action' => 'config', 'tab' => 'processamento']));
+            if ($cronItem !== null) {
+                $health[] = $cronItem;
+            }
+        }
+
         $html = '<div class="nfse-ui nfse-page">';
         $html .= self::header($d, $period, $today);
         $html .= self::health($health);
+        if (isset($d['queue'])) {
+            $html .= self::queue($d['queue'], $cron, $now, $today, (string) ($d['token'] ?? ''));
+        }
         $html .= self::kpis($metrics);
         $html .= '<div class="nfse-split">';
         $html .= self::calendar($series, $start, $end, $today, $dia, $feedFilter, $periodParams);
@@ -185,6 +202,51 @@ final class DashboardView
         }
 
         return $html . '</div>';
+    }
+
+    /**
+     * Card "Fila agora": estado atual, fora do filtro de período.
+     *
+     * @param array{counts?: array<string, int>, oldest_pending?: string} $queue
+     * @param array{ran: bool, seconds: int, stale: bool, text: string}|null $cron
+     */
+    private static function queue(array $queue, ?array $cron, int $now, string $today, string $token): string
+    {
+        // A Fila filtra por updated_at e, sem datas, mostra só os últimos 7 dias: o link abre tudo.
+        $allTime = ['updated_from' => '2000-01-01', 'updated_to' => $today];
+        $urls = [];
+        foreach (array_keys(DashboardQueue::STATUSES) as $status) {
+            $urls[$status] = self::url(['action' => 'fila', 'status' => $status] + $allTime);
+        }
+        $cells = DashboardQueue::cells($queue['counts'] ?? [], (string) ($queue['oldest_pending'] ?? ''), $now, $urls);
+
+        $html = '<section class="nfse-card nfse-card--clip" aria-labelledby="nfse-fila-agora">';
+        $html .= '<div class="nfse-card__head"><div><h2 class="nfse-card__title" id="nfse-fila-agora">Fila agora</h2>';
+        $html .= '<div class="nfse-card__summary">Estado atual, fora do período';
+        if ($cron !== null) {
+            $html .= ' · <span' . ($cron['stale'] ? ' class="nfse-text-danger"' : '') . '>' . self::h($cron['text']) . '</span>';
+        }
+        $html .= '</div></div>';
+        $html .= '<div class="nfse-queue__actions">';
+        $html .= '<a class="nfse-btn" href="' . self::h(self::url(['action' => 'fila'])) . '">Abrir fila</a>';
+        $html .= '<form class="nfse-queue__form" method="post" action="addonmodules.php?module=OpenNfse&amp;action=filaProcessNow">';
+        if ($token !== '') {
+            $html .= self::hidden(['token' => $token]);
+        }
+        $html .= '<button class="nfse-btn nfse-btn--primary" type="submit">Processar fila agora</button></form>';
+        $html .= '</div></div>';
+
+        $html .= '<div class="nfse-kpis nfse-kpis--flush">';
+        foreach ($cells as $cell) {
+            $class = 'nfse-kpi__value' . ($cell['tone'] !== '' ? ' nfse-kpi__value--' . $cell['tone'] : '');
+            $inner = '<div class="nfse-kpi__label">' . self::h($cell['label']) . '</div>'
+                . '<div class="' . $class . '">' . self::h($cell['value']) . '</div>';
+            $html .= $cell['href'] !== ''
+                ? '<a class="nfse-kpi nfse-kpi--link" href="' . self::h($cell['href']) . '">' . $inner . '</a>'
+                : '<div class="nfse-kpi">' . $inner . '</div>';
+        }
+
+        return $html . '</div></section>';
     }
 
     /**

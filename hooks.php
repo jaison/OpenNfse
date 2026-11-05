@@ -25,7 +25,7 @@ add_hook('AdminAreaHeadOutput', 1, static function (array $vars) {
     if ($base === '') {
         return '';
     }
-    return '<link rel="stylesheet" type="text/css" href="' . htmlspecialchars($base . '/modules/addons/OpenNfse/assets/nfse-ui.css', ENT_QUOTES, 'UTF-8') . '?v=16" />';
+    return '<link rel="stylesheet" type="text/css" href="' . htmlspecialchars($base . '/modules/addons/OpenNfse/assets/nfse-ui.css', ENT_QUOTES, 'UTF-8') . '?v=17" />';
 });
 
 add_hook('InvoicePaid', 1, static function (array $vars) {
@@ -111,7 +111,7 @@ add_hook('ClientAreaHeadOutput', 1, static function (array $vars) {
     if ($base === '') {
         return '';
     }
-    return '<link rel="stylesheet" type="text/css" href="' . htmlspecialchars($base . '/modules/addons/OpenNfse/assets/nfse-ui.css', ENT_QUOTES, 'UTF-8') . '?v=16" />';
+    return '<link rel="stylesheet" type="text/css" href="' . htmlspecialchars($base . '/modules/addons/OpenNfse/assets/nfse-ui.css', ENT_QUOTES, 'UTF-8') . '?v=17" />';
 });
 
 add_hook('ClientAreaPrimaryNavbar', 1, static function ($primaryNavbar) {

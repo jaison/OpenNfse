@@ -53,9 +53,10 @@ final class InvoiceHistoryServiceTest extends TestCase
         (new InvoiceHistoryService())->appendCancellation(100, 'Duplicada', 'CHAVEORFA');
 
         $this->assertStringEndsWith(
-            '[NFS-e] NFS-e órfã cancelada com sucesso. Chave: CHAVEORFA. Motivo: Duplicada',
+            '[NFS-e] NFS-e cancelada com sucesso. Chave: CHAVEORFA. Motivo: Duplicada',
             $this->lastNotes()
         );
+        $this->assertStringNotContainsString('órfã', $this->lastNotes(), 'o cliente vê a linha; o termo interno não aparece');
     }
 
     public function testExistingNotesAreKept(): void

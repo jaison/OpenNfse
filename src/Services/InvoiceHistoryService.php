@@ -35,7 +35,7 @@ final class InvoiceHistoryService
     public function appendCancellation(int $invoiceId, string $motivo, ?string $chaveOrfa = null): void
     {
         $message = $chaveOrfa !== null && trim($chaveOrfa) !== ''
-            ? 'NFS-e órfã cancelada com sucesso. Chave: ' . trim($chaveOrfa) . '. Motivo: ' . $motivo
+            ? 'NFS-e cancelada com sucesso. Chave: ' . trim($chaveOrfa) . '. Motivo: ' . $motivo
             : 'NFS-e cancelada com sucesso. Motivo: ' . $motivo;
 
         $this->append($invoiceId, $message);

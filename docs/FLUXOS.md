@@ -232,7 +232,7 @@ Ao escolher o gatilho `gerada`, ou com o custom field configurado, a tela mostra
 O WHMCS mostra o campo `tblinvoices.notes` ao cliente, como "Observações" na fatura e no PDF. Por isso o addon (`InvoiceHistoryService`) acrescenta nele só duas linhas:
 
 - emissão: "NFS-e emitida com sucesso. Número: … Chave: …", gravada pelo `emitir()` ou pela [consulta de status](#consulta-de-status) que leva a nota para `EMITIDA` (por exemplo, `PROCESSANDO` depois de um timeout);
-- cancelamento: "NFS-e cancelada com sucesso. Motivo: …" ou, no [cancelamento de XML órfão](#cancelamento-de-xml-órfão), "NFS-e órfã cancelada com sucesso. Chave: … Motivo: …".
+- cancelamento: "NFS-e cancelada com sucesso. Motivo: …" ou, no [cancelamento de XML órfão](#cancelamento-de-xml-órfão), "NFS-e cancelada com sucesso. Chave: … Motivo: …" (com a chave da nota cancelada, que o cliente pode conferir no Portal Nacional).
 
 Consultas de status, envios e falhas de e-mail, alertas e ações do admin (reemissão) ficam só no log do addon (`mod_opennfse_logs`). As linhas já gravadas nas observações por versões anteriores não são alteradas.
 
@@ -640,7 +640,14 @@ Em **Addons > OpenNfse > Dashboard** (`AdminController::showDashboard()`, HTML e
   - pendentes → **Fila**;
   - aguardando status → **Fila** com `status=WAIT_STATUS`.
 
-  Os contadores não repetem a mesma nota: erros = `com_erro_periodo` − `rejeitadas` e pendentes = `pendentes` − `aguardando_status` (as métricas de `dashboardOverview` já incluem umas nas outras). Faturas pagas sem nota têm item próprio, com link para a auditoria. Também aparecem o certificado vencido ou com 30 dias ou menos, o certificado não configurado ou ilegível (aviso com link para **Configurações > Ambiente**), o custom field apagado e os alertas abertos.
+  Os contadores não repetem a mesma nota: erros = `com_erro_periodo` − `rejeitadas` e pendentes = `pendentes` − `aguardando_status` (as métricas de `dashboardOverview` já incluem umas nas outras). Faturas pagas sem nota têm item próprio, com link para a auditoria. Também aparecem o certificado vencido ou com 30 dias ou menos, o certificado não configurado ou ilegível (aviso com link para **Configurações > Ambiente**), o custom field apagado, os alertas abertos e o cron parado: item crítico "Cron parado há X min" quando a última execução tem mais de 10 minutos (`DashboardQueue::CRON_STALE_MINUTES`), ou "Cron nunca executado", com link para **Configurações > Processamento Automático**.
+- **Fila agora**: o que está acontecendo agora, fora do filtro de período. Mostra:
+  - quantos itens da fila estão em Pendentes (`PENDING`), Processando (`RUNNING`), Aguardando status (`WAIT_STATUS`) e Com erro (`ERROR`, o erro ainda não resolvido; o resolvido vira `RESOLVIDO`). Cada número abre a **Fila** filtrada pelo status, desde 01/01/2000, porque a Fila sem datas mostra só os últimos 7 dias;
+  - há quanto tempo está esperando o item pendente mais antigo ("há 12 min", "há 3 h", "há 2 dias"; "—" sem pendentes);
+  - quando o cron rodou pela última vez (`cron_last_run_at` e `cron_last_source`, gravados pelo `CronService`): "Cron executado há 2 min (WHMCS)" ou "(CLI)" para o `cron.php`;
+  - **Abrir fila** e **Processar fila agora**, que envia o mesmo POST da Fila (`filaProcessNow`, com o token) e volta para a Fila.
+
+  Zero aparece esmaecido; Com erro acima de zero aparece em vermelho. Os dados vêm de uma consulta só (`QueueRepository::currentSnapshot`: `status`, `COUNT(*)` e `MIN(created_at)` agrupados por status).
 - **Indicadores**: emitidas, valor emitido, canceladas, taxa de sucesso, processadas e XMLs armazenados.
 - **Emissões por dia**: calendário de calor do período, em semanas de domingo a sábado, com marcadores de canceladas e erros por dia. Faixas fixas: 0–7, 8–13, 14–18, 19–23 e 24 ou mais. Ao lado, a média por dia da semana. Média e médias por dia da semana contam só os dias até hoje.
 - **Linha do tempo**: uma faixa por série (Emitidas, Canceladas, Erros (incl. resolvidos)), cada uma com escala própria e o mesmo eixo de datas. Os dias que ainda não chegaram ficam sem barra e com a data esmaecida, como no calendário.
@@ -657,7 +664,7 @@ Parâmetros da URL (`action=dashboard`):
 
 A seta para trás vai ao mês anterior; a seta para frente, ao mês seguinte. Num período que não é um mês inteiro (Hoje, 7 dias, personalizado), a seta para trás vai ao mês antes do mês da data final, e a seta para frente, ao mês inteiro da data final. A seta para frente fica desativada quando o mês ainda não começou.
 
-A tela não faz consulta por dia: usa `dashboardOverview`, `dashboardDailySeries` e as três listas recentes (`dashboardRecentEmitidas`, `dashboardRecentCancelamentos`, `dashboardRecentIssues`). Com `dia`, as listas recentes rodam só nesse dia, e os contadores dos filtros vêm da série diária.
+A tela não faz consulta por dia: usa `dashboardOverview`, `dashboardDailySeries`, as três listas recentes (`dashboardRecentEmitidas`, `dashboardRecentCancelamentos`, `dashboardRecentIssues`) e, para a Fila agora, `QueueRepository::currentSnapshot`. Com `dia`, as listas recentes rodam só nesse dia, e os contadores dos filtros vêm da série diária.
 
 ## Relatórios
 
