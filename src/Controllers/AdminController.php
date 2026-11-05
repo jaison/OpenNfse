@@ -407,6 +407,13 @@ final class AdminController
             'alertas_abertos' => $this->alertasController->countOpen(),
             'certificate' => $this->configController->evaluateCertificateFromConfig($config),
             'customfield_missing' => EmissionPolicyContextLoader::configuredCustomFieldMissing($config),
+            'now' => time(),
+            'queue' => (new QueueRepository())->currentSnapshot(),
+            'cron' => [
+                'last_run_at' => (string) ($config['cron_last_run_at'] ?? ''),
+                'source' => (string) ($config['cron_last_source'] ?? ''),
+            ],
+            'token' => (new TokenService())->token(),
         ]);
 
         Module::ui()->renderHeader('Dashboard - OpenNfse');
