@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenNfse\Repositories;
 
+use OpenNfse\Services\FiscalDocumentReportService;
 use WHMCS\Database\Capsule;
 
 final class ReportRepository
@@ -58,6 +59,136 @@ final class ReportRepository
             $out[] = (array) $r;
         }
         return $out;
+    }
+
+    /**
+     * Cancelamentos do período (data do cancelamento): registros CANCELAMENTO do histórico fiscal mais as
+     * linhas atuais com cancelado_em. A nota cancelada e depois substituída por reemissão só está no histórico.
+     */
+    public function listCancelamentos(array $filters, int $limit): array
+    {
+        $limit = max(1, min(5000, $limit));
+        $filters['status'] = '';
+        $filters['date_field'] = 'cancelado';
+
+        $history = Capsule::table('mod_opennfse_notas_history as h')
+            ->join('tblinvoices as i', 'i.id', '=', 'h.invoiceid')
+            ->join('tblclients as c', 'c.id', '=', 'h.userid')
+            ->leftJoin('tblcurrencies as cur', 'cur.id', '=', 'c.currency')
+            ->select([
+                'h.invoiceid',
+                'h.userid',
+                'h.numero_nf',
+                Capsule::raw("'CANCELADA' as status"),
+                'h.emitida_em',
+                'h.cancelado_em',
+                'h.chave_acesso',
+                'h.xml_path',
+                'h.cancel_xml_path',
+                'i.total as invoice_total',
+                'c.currency as invoice_currency_id',
+                'c.companyname',
+                'c.firstname',
+                'c.lastname',
+                'c.country',
+                'cur.prefix as currency_prefix',
+                'cur.suffix as currency_suffix',
+            ])
+            ->where('h.tipo_registro', 'CANCELAMENTO')
+            ->whereNotNull('h.cancelado_em');
+
+        $invoiceId = trim((string) ($filters['invoiceid'] ?? ''));
+        if ($invoiceId !== '' && ctype_digit($invoiceId)) {
+            $history->where('h.invoiceid', (int) $invoiceId);
+        }
+        $this->applyDateFilter($history, (string) ($filters['data_inicial'] ?? ''), (string) ($filters['data_final'] ?? ''), 'h.cancelado_em');
+        $this->applyClientFilter($history, (string) ($filters['cliente'] ?? ''), 'c');
+
+        $historyRows = [];
+        foreach ($history->orderBy('h.cancelado_em', 'desc')->orderBy('h.id', 'desc')->limit($limit)->get() as $r) {
+            $historyRows[] = (array) $r;
+        }
+
+        return (new FiscalDocumentReportService())->mergeCancelamentos($historyRows, $this->listNotas($filters, $limit), $limit);
+    }
+
+    /**
+     * Registros EMISSAO e CANCELAMENTO do histórico fiscal para o ZIP por competência, na mesma janela de datas
+     * da tabela atual (data de referência da emissão). Inclui o CANCELAMENTO das chaves emitidas na janela,
+     * mesmo se o registro de cancelamento cair fora dela.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function listHistoryDocuments(array $filters, int $limit): array
+    {
+        $limit = max(1, min(20000, $limit));
+
+        $query = $this->historyDocumentsQuery($filters)
+            ->whereIn('h.tipo_registro', ['EMISSAO', 'CANCELAMENTO']);
+        $this->applyDateFilter($query, (string) ($filters['data_inicial'] ?? ''), (string) ($filters['data_final'] ?? ''), $this->notaReferenceDateExpression('h'));
+
+        $rows = [];
+        $ids = [];
+        $chavesSemCancelamento = [];
+        foreach ($query->orderBy('h.id', 'desc')->limit($limit)->get() as $r) {
+            $row = (array) $r;
+            $rows[] = $row;
+            $ids[(int) ($row['id'] ?? 0)] = true;
+            $chave = trim((string) ($row['chave_acesso'] ?? ''));
+            if ($chave === '') {
+                continue;
+            }
+            if (($row['tipo_registro'] ?? '') === 'CANCELAMENTO') {
+                $chavesSemCancelamento[$chave] = false;
+            } elseif (!isset($chavesSemCancelamento[$chave])) {
+                $chavesSemCancelamento[$chave] = true;
+            }
+        }
+
+        $chaves = array_keys(array_filter($chavesSemCancelamento));
+        foreach (array_chunk($chaves, 500) as $chunk) {
+            $extra = $this->historyDocumentsQuery([])
+                ->where('h.tipo_registro', 'CANCELAMENTO')
+                ->whereIn('h.chave_acesso', $chunk)
+                ->orderBy('h.id', 'desc')
+                ->get();
+            foreach ($extra as $r) {
+                $row = (array) $r;
+                if (!isset($ids[(int) ($row['id'] ?? 0)])) {
+                    $rows[] = $row;
+                }
+            }
+        }
+
+        return $rows;
+    }
+
+    private function historyDocumentsQuery(array $filters)
+    {
+        $query = Capsule::table('mod_opennfse_notas_history as h')
+            ->join('tblinvoices as i', 'i.id', '=', 'h.invoiceid')
+            ->join('tblclients as c', 'c.id', '=', 'h.userid')
+            ->select([
+                'h.id',
+                'h.invoiceid',
+                'h.userid',
+                'h.tipo_registro',
+                'h.numero_nf',
+                'h.chave_acesso',
+                'h.xml_path',
+                'h.cancel_xml_path',
+                'h.emitida_em',
+                'h.cancelado_em',
+                'c.country',
+            ]);
+
+        $invoiceId = trim((string) ($filters['invoiceid'] ?? ''));
+        if ($invoiceId !== '' && ctype_digit($invoiceId)) {
+            $query->where('h.invoiceid', (int) $invoiceId);
+        }
+        $this->applyClientFilter($query, (string) ($filters['cliente'] ?? ''), 'c');
+
+        return $query;
     }
 
     public function summaryNotas(array $filters): array
@@ -181,18 +312,10 @@ final class ReportRepository
             }
         }
 
-        foreach (Capsule::table('mod_opennfse_notas as n')
-            ->select([
-                Capsule::raw('DATE(n.cancelado_em) as dia'),
-                Capsule::raw('COUNT(*) as total'),
-            ])
-            ->whereNotNull('n.cancelado_em')
-            ->whereBetween('n.cancelado_em', [$start, $end])
-            ->groupBy(Capsule::raw('DATE(n.cancelado_em)'))
-            ->get() as $row) {
-            $dia = (string) ($row->dia ?? '');
+        foreach ($this->listCancelamentos(['data_inicial' => $startDate, 'data_final' => $endDate], 5000) as $row) {
+            $dia = substr((string) ($row['cancelado_em'] ?? ''), 0, 10);
             if (isset($series[$dia])) {
-                $series[$dia]['canceladas'] = (int) ($row->total ?? 0);
+                $series[$dia]['canceladas']++;
             }
         }
 
@@ -245,10 +368,7 @@ final class ReportRepository
             ->whereBetween('n.emitida_em', [$start, $end])
             ->count();
 
-        $canceladas = (int) Capsule::table('mod_opennfse_notas as n')
-            ->whereNotNull('n.cancelado_em')
-            ->whereBetween('n.cancelado_em', [$start, $end])
-            ->count();
+        $canceladas = count($this->listCancelamentos(['data_inicial' => $startDate, 'data_final' => $endDate], 5000));
 
         $rejeitadas = (int) Capsule::table('mod_opennfse_notas as n')
             ->where('n.status', 'REJEITADA')
@@ -467,26 +587,18 @@ final class ReportRepository
 
     public function dashboardRecentCancelamentos(string $fromDate = '', string $toDate = '', int $limit = 5): array
     {
-        [$startDate, $endDate, $start, $end] = $this->normalizeDashboardRange($fromDate, $toDate);
-        unset($startDate, $endDate);
+        [$startDate, $endDate] = $this->normalizeDashboardRange($fromDate, $toDate);
 
         $out = [];
-        foreach (Capsule::table('mod_opennfse_notas as n')
-            ->join('tblclients as c', 'c.id', '=', 'n.userid')
-            ->select([
-                'n.invoiceid',
-                'n.numero_nf',
-                'n.cancelado_em as data',
-                'c.companyname',
-                'c.firstname',
-                'c.lastname',
-            ])
-            ->whereNotNull('n.cancelado_em')
-            ->whereBetween('n.cancelado_em', [$start, $end])
-            ->orderBy('n.cancelado_em', 'desc')
-            ->limit(max(1, min(20, $limit)))
-            ->get() as $r) {
-            $out[] = (array) $r;
+        foreach ($this->listCancelamentos(['data_inicial' => $startDate, 'data_final' => $endDate], max(1, min(20, $limit))) as $r) {
+            $out[] = [
+                'invoiceid' => $r['invoiceid'] ?? null,
+                'numero_nf' => $r['numero_nf'] ?? null,
+                'data' => $r['cancelado_em'] ?? null,
+                'companyname' => $r['companyname'] ?? null,
+                'firstname' => $r['firstname'] ?? null,
+                'lastname' => $r['lastname'] ?? null,
+            ];
         }
 
         return $out;
