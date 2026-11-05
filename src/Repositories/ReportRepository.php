@@ -125,6 +125,8 @@ final class ReportRepository
 
         $query = $this->historyDocumentsQuery($filters)
             ->leftJoin('mod_opennfse_notas as nk', 'nk.chave_acesso', '=', 'h.chave_acesso')
+            // Só para registro sem chave. Se a fatura foi reemitida, a linha de nota_id pode já ser a da
+            // nota nova: a data dela é aproximada, mas ainda melhor que h.created_at.
             ->leftJoin('mod_opennfse_notas as nid', static function ($join): void {
                 $join->on('nid.id', '=', 'h.nota_id')->whereNull('h.chave_acesso');
             })
@@ -245,6 +247,8 @@ final class ReportRepository
      * Data de referência da emissão no histórico. Sem emitida_em e sem competencia, usa a da linha atual
      * da mesma chave (ou da mesma nota_id, quando o registro não tem chave); h.created_at, que é a data
      * de gravação no histórico, fica só como último recurso.
+     * A linha de nota_id (nid) pode ser a da nota nova, se a fatura foi reemitida: é uma data aproximada,
+     * melhor que h.created_at.
      */
     private function historyReferenceDateExpression(): string
     {
