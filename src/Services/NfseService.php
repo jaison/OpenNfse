@@ -240,6 +240,7 @@ final class NfseService
             }
             $tomadorCpfCnpj = $customerRepo->getCpfCnpjFromCustomField($userId, $tomadorFieldId);
         }
+        $client = (new TomadorBairroService())->withCustomFieldBairro($config, $client, $customerRepo);
 
         if ($reuseIdDps !== '') {
             $numeroDps = $this->extractDpsSequenceNumber($reuseIdDps);

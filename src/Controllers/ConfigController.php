@@ -25,6 +25,7 @@ use OpenNfse\Services\QueueErrorClassifierService;
 use OpenNfse\Services\QueueService;
 use OpenNfse\Services\StorageService;
 use OpenNfse\Services\TokenService;
+use OpenNfse\Services\TomadorBairroService;
 use OpenNfse\Services\UpdateCheckService;
 use WHMCS\Database\Capsule;
 use OpenNfse\Controllers\Support\AdminHelpersTrait;
@@ -491,8 +492,22 @@ final class ConfigController
         $this->renderConfigFormTableStart();
         $this->renderTextRow('tomador_codigo_ibge_padrao', 'Código IBGE do Tomador (padrão)', $config['tomador_codigo_ibge_padrao'] ?? ($config['codigo_ibge'] ?? ''));
         $this->renderTextRow('tomador_numero_padrao', 'Número do Tomador (padrão)', $config['tomador_numero_padrao'] ?? 'S/N');
+        $this->renderSelectRow('tomador_bairro_origem', 'Origem do Bairro do Tomador', TomadorBairroService::origens(), TomadorBairroService::origem($config));
+        $this->renderCustomFieldSelectRow('tomador_bairro_customfield_id', 'Custom Field (Bairro do Tomador)', (string) ($config['tomador_bairro_customfield_id'] ?? ''));
         $this->renderTextRow('tomador_bairro_padrao', 'Bairro do Tomador (padrão)', $config['tomador_bairro_padrao'] ?? '');
         $this->renderConfigFormTableEnd();
+        echo '<script>(function(){'
+            . 'var origem=document.querySelector(\'select[name="tomador_bairro_origem"]\');'
+            . 'var cf=document.querySelector(\'select[name="tomador_bairro_customfield_id"]\');'
+            . 'var row=cf?cf.closest("tr"):null;'
+            . 'function sync(){'
+            . 'var on=!!origem&&origem.value==="' . TomadorBairroService::ORIGEM_CUSTOMFIELD . '";'
+            . 'if(row){row.style.display=on?"":"none";}'
+            . 'if(cf){cf.disabled=!on;}'
+            . '}'
+            . 'if(origem){origem.addEventListener("change",sync);}'
+            . 'sync();'
+            . '})();</script>';
         if (is_array($ibgeCatalogStatus) && is_array($configuredMunicipioStatus) && is_array($viaCepStatus)) {
             $catalogTone = match ((string) ($ibgeCatalogStatus['status'] ?? '')) {
                 'consistent' => ['#ecfdf3', '#16a34a', '#166534'],
@@ -902,6 +917,9 @@ $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '
         $tomadorCodigoIbgePadrao = (string) ($_POST['tomador_codigo_ibge_padrao'] ?? '');
         $tomadorNumeroPadrao = (string) ($_POST['tomador_numero_padrao'] ?? 'S/N');
         $tomadorBairroPadrao = (string) ($_POST['tomador_bairro_padrao'] ?? '');
+        $tomadorBairroOrigem = strtolower(trim((string) ($_POST['tomador_bairro_origem'] ?? TomadorBairroService::ORIGEM_ADDRESS2)));
+        // O select fica desabilitado (e não é enviado) fora do modo custom field: mantém o valor salvo.
+        $tomadorBairroFieldId = trim((string) ($_POST['tomador_bairro_customfield_id'] ?? (string) ($existingConfig['tomador_bairro_customfield_id'] ?? '')));
         $clientAreaNoticeEnabled = (string) ($_POST['client_area_notice_enabled'] ?? '1');
         $clientAreaNoticeType = trim((string) ($_POST['client_area_notice_type'] ?? 'warning'));
         $clientAreaNoticeMessage = trim((string) ($_POST['client_area_notice_message'] ?? ''));
@@ -1073,6 +1091,10 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         if (trim($tomadorNumeroPadrao) === '') {
             $errors[] = 'Informe o número padrão do tomador (ex.: S/N).';
         }
+        $knownClientFieldIds = array_map(static fn ($f): int => (int) ($f['id'] ?? 0), $this->listClientCustomFields());
+        foreach (TomadorBairroService::validateConfig($tomadorBairroOrigem, $tomadorBairroFieldId, $knownClientFieldIds) as $bairroError) {
+            $errors[] = $bairroError;
+        }
         if ($tomadorCodigoIbgePadrao === '') {
             $tomadorCodigoIbgePadrao = (string) $codigoIbge;
         }
@@ -1148,6 +1170,8 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
             'tomador_codigo_ibge_padrao' => $tomadorCodigoIbgePadrao,
             'tomador_numero_padrao' => $tomadorNumeroPadrao,
             'tomador_bairro_padrao' => $tomadorBairroPadrao,
+            'tomador_bairro_origem' => $tomadorBairroOrigem,
+            'tomador_bairro_customfield_id' => ctype_digit($tomadorBairroFieldId) && (int) $tomadorBairroFieldId > 0 ? (int) $tomadorBairroFieldId : null,
         ]);
 
         $activeGateways = (new WhmcsPaymentGatewayRepository())->listActive();

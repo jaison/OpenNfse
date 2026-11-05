@@ -7,6 +7,7 @@ namespace OpenNfse\Services;
 use OpenNfse\Exceptions\NfseModuleException;
 use OpenNfse\Exceptions\NfseValidationException;
 use OpenNfse\Helpers\AddonVersion;
+use OpenNfse\Helpers\EnderecoParser;
 use WHMCS\Database\Capsule;
 
 final class DpsBuilderService
@@ -154,10 +155,7 @@ final class DpsBuilderService
 
             $cep = preg_replace('/\D/', '', (string) ($client['postcode'] ?? ''));
             if ($cep) {
-                $logradouro = trim((string) ($client['address1'] ?? ''));
-                $complemento = trim((string) ($client['address2'] ?? ''));
-                $numero = $this->inferNumeroEndereco($logradouro) ?? (string) ($config['tomador_numero_padrao'] ?? 'S/N');
-                $bairro = (string) ($config['tomador_bairro_padrao'] ?? '');
+                [$logradouro, $numero, $complemento, $bairro] = $this->montarEnderecoTomador($client, $config);
                 $tomadorCodigoIbge = null;
                 $cidade = (string) ($client['city'] ?? '');
                 $uf = (string) ($client['state'] ?? '');
@@ -180,13 +178,10 @@ final class DpsBuilderService
         } else {
             $toma['cNaoNIF'] = '2';
 
-            $logradouro = trim((string) ($client['address1'] ?? ''));
-            $complemento = trim((string) ($client['address2'] ?? ''));
+            [$logradouro, $numero, $complemento, $bairro] = $this->montarEnderecoTomador($client, $config);
             $cidade = trim((string) ($client['city'] ?? ''));
             $estado = trim((string) ($client['state'] ?? ''));
             $endPost = trim((string) ($client['postcode'] ?? ''));
-            $numero = $this->inferNumeroEndereco($logradouro) ?? (string) ($config['tomador_numero_padrao'] ?? 'S/N');
-            $bairro = (string) ($config['tomador_bairro_padrao'] ?? '');
 
             if ($logradouro === '') {
                 throw new NfseValidationException('Logradouro do tomador não informado.');
@@ -536,17 +531,37 @@ final class DpsBuilderService
         return trim($value);
     }
 
-    private function inferNumeroEndereco(string $logradouro): ?string
+    /**
+     * Endereço 2 é o bairro (padrão) ou o complemento, quando o bairro vem de um custom field;
+     * o texto depois do número no address1 vai sempre para o complemento.
+     *
+     * @return array{0: string, 1: string, 2: string, 3: string} [xLgr, nro, xCpl, xBairro]
+     */
+    private function montarEnderecoTomador(array $client, array $config): array
     {
-        if ($logradouro === '') {
-            return null;
+        [$logradouro, $numero, $resto] = EnderecoParser::separarNumero((string) ($client['address1'] ?? ''));
+        $numero ??= (string) ($config['tomador_numero_padrao'] ?? 'S/N');
+        $address2 = trim((string) ($client['address2'] ?? ''));
+
+        if (TomadorBairroService::origem($config) === TomadorBairroService::ORIGEM_CUSTOMFIELD) {
+            $bairro = trim((string) ($client[TomadorBairroService::CLIENT_KEY] ?? ''));
+            $partesComplemento = [$resto, $address2];
+        } else {
+            $bairro = $address2;
+            $partesComplemento = [$resto];
+        }
+        if ($bairro === '') {
+            $bairro = trim((string) ($config['tomador_bairro_padrao'] ?? ''));
         }
 
-        if (preg_match('/\\b(\\d{1,6}[A-Za-z]?)\\b/u', $logradouro, $m)) {
-            return (string) $m[1];
-        }
+        $complemento = implode(' - ', array_filter($partesComplemento, static fn (string $parte): bool => $parte !== ''));
 
-        return null;
+        return [
+            mb_substr($logradouro, 0, 255),
+            mb_substr($numero, 0, 60),
+            trim(mb_substr($complemento, 0, 156)),
+            trim(mb_substr($bairro, 0, 60)),
+        ];
     }
 
     private function assertSdkAvailable(): void

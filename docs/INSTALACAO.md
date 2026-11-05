@@ -2,7 +2,7 @@
 
 ## Requisitos
 
-- WHMCS `8.13.x` ou `9.1` e PHP `8.1+`. A v0.1.26 foi validada no WHMCS `9.1`.
+- WHMCS `8.13.x` ou `9.1` e PHP `8.1+`. A v0.1.27 foi validada no WHMCS `9.1`.
 - Banco recomendado: MySQL `5.7.5+` ou MariaDB `10.0.2+`. Nessas versões a sessão pode manter vários `GET_LOCK` ao mesmo tempo, e o módulo usa o lock do cron junto com o lock por fatura. Em versões anteriores o módulo continua funcionando, mas, dentro do processamento da fila, abre mão do lock por fatura e conta só com o lock do cron (ver [Locks em FLUXOS.md](FLUXOS.md#locks)).
 - Extensões PHP: `openssl` (certificado e assinatura), `curl` (chamadas à API Nacional, sincronização IBGE e checagem de atualização), `dom`, `simplexml`, `mbstring`, `zlib` (compactação da DPS e leitura dos documentos da API) e `zip` (exportação ZIP de XMLs).
 - Pacote de certificados raiz (CAs) atualizado no servidor (`ca-certificates`, ou o bundle apontado por `curl.cainfo` no `php.ini`). As chamadas à API Nacional verificam o certificado TLS do servidor.
@@ -38,7 +38,7 @@ Comece pelo ambiente de **homologação** e valide as notas com a contabilidade 
    - Em **Leiaute da DPS**, mantenha **Automático**: ele segue a NT 009 (homologação já usa o leiaute novo; produção passa a usá-lo em 01/12/2026 00:00, horário de Brasília). A tela mostra o leiaute ativo. Só force **Pré-NT 009** ou **NT 009** se a SEFIN rejeitar a DPS com E1235 por leiaute; a mensagem de erro da nota indica o ajuste. Detalhes em [LEVANTAMENTO_API_NACIONAL.md](LEVANTAMENTO_API_NACIONAL.md#leiaute-da-dps-nt-009).
 2. **Prestador**: CNPJ, inscrição municipal (e se ela deve ser informada na DPS), código IBGE do município, regime tributário (o regime especial aceita `0` a `6` ou `9`) e dados de contato e endereço.
 3. **Tributação**: código de serviço (`cTribNac`), NBS padrão e alíquota de ISS. Os pares Serviço/NBS podem ser cadastrados no catálogo e mapeados por grupo de produto do WHMCS (ver [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_WHMCS.md)).
-4. **Tomador**: ID do custom field de cliente que guarda o CPF/CNPJ, número e bairro padrão e código IBGE padrão para quando o município não for encontrado.
+4. **Tomador**: ID do custom field de cliente que guarda o CPF/CNPJ, origem do bairro (Endereço 2 do cliente, o padrão, ou um custom field de cliente), número e bairro padrão e código IBGE padrão para quando o município não for encontrado.
 5. **Série DPS** e, se necessário, ajuste dos sequenciais em **Sequenciais**.
 6. **Gateways**: marque os gateways cujas faturas podem gerar NFS-e.
 7. **Processamento automático**: fila, emissão automática ao pagar, intervalo de consulta, faturas `Unpaid` e envio automático de e-mail. O efeito de cada opção está em [FLUXOS.md](FLUXOS.md#configurações-que-controlam-os-fluxos).
