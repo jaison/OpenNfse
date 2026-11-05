@@ -27,6 +27,7 @@ use OpenNfse\Services\StorageService;
 use OpenNfse\Services\TokenService;
 use OpenNfse\Services\TomadorBairroService;
 use OpenNfse\Services\UpdateCheckService;
+use OpenNfse\Views\Ui;
 use WHMCS\Database\Capsule;
 use OpenNfse\Controllers\Support\AdminHelpersTrait;
 
@@ -58,8 +59,9 @@ final class ConfigController
 
         Module::ui()->renderHeader('Configuração - OpenNfse');
         $this->renderTabs('config');
+        echo '<div class="nfse-ui nfse-page nfse-cfg" id="nfse-config">';
         if ((string) ($_GET['saved'] ?? '') === '1') {
-            echo '<div class="successbox">Configuração salva.</div>';
+            echo Ui::callout('ok', 'Configuração salva.');
         }
 
         $activeTab = (string) ($_GET['tab'] ?? 'ambiente');
@@ -132,27 +134,26 @@ final class ConfigController
         if (!isset($allowedTabs[$activeTab])) {
             $activeTab = 'ambiente';
         }
+        // Seções com formulário próprio: a barra "Salvar alterações" do formulário principal fica oculta nelas.
+        $standaloneTabs = ['codigos', 'sequenciais', 'servicosnbs', 'danfse'];
 
-        $h = static function ($value): string {
-            return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-        };
         $msg = (string) ($_GET['msg'] ?? '');
         if ($msg === 'ibge_sync_ok') {
             $total = (int) ($_GET['total'] ?? 0);
-            echo '<div class="successbox">Base de municípios IBGE sincronizada com sucesso' . ($total > 0 ? ' (' . $h((string) $total) . ' registros).' : '.') . '</div>';
+            echo Ui::callout('ok', 'Base de municípios IBGE sincronizada com sucesso' . ($total > 0 ? ' (' . $total . ' registros).' : '.'));
         } elseif ($msg === 'ibge_sync_error') {
-            echo '<div class="errorbox">Não foi possível sincronizar a base de municípios IBGE. Tente novamente em alguns instantes.</div>';
+            echo Ui::callout('danger', 'Não foi possível sincronizar a base de municípios IBGE.', 'Tente novamente em alguns instantes.');
         } elseif ($msg === 'ibge_sync_pending_approval') {
-            echo '<div class="errorbox">A fonte primária mudou desde o último hash aprovado. Revise os dados exibidos e aprove o novo hash antes de sincronizar.</div>';
+            echo Ui::callout('danger', 'A fonte primária mudou desde o último hash aprovado.', 'Revise os dados exibidos e aprove o novo hash antes de sincronizar.');
         } elseif ($msg === 'ibge_pin_ok') {
             $total = (int) ($_GET['total'] ?? 0);
-            echo '<div class="successbox">Novo hash da fonte primária aprovado e base sincronizada com sucesso' . ($total > 0 ? ' (' . $h((string) $total) . ' registros).' : '.') . '</div>';
+            echo Ui::callout('ok', 'Novo hash da fonte primária aprovado e base sincronizada com sucesso' . ($total > 0 ? ' (' . $total . ' registros).' : '.'));
         } elseif ($msg === 'ibge_pin_error') {
-            echo '<div class="errorbox">Não foi possível aprovar o novo hash da fonte primária. Tente novamente em alguns instantes.</div>';
+            echo Ui::callout('danger', 'Não foi possível aprovar o novo hash da fonte primária.', 'Tente novamente em alguns instantes.');
         } elseif ($msg === 'update_check_ok') {
-            echo '<div class="successbox">Verificação de atualizações concluída com sucesso.</div>';
+            echo Ui::callout('ok', 'Verificação de atualizações concluída com sucesso.');
         } elseif ($msg === 'update_check_error') {
-            echo '<div class="errorbox">Não foi possível verificar atualizações do módulo no momento.</div>';
+            echo Ui::callout('danger', 'Não foi possível verificar atualizações do módulo no momento.');
         }
         $configUrl = static function (string $tab): string {
             return 'addonmodules.php?module=OpenNfse&action=config&tab=' . rawurlencode($tab);
@@ -175,136 +176,73 @@ final class ConfigController
         foreach (array_keys($allowedTabs) as $key) {
             $tabStatuses[$key] = $this->getConfigTabStatusMeta($key, $config);
         }
-        $okSections = 0;
-        $attentionSections = 0;
-        $reviewSections = 0;
         $trackedTotal = 0;
         $trackedOk = 0;
         foreach ($tabStatuses as $status) {
-            $tone = (string) ($status['tone'] ?? 'info');
-            if ($tone === 'ok') {
-                $okSections++;
-            } elseif ($tone === 'attention') {
-                $attentionSections++;
-            } else {
-                $reviewSections++;
-            }
             $trackedTotal += (int) ($status['total'] ?? 0);
             $trackedOk += (int) ($status['ok'] ?? 0);
         }
         $completionPercent = $trackedTotal > 0 ? (int) round(($trackedOk / $trackedTotal) * 100) : 0;
-        $currentTabStatus = $tabStatuses[$activeTab] ?? ['label' => 'Revisar', 'summary' => '', 'missing' => []];
         $environmentLabel = ((string) ($config['environment'] ?? 'homologacao')) === 'producao' ? 'Produção' : 'Homologação';
         $queueModeLabel = ((string) ($config['queue_enabled'] ?? '0')) === '1' ? 'Fila habilitada' : 'Processamento manual';
-        $certConfigured = trim((string) ($config['certificate_path'] ?? '')) !== '';
 
-        echo '<style>';
-        echo '.nfse-config-layout{display:flex;gap:18px;align-items:flex-start;}';
-        echo '.nfse-config-tabs{width:280px;border:1px solid #d9e1ea;background:#fafbfd;padding:12px;box-sizing:border-box;}';
-        echo '.nfse-config-tabs-header{font-size:13px;font-weight:700;color:#2f3b52;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #e6ebf1;}';
-        echo '.nfse-config-tabs-summary{margin-top:4px;margin-bottom:12px;padding:10px;border:1px solid #e6ebf1;background:#fff;}';
-        echo '.nfse-config-tabs-summary strong{display:block;font-size:12px;color:#334155;margin-bottom:4px;}';
-        echo '.nfse-config-tabs-summary span{display:block;font-size:11px;color:#6b7785;line-height:1.45;}';
-        echo '.nfse-config-tabs-progress{height:6px;background:#edf2f7;border-radius:999px;overflow:hidden;margin-top:8px;}';
-        echo '.nfse-config-tabs-progress > i{display:block;height:100%;background:#2d6ca2;}';
-        echo '.nfse-config-tabs a[data-tab]{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:6px;margin-bottom:6px;text-decoration:none;color:#2c4778;border-left:3px solid transparent;transition:all .15s ease;}';
-        echo '.nfse-config-tabs a[data-tab]:hover{background:#f0f4f8;}';
-        echo '.nfse-config-tabs a.is-active{background:#eef4fb;border-left-color:#2d6ca2;font-weight:700;color:#234b74;box-shadow:inset 0 0 0 1px #dbe7f3;}';
-        echo '.nfse-config-tab-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;white-space:nowrap;}';
-        echo '.nfse-config-content{flex:1;min-width:0;max-width:none;width:100%;}';
-        echo '.nfse-config-overview{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px;}';
-        echo '.nfse-config-overview-card{flex:1 1 180px;min-width:180px;border:1px solid #d9e1ea;background:#fff;padding:12px 14px;box-sizing:border-box;}';
-        echo '.nfse-config-overview-card strong{display:block;font-size:11px;color:#66717f;margin-bottom:6px;text-transform:none;}';
-        echo '.nfse-config-overview-value{font-size:24px;line-height:1.1;font-weight:700;color:#2f3b52;margin-bottom:4px;}';
-        echo '.nfse-config-overview-note{font-size:11px;color:#6e7a88;line-height:1.4;}';
-        echo '.nfse-config-save{border:1px solid #d9e1ea;background:#fafbfd;padding:10px 12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}';
-        echo '.nfse-config-save strong{font-size:13px;color:#2f3b52;}';
-        echo '.nfse-config-save span{font-size:11px;color:#6b7785;}';
-        echo '.nfse-config-tab{display:none;}';
-        echo '.nfse-config-pane-header{border:1px solid #d9e1ea;background:#fff;padding:14px 16px;margin-bottom:12px;}';
-        echo '.nfse-config-pane-header h2{margin:0 0 6px 0;font-size:20px;line-height:1.2;color:#2f3b52;}';
-        echo '.nfse-config-pane-header p{margin:0;font-size:12px;line-height:1.5;color:#66717f;max-width:820px;}';
-        echo '.nfse-config-pane-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;}';
-        echo '.nfse-config-pane-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;}';
-        echo '.nfse-config-pane-status-text{font-size:11px;color:#6e7a88;line-height:1.45;}';
-        echo '.nfse-config-section{border:1px solid #d9e1ea;background:#fff;margin-bottom:12px;}';
-        echo '.nfse-config-section-header{padding:12px 16px;border-bottom:1px solid #edf1f5;background:#fafbfd;}';
-        echo '.nfse-config-section-header strong{display:block;font-size:14px;color:#2f3b52;margin-bottom:3px;}';
-        echo '.nfse-config-section-header span{display:block;font-size:11px;line-height:1.45;color:#6e7a88;}';
-        echo '.nfse-config-section-body{padding:0 16px 10px 16px;}';
-        echo '.nfse-config-form-table{width:100%;border-collapse:separate;border-spacing:0 10px;}';
-        echo '.nfse-config-form-table .fieldlabel{width:29%;padding:0 14px 0 0;vertical-align:top;text-align:right;}';
-        echo '.nfse-config-form-table .fieldarea{padding:0;vertical-align:top;}';
-        echo '.nfse-config-label-title{font-size:13px;font-weight:700;color:#334155;line-height:1.35;padding-top:8px;}';
-        echo '.nfse-config-help{font-size:11px;line-height:1.45;color:#6e7a88;margin-top:5px;}';
-        echo '.nfse-config-input,.nfse-config-select{width:100% !important;max-width:none;}';
-        echo '.nfse-config-inline-field{display:flex;gap:8px;align-items:center;}';
-        echo '.nfse-config-inline-field input{flex:1;}';
-        echo '.nfse-config-mono{font-family:Menlo,Monaco,Consolas,"Courier New",monospace;font-size:12px;}';
-        echo '.nfse-config-note{font-size:11px;color:#6e7a88;line-height:1.45;}';
-        echo '.nfse-config-box{border:1px dashed #d9e1ea;background:#fafbfd;padding:12px;}';
-        echo '@media (max-width: 1200px){.nfse-config-layout{flex-direction:column;}.nfse-config-tabs{width:100%;}.nfse-config-content{max-width:none;width:100%;}}';
-        echo '@media (max-width: 860px){.nfse-config-form-table .fieldlabel,.nfse-config-form-table .fieldarea{display:block;width:100%;text-align:left;}.nfse-config-form-table .fieldlabel{padding:0 0 6px 0;}.nfse-config-label-title{padding-top:0;}}';
-        echo '</style>';
+        echo Ui::kpis([
+            ['label' => 'Checklist principal (' . $trackedOk . ' de ' . $trackedTotal . ' itens)', 'value' => $completionPercent . '%', 'tone' => $completionPercent >= 100 ? 'ok' : ''],
+            ['label' => 'Ambiente atual', 'value' => $environmentLabel],
+            ['label' => 'Gateways automáticos', 'value' => $enabledGatewayCount . '/' . count($gateways)],
+            ['label' => 'Processamento', 'value' => $queueModeLabel],
+        ]);
 
-        echo '<div class="nfse-config-layout">';
-        echo '<div class="nfse-config-tabs">';
-        echo '<div class="nfse-config-tabs-header">Seções da configuração</div>';
-        echo '<div class="nfse-config-tabs-summary">';
-        echo '<strong>' . $h((string) $okSections) . ' seção(ões) prontas</strong>';
-        echo '<span>' . $h((string) $attentionSections) . ' com atenção e ' . (string) $reviewSections . ' para revisão complementar.</span>';
-        echo '<div class="nfse-config-tabs-progress"><i style="width:' . $h((string) max(0, min(100, $completionPercent))) . '%;"></i></div>';
-        echo '<span style="margin-top:6px;">Checklist principal concluído em ' . $h((string) $completionPercent) . '%.</span>';
-        echo '</div>';
+        $navItems = [];
         foreach ($allowedTabs as $key => $label) {
             $status = $tabStatuses[$key] ?? $this->getConfigTabStatusMeta($key, $config);
-            $badgeStyle = 'background:' . $h((string) ($status['bg'] ?? '#eef2f7')) . ';color:' . $h((string) ($status['color'] ?? '#5f6b7a')) . ';';
-            echo '<a href="' . $h($configUrl($key)) . '" data-tab="' . $h($key) . '">';
-            echo '<span>' . $h($label) . '</span>';
-            echo '<span class="nfse-config-tab-badge" style="' . $badgeStyle . '">' . $h((string) ($status['label'] ?? '')) . '</span>';
-            echo '</a>';
+            $navItems[] = [
+                'label' => $label,
+                'href' => $configUrl($key),
+                'current' => $key === $activeTab,
+                'pill' => (string) ($status['label'] ?? ''),
+                'tone' => $this->configStatusTone($status),
+            ];
         }
-        echo '</div>';
-        echo '<div class="nfse-config-content">';
-        echo '<div class="nfse-config-overview">';
-        echo '<div class="nfse-config-overview-card"><strong>Checklist principal</strong><div class="nfse-config-overview-value">' . $h((string) $completionPercent) . '%</div><div class="nfse-config-overview-note">' . $h((string) $trackedOk) . ' de ' . $h((string) $trackedTotal) . ' itens essenciais preenchidos.</div></div>';
-        $certOverview = $this->evaluateCertificateFromConfig($config);
-        $certOverviewNote = trim((string) ($certOverview['summary'] ?? ''));
-        if ($certOverviewNote === '') {
-            $certOverviewNote = $certConfigured ? 'Certificado configurado para este ambiente.' : 'Certificado ainda precisa ser configurado.';
-        }
-        echo '<div class="nfse-config-overview-card"><strong>Ambiente atual</strong><div class="nfse-config-overview-value">' . $h($environmentLabel) . '</div><div class="nfse-config-overview-note">' . $h($certOverviewNote) . '</div></div>';
-        echo '<div class="nfse-config-overview-card"><strong>Gateways automáticos</strong><div class="nfse-config-overview-value">' . $h((string) $enabledGatewayCount) . '/' . $h((string) count($gateways)) . '</div><div class="nfse-config-overview-note">Meios de pagamento habilitados para emissão automática.</div></div>';
-        echo '<div class="nfse-config-overview-card"><strong>Processamento</strong><div class="nfse-config-overview-value">' . $h($queueModeLabel) . '</div><div class="nfse-config-overview-note">Aba atual: ' . $h((string) ($tabMeta[$activeTab]['label'] ?? $activeTab)) . ' • ' . $h((string) ($currentTabStatus['summary'] ?? '')) . '</div></div>';
-        echo '</div>';
 
-        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=saveConfig">';
+        echo '<div class="nfse-withnav">';
+        echo Ui::subnav($navItems, 'Seções da configuração');
+        echo '<div class="nfse-withnav__content">';
+
+        $paneStart = function (string $key) use ($activeTab, $tabMeta, $tabStatuses): void {
+            echo '<section class="nfse-config-tab nfse-cfg-pane" data-tab="' . Ui::h($key) . '" aria-labelledby="nfse-cfg-h-' . Ui::h($key) . '"' . ($key === $activeTab ? '' : ' hidden') . '>';
+            $this->renderConfigPaneHeader((string) $tabMeta[$key]['title'], (string) $tabMeta[$key]['description'], $tabStatuses[$key] ?? [], 'nfse-cfg-h-' . $key);
+        };
+        $paneEnd = static function (): void {
+            echo '</section>';
+        };
+
+        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=saveConfig" class="nfse-cfg-form">';
         $token = (new TokenService())->token();
         if ($token !== '') {
-            echo '<input type="hidden" name="token" value="' . $h($token) . '" />';
+            echo '<input type="hidden" name="token" value="' . Ui::h($token) . '" />';
         }
-        echo '<input type="hidden" name="active_config_tab" id="nfse-active-config-tab" value="' . $h($activeTab) . '" />';
+        echo '<input type="hidden" name="active_config_tab" id="nfse-active-config-tab" value="' . Ui::h($activeTab) . '" />';
 
-        echo '<div class="nfse-config-tab" data-tab="ambiente">';
-        $this->renderConfigPaneHeader((string) $tabMeta['ambiente']['title'], (string) $tabMeta['ambiente']['description'], $tabStatuses['ambiente'] ?? []);
+        $paneStart('ambiente');
         $msg = (string) ($_REQUEST['msg'] ?? '');
         if ($msg === 'cert_ok') {
-            echo '<div class="successbox">Certificado validado com sucesso.</div>';
+            echo Ui::callout('ok', 'Certificado validado com sucesso.');
         } elseif ($msg === 'cert_critical') {
-            echo '<div class="errorbox">Certificado validado, mas está em prazo crítico de renovação. Recomendado renovar imediatamente e agendar a validação presencial.</div>';
+            echo Ui::callout('danger', 'Certificado validado, mas está em prazo crítico de renovação.', 'Recomendado renovar imediatamente e agendar a validação presencial.');
         } elseif ($msg === 'cert_expiring') {
-            echo '<div class="errorbox">Certificado validado, mas está próximo de expirar. Verifique o prazo e programe a renovação.</div>';
+            echo Ui::callout('warn', 'Certificado validado, mas está próximo de expirar.', 'Verifique o prazo e programe a renovação.');
         } elseif ($msg === 'cert_expired') {
-            echo '<div class="errorbox">O certificado está expirado. Atualize o arquivo e a senha antes de usar o módulo.</div>';
+            echo Ui::callout('danger', 'O certificado está expirado.', 'Atualize o arquivo e a senha antes de usar o módulo.');
         } elseif ($msg === 'cert_error') {
-            echo '<div class="errorbox">Não foi possível validar o certificado. Verifique o arquivo e a senha.</div>';
+            echo Ui::callout('danger', 'Não foi possível validar o certificado.', 'Verifique o arquivo e a senha.');
         } elseif ($msg === 'conn_ok') {
             $ms = trim((string) ($_REQUEST['ms'] ?? ''));
-            echo '<div class="successbox">Conexão validada com sucesso' . ($ms !== '' ? ' (' . htmlspecialchars($ms, ENT_QUOTES, 'UTF-8') . 'ms).' : '.') . '</div>';
+            echo Ui::callout('ok', 'Conexão validada com sucesso' . ($ms !== '' ? ' (' . $ms . 'ms).' : '.'));
         } elseif ($msg === 'conn_error') {
-            echo '<div class="errorbox">Falha ao testar a conexão com a API. Verifique certificado, ambiente e conectividade do servidor.</div>';
+            echo Ui::callout('danger', 'Falha ao testar a conexão com a API.', 'Verifique certificado, ambiente e conectividade do servidor.');
         } elseif ($msg === 'conn_sdk_missing') {
-            echo '<div class="errorbox">SDK não disponível no servidor. Garanta que o vendor do módulo esteja instalado e carregado.</div>';
+            echo Ui::callout('danger', 'SDK não disponível no servidor.', 'Garanta que o vendor do módulo esteja instalado e carregado.');
         }
         $this->renderConfigSectionStart('Ambiente de operação', 'Escolha o ambiente utilizado pelo módulo e mantenha esta opção alinhada com o certificado e os testes realizados.');
         $this->renderConfigFormTableStart();
@@ -319,68 +257,50 @@ final class ConfigController
             DpsLayoutService::normalizeMode((string) ($config['dps_leiaute'] ?? DpsLayoutService::MODE_AUTO))
         );
         $this->renderConfigFormTableEnd();
-        echo '<div class="nfse-config-note" style="padding:0 16px 14px 16px;">Leiaute ativo agora: <strong>'
-            . htmlspecialchars((new DpsLayoutService())->describe($config), ENT_QUOTES, 'UTF-8')
-            . '</strong>. Depois de mudar o ambiente ou o leiaute, salve para atualizar esta informação.</div>';
+        $this->renderConfigBlock('Leiaute ativo agora: <strong>' . Ui::h((new DpsLayoutService())->describe($config))
+            . '</strong>. Depois de mudar o ambiente ou o leiaute, salve para atualizar esta informação.', 'nfse-cfg-note');
         $this->renderConfigSectionEnd();
         $this->renderConfigSectionStart('Certificado digital', 'Defina o arquivo A1 e a senha utilizados nas chamadas à API. Esses dados são críticos para a autenticação do emissor.');
         $this->renderConfigFormTableStart();
         $this->renderTextRow('certificate_path', 'Caminho do Certificado A1 (.pfx)', $config['certificate_path'] ?? '');
         $this->renderPasswordRow('certificate_password', 'Senha do Certificado', '');
         $this->renderConfigFormTableEnd();
-        echo '<div class="nfse-config-note" style="padding:0 16px 14px 16px;">A senha não é exibida após salvar. Preencha novamente apenas quando precisar atualizar o certificado.</div>';
+        $this->renderConfigBlock('A senha não é exibida após salvar. Preencha novamente apenas quando precisar atualizar o certificado.', 'nfse-cfg-note');
         $this->renderConfigSectionEnd();
 
         $certInfo = $this->evaluateCertificateFromConfig($config);
-        $this->renderConfigSectionStart('Status do certificado', 'Confira validade, expiração e o status de leitura do certificado configurado.');
-        echo '<div class="nfse-config-box" style="margin:16px;">';
-        $statusTone = (string) ($certInfo['tone'] ?? 'info');
-        $statusLabel = (string) ($certInfo['status_label'] ?? 'Revisar');
-        $statusBg = $statusTone === 'ok' ? '#e8f5e9' : ($statusTone === 'attention' ? '#fff8e1' : '#eef2f7');
-        $statusColor = $statusTone === 'ok' ? '#2e7d32' : ($statusTone === 'attention' ? '#8a6d3b' : '#5f6b7a');
-        echo '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">';
-        echo '<div style="min-width:240px;">';
-        echo '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
-        echo '<span style="display:inline-flex;align-items:center;justify-content:center;padding:4px 10px;border-radius:999px;font-weight:700;font-size:12px;background:' . htmlspecialchars($statusBg, ENT_QUOTES, 'UTF-8') . ';color:' . htmlspecialchars($statusColor, ENT_QUOTES, 'UTF-8') . ';">' . htmlspecialchars($statusLabel, ENT_QUOTES, 'UTF-8') . '</span>';
+        $certActions = Ui::button('Revalidar certificado', ['sm'], ['formaction' => 'addonmodules.php?module=OpenNfse&action=validateCertificate', 'formmethod' => 'post']);
+        if (class_exists(\Nfse\Nfse::class)) {
+            $certActions .= Ui::button('Testar conexão', ['sm'], ['formaction' => 'addonmodules.php?module=OpenNfse&action=testConnection', 'formmethod' => 'post']);
+        }
+        $this->renderConfigSectionStart('Status do certificado', 'Confira validade, expiração e o status de leitura do certificado configurado.', $certActions);
+        $statusLine = Ui::badge((string) ($certInfo['status_label'] ?? 'Revisar'), $this->configStatusTone($certInfo));
         $summary = trim((string) ($certInfo['summary'] ?? ''));
         if ($summary !== '') {
-            echo '<span style="color:#4b5563;font-size:12px;">' . htmlspecialchars($summary, ENT_QUOTES, 'UTF-8') . '</span>';
+            $statusLine .= '<span>' . Ui::h($summary) . '</span>';
         }
-        echo '</div>';
-        echo '<div style="margin-top:10px;color:#4b5563;font-size:12px;line-height:1.45;">';
+        $facts = [];
         $validTo = (string) ($certInfo['valid_to'] ?? '');
         $daysLeft = (string) ($certInfo['days_left'] ?? '');
         if ($validTo !== '') {
-            echo '<div><strong>Válido até:</strong> ' . htmlspecialchars($validTo, ENT_QUOTES, 'UTF-8') . ($daysLeft !== '' ? ' <span style="color:#64748b;">(' . htmlspecialchars($daysLeft, ENT_QUOTES, 'UTF-8') . ' dias)</span>' : '') . '</div>';
+            $facts['Válido até'] = Ui::h($validTo) . ($daysLeft !== '' ? ' <span class="nfse-muted">(' . Ui::h($daysLeft) . ' dias)</span>' : '');
         }
-        $subject = trim((string) ($certInfo['subject'] ?? ''));
-        if ($subject !== '') {
-            echo '<div><strong>Subject:</strong> ' . htmlspecialchars($subject, ENT_QUOTES, 'UTF-8') . '</div>';
-        }
-        $issuer = trim((string) ($certInfo['issuer'] ?? ''));
-        if ($issuer !== '') {
-            echo '<div><strong>Issuer:</strong> ' . htmlspecialchars($issuer, ENT_QUOTES, 'UTF-8') . '</div>';
+        foreach (['subject' => 'Subject', 'issuer' => 'Issuer'] as $key => $label) {
+            $value = trim((string) ($certInfo[$key] ?? ''));
+            if ($value !== '') {
+                $facts[$label] = Ui::h($value);
+            }
         }
         $fingerprint = trim((string) ($certInfo['fingerprint'] ?? ''));
         if ($fingerprint !== '') {
-            echo '<div><strong>Fingerprint:</strong> <span class="nfse-config-mono">' . htmlspecialchars($fingerprint, ENT_QUOTES, 'UTF-8') . '</span></div>';
+            $facts['Fingerprint'] = '<span class="nfse-mono">' . Ui::h($fingerprint) . '</span>';
         }
-        echo '</div>';
-        echo '</div>';
-        echo '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">';
-        echo '<button type="submit" class="btn btn-default" formaction="addonmodules.php?module=OpenNfse&action=validateCertificate" formmethod="post">Revalidar certificado</button>';
-        if (class_exists(\Nfse\Nfse::class)) {
-            echo '<button type="submit" class="btn btn-default" formaction="addonmodules.php?module=OpenNfse&action=testConnection" formmethod="post">Testar conexão</button>';
-        }
-        echo '</div>';
-        echo '</div>';
-        echo '<div style="margin-top:10px;color:#64748b;font-size:12px;">Dica: use Revalidar certificado após trocar o arquivo no servidor. O teste de conexão usa uma consulta leve via SDK para validar mTLS e acesso à API, sem emitir NFS-e.</div>';
-        echo '</div>';
+        $this->renderConfigBlock('<div class="nfse-cfg-status">' . $statusLine . '</div>' . self::factsHtml($facts));
+        $this->renderConfigBlock('Dica: use Revalidar certificado após trocar o arquivo no servidor. O teste de conexão usa uma consulta leve via SDK para validar mTLS e acesso à API, sem emitir NFS-e.', 'nfse-cfg-note');
         $this->renderConfigSectionEnd();
-        echo '</div>';
+        $paneEnd();
 
-        echo '<div class="nfse-config-tab" data-tab="prestador">';
-        $this->renderConfigPaneHeader((string) $tabMeta['prestador']['title'], (string) $tabMeta['prestador']['description'], $tabStatuses['prestador'] ?? []);
+        $paneStart('prestador');
         $this->renderConfigSectionStart('Identificação fiscal', 'Os campos abaixo definem os dados cadastrais principais do emissor enviados para a NFS-e.');
         $this->renderConfigFormTableStart();
         $this->renderTextRow('cnpj_emissor', 'CNPJ do Emissor', $config['cnpj_emissor'] ?? '');
@@ -389,17 +309,17 @@ final class ConfigController
             '0' => 'Não',
         ], (string) ($config['prestador_informar_im'] ?? '1'));
         $this->renderTextRow('inscricao_municipal', 'Inscrição Municipal', $config['inscricao_municipal'] ?? '');
-        echo '<tr>';
-        echo '<td class="fieldlabel"></td>';
-        echo '<td class="fieldarea" style="padding-top:0;">';
-        echo '<div style="margin:0 0 12px 0;padding:10px 12px;background:#f8fafc;border:1px solid #dbeafe;border-radius:6px;color:#475569;font-size:12px;line-height:1.55;">';
-        echo 'Verifique no Portal do Contribuinte qual valor aparece no campo <strong>Indicador Municipal</strong> ao simular a emissão da NFS-e. O valor informado aqui deve ser exatamente igual ao exibido no portal, incluindo os zeros à esquerda.<br />';
-        echo 'Homologação: <a href="https://www.producaorestrita.nfse.gov.br/EmissorNacional/" target="_blank" rel="noopener noreferrer">https://www.producaorestrita.nfse.gov.br/EmissorNacional/</a><br />';
-        echo 'Produção: <a href="https://www.nfse.gov.br/EmissorNacional/" target="_blank" rel="noopener noreferrer">https://www.nfse.gov.br/EmissorNacional/</a><br />';
-        echo 'Se ainda não houver Indicador Municipal no portal, altere o campo <strong>Informar IM do Prestador</strong> para <strong>Não</strong>.';
-        echo '</div>';
-        echo '</td>';
-        echo '</tr>';
+        $this->renderConfigFormTableEnd();
+        $this->renderConfigBlock(Ui::callout(
+            'info',
+            'Indicador Municipal',
+            '',
+            '<p>Verifique no Portal do Contribuinte qual valor aparece no campo <strong>Indicador Municipal</strong> ao simular a emissão da NFS-e. O valor informado aqui deve ser exatamente igual ao exibido no portal, incluindo os zeros à esquerda.</p>'
+            . '<p>Homologação: <a href="https://www.producaorestrita.nfse.gov.br/EmissorNacional/" target="_blank" rel="noopener noreferrer">https://www.producaorestrita.nfse.gov.br/EmissorNacional/</a><br />'
+            . 'Produção: <a href="https://www.nfse.gov.br/EmissorNacional/" target="_blank" rel="noopener noreferrer">https://www.nfse.gov.br/EmissorNacional/</a></p>'
+            . '<p>Se ainda não houver Indicador Municipal no portal, altere o campo <strong>Informar IM do Prestador</strong> para <strong>Não</strong>.</p>'
+        ));
+        $this->renderConfigFormTableStart();
         $this->renderTextRow('codigo_ibge', 'Código IBGE', $config['codigo_ibge'] ?? '');
         $this->renderTextRow('prestador_nome', 'Razão Social do Prestador (xNome)', $config['prestador_nome'] ?? '');
         $this->renderConfigFormTableEnd();
@@ -410,10 +330,9 @@ final class ConfigController
         $this->renderTextRow('prestador_fone', 'Telefone do Prestador', $config['prestador_fone'] ?? '');
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
-        echo '</div>';
+        $paneEnd();
 
-        echo '<div class="nfse-config-tab" data-tab="endereco">';
-        $this->renderConfigPaneHeader((string) $tabMeta['endereco']['title'], (string) $tabMeta['endereco']['description'], $tabStatuses['endereco'] ?? []);
+        $paneStart('endereco');
         $this->renderConfigSectionStart('Endereço cadastral', 'Mantenha esse bloco alinhado com o cadastro fiscal do emissor para evitar rejeições por inconsistência.');
         $this->renderConfigFormTableStart();
         $this->renderTextRow('prestador_logradouro', 'Logradouro do Prestador', $config['prestador_logradouro'] ?? '');
@@ -423,10 +342,9 @@ final class ConfigController
         $this->renderTextRow('prestador_cep', 'CEP do Prestador', $config['prestador_cep'] ?? '');
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
-        echo '</div>';
+        $paneEnd();
 
-        echo '<div class="nfse-config-tab" data-tab="integracao">';
-        $this->renderConfigPaneHeader((string) $tabMeta['integracao']['title'], (string) $tabMeta['integracao']['description'], $tabStatuses['integracao'] ?? []);
+        $paneStart('integracao');
         $this->renderConfigSectionStart('Integração base', 'Configure o relacionamento entre os dados do WHMCS e os campos obrigatórios usados pelo módulo.');
         $this->renderConfigFormTableStart();
         $this->renderCustomFieldSelectRow('tomador_cpfcnpj_customfield_id', 'Custom Field (CPF/CNPJ do Tomador)', (string) ($config['tomador_cpfcnpj_customfield_id'] ?? ''));
@@ -446,22 +364,22 @@ final class ConfigController
         $this->renderTextareaRow('client_area_notice_message', 'Mensagem do aviso', (string) ($config['client_area_notice_message'] ?? $this->getDefaultClientAreaNoticeMessage()));
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
-        $this->renderConfigSectionStart('Gateways habilitados', 'Selecione quais meios de pagamento devem disparar a emissão automática de NFS-e ao marcar a fatura como paga.');
-        echo '<div class="nfse-config-box" style="margin:16px;">';
-        echo '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">';
-        echo '<div><strong style="display:block;font-size:14px;color:#334155;">Meios de pagamento</strong><span class="nfse-config-note">Atualmente ' . $h((string) $enabledGatewayCount) . ' de ' . $h((string) count($gateways)) . ' gateway(s) estão habilitados para emissão automática.</span></div>';
+        $gatewayActions = '';
         if (!empty($gateways)) {
-            echo '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
-            echo '<button type="button" class="btn btn-xs btn-default" id="nfse-mark-all-gateways">Marcar todos</button>';
-            echo '<button type="button" class="btn btn-xs btn-default" id="nfse-unmark-all-gateways">Desmarcar todos</button>';
-            echo '</div>';
+            $gatewayActions = Ui::button('Marcar todos', ['sm'], ['type' => 'button', 'id' => 'nfse-mark-all-gateways'])
+                . Ui::button('Desmarcar todos', ['sm'], ['type' => 'button', 'id' => 'nfse-unmark-all-gateways']);
         }
-        echo '</div>';
+        $this->renderConfigSectionStart(
+            'Gateways habilitados',
+            'Selecione quais meios de pagamento devem disparar a emissão automática de NFS-e ao marcar a fatura como paga. Atualmente '
+                . $enabledGatewayCount . ' de ' . count($gateways) . ' gateway(s) estão habilitados para emissão automática.',
+            $gatewayActions
+        );
         if (empty($gateways)) {
-            echo '<span style="color:#666;">Nenhum gateway ativo encontrado.</span>';
+            $this->renderConfigBlock('Nenhum gateway ativo encontrado.', 'nfse-cfg-note');
         } else {
-            echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="margin:0;font-size:12px;table-layout:fixed;width:100%;">';
-            echo '<tr><th style="width:24%;">Gateway</th><th style="width:30%;">Nome</th><th style="width:22%;">Emissão de NFS-e</th><th style="width:24%;">Emitir ao gerar a fatura</th></tr>';
+            echo '<div class="nfse-table-wrap"><table class="nfse-table">';
+            echo '<thead><tr><th scope="col">Gateway</th><th scope="col">Nome</th><th scope="col">Emissão de NFS-e</th><th scope="col">Emitir ao gerar a fatura</th></tr></thead><tbody>';
             foreach ($gateways as $g) {
                 $gateway = (string) ($g['gateway'] ?? '');
                 if ($gateway === '' || !preg_match('/^[a-zA-Z0-9_-]+$/', $gateway)) {
@@ -471,23 +389,24 @@ final class ConfigController
                 $checked = $gatewaySettingsRepo->isEnabled($gateway) ? ' checked' : '';
                 $checkedOnCreate = $gatewaySettingsRepo->isEmitOnCreate($gateway) ? ' checked' : '';
                 echo '<tr>';
-                echo '<td style="word-break:break-word;overflow-wrap:anywhere;"><span class="nfse-config-mono">' . htmlspecialchars($gateway, ENT_QUOTES, 'UTF-8') . '</span></td>';
-                echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '</td>';
-                echo '<td><label style="margin:0;display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" class="nfse-gateway-check" name="nfse_gateway_enabled[]" value="' . htmlspecialchars($gateway, ENT_QUOTES, 'UTF-8') . '"' . $checked . ' /> <span style="font-weight:600;">Ativado</span></label></td>';
-                echo '<td><label style="margin:0;display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" name="nfse_gateway_emit_on_create[]" value="' . htmlspecialchars($gateway, ENT_QUOTES, 'UTF-8') . '"' . $checkedOnCreate . ' /> <span style="font-weight:600;">Sim</span></label></td>';
+                echo '<td class="nfse-break"><span class="nfse-mono">' . Ui::h($gateway) . '</span></td>';
+                echo '<td class="nfse-break">' . Ui::h($name) . '</td>';
+                echo '<td><label class="nfse-check"><input type="checkbox" class="nfse-gateway-check" name="nfse_gateway_enabled[]" value="' . Ui::h($gateway) . '"' . $checked . ' /> <span>Ativado</span></label></td>';
+                echo '<td><label class="nfse-check"><input type="checkbox" name="nfse_gateway_emit_on_create[]" value="' . Ui::h($gateway) . '"' . $checkedOnCreate . ' /> <span>Sim</span></label></td>';
                 echo '</tr>';
             }
-            echo '</table>';
-            echo '<div style="margin-top:6px;color:#666;">Se desativado, o módulo não enfileira/gera NFS-e automaticamente quando a fatura é paga com esse gateway.</div>';
-            echo '<div style="margin-top:4px;color:#666;">"Emitir ao gerar a fatura" só vale quando o gatilho de emissão automática (aba Processamento Automático ou custom field do cliente) for "gerada": a NFS-e entra na fila assim que a fatura Unpaid é publicada, apenas para os gateways marcados aqui (ex.: só boleto). O gateway também precisa estar com a emissão de NFS-e ativada. O comportamento no pagamento não muda.</div>';
-            echo '<div class="alert alert-warning" style="margin:6px 0 0 0;font-size:12px;line-height:1.5;">' . htmlspecialchars(self::AUTO_EMIT_VALUE_WARNING, ENT_QUOTES, 'UTF-8') . '</div>';
+            echo '</tbody></table></div>';
+            $this->renderConfigBlock(
+                '<div>Se desativado, o módulo não enfileira/gera NFS-e automaticamente quando a fatura é paga com esse gateway.</div>'
+                . '<div>"Emitir ao gerar a fatura" só vale quando o gatilho de emissão automática (aba Processamento Automático ou custom field do cliente) for "gerada": a NFS-e entra na fila assim que a fatura Unpaid é publicada, apenas para os gateways marcados aqui (ex.: só boleto). O gateway também precisa estar com a emissão de NFS-e ativada. O comportamento no pagamento não muda.</div>',
+                'nfse-cfg-note'
+            );
+            $this->renderConfigBlock(Ui::callout('warn', 'Valor da NFS-e x valor pago', self::AUTO_EMIT_VALUE_WARNING));
         }
-        echo '</div>';
         $this->renderConfigSectionEnd();
-        echo '</div>';
+        $paneEnd();
 
-        echo '<div class="nfse-config-tab" data-tab="tomador">';
-        $this->renderConfigPaneHeader((string) $tabMeta['tomador']['title'], (string) $tabMeta['tomador']['description'], $tabStatuses['tomador'] ?? []);
+        $paneStart('tomador');
         $this->renderConfigSectionStart('Fallbacks para o tomador', 'Esses campos só devem ser usados quando o cadastro do cliente não trouxer a informação necessária no momento da emissão.');
         $this->renderConfigFormTableStart();
         $this->renderTextRow('tomador_codigo_ibge_padrao', 'Código IBGE do Tomador (padrão)', $config['tomador_codigo_ibge_padrao'] ?? ($config['codigo_ibge'] ?? ''));
@@ -499,7 +418,7 @@ final class ConfigController
         echo '<script>(function(){'
             . 'var origem=document.querySelector(\'select[name="tomador_bairro_origem"]\');'
             . 'var cf=document.querySelector(\'select[name="tomador_bairro_customfield_id"]\');'
-            . 'var row=cf?cf.closest("tr"):null;'
+            . 'var row=cf?cf.closest(".nfse-form__row"):null;'
             . 'function sync(){'
             . 'var on=!!origem&&origem.value==="' . TomadorBairroService::ORIGEM_CUSTOMFIELD . '";'
             . 'if(row){row.style.display=on?"":"none";}'
@@ -508,104 +427,83 @@ final class ConfigController
             . 'if(origem){origem.addEventListener("change",sync);}'
             . 'sync();'
             . '})();</script>';
+        $this->renderConfigSectionEnd();
+
+        $this->renderConfigSectionStart(
+            'Municípios IBGE',
+            'Sincronize a base completa de municípios IBGE para acelerar resoluções de código e evitar dependência de consultas sob demanda durante a geração do PDF. Quando a fonte primária mudar, o módulo exige aprovação explícita do novo hash antes de atualizar o banco.',
+            Ui::button('Sincronizar municípios IBGE agora', ['sm'], ['formaction' => 'addonmodules.php?module=OpenNfse&action=syncIbgeMunicipios', 'formmethod' => 'post'])
+        );
         if (is_array($ibgeCatalogStatus) && is_array($configuredMunicipioStatus) && is_array($viaCepStatus)) {
             $catalogTone = match ((string) ($ibgeCatalogStatus['status'] ?? '')) {
-                'consistent' => ['#ecfdf3', '#16a34a', '#166534'],
-                'unpinned' => ['#eff6ff', '#3b82f6', '#1d4ed8'],
-                'approval_required' => ['#fef2f2', '#ef4444', '#991b1b'],
-                'divergent', 'local_only' => ['#fff7ed', '#f59e0b', '#9a3412'],
-                default => ['#fef2f2', '#ef4444', '#991b1b'],
+                'consistent' => 'ok',
+                'unpinned' => 'emitida',
+                'divergent', 'local_only' => 'warn',
+                default => 'danger',
             };
             $municipioTone = match ((string) ($configuredMunicipioStatus['status'] ?? '')) {
-                'ok' => ['#ecfdf3', '#16a34a', '#166534'],
-                'missing' => ['#fff7ed', '#f59e0b', '#9a3412'],
-                default => ['#fef2f2', '#ef4444', '#991b1b'],
+                'ok' => 'ok',
+                'missing' => 'warn',
+                default => 'danger',
             };
             $viaCepTone = match ((string) ($viaCepStatus['status'] ?? '')) {
-                'ok' => ['#ecfdf3', '#16a34a', '#166534'],
-                'warning', 'missing' => ['#fff7ed', '#f59e0b', '#9a3412'],
-                default => ['#fef2f2', '#ef4444', '#991b1b'],
+                'ok' => 'ok',
+                'warning', 'missing' => 'warn',
+                default => 'danger',
             };
-            $catalogRemoteCount = $ibgeCatalogStatus['remote_count'] !== null ? (string) $ibgeCatalogStatus['remote_count'] : '—';
-            $catalogLocalCount = (string) ($ibgeCatalogStatus['local_count'] ?? 0);
+            $shortHash = static fn (string $hash): string => $hash !== '' ? '<span class="nfse-mono">' . Ui::h(substr($hash, 0, 16)) . '...</span>' : '—';
+            $formatDate = static function (string $value): string {
+                $value = trim($value);
+                return $value !== '' ? date('d/m/Y H:i', strtotime($value) ?: time()) : 'Nunca';
+            };
+            $catalogFacts = [
+                'URL' => '<span class="nfse-mono">' . Ui::h((string) ($ibgeCatalogStatus['source_url'] ?? '')) . '</span>',
+                'Municípios na URL' => Ui::h($ibgeCatalogStatus['remote_count'] !== null ? (string) $ibgeCatalogStatus['remote_count'] : '—'),
+                'Municípios no banco' => Ui::h((string) ($ibgeCatalogStatus['local_count'] ?? 0)),
+                'Última sincronização' => Ui::h($formatDate((string) ($ibgeCatalogStatus['last_synced_at'] ?? ''))),
+                'Hash aprovado' => $shortHash(trim((string) ($ibgeCatalogStatus['pinned_hash'] ?? ''))),
+                'Aprovado em' => Ui::h($formatDate((string) ($ibgeCatalogStatus['pinned_at'] ?? ''))),
+            ];
             $catalogHash = trim((string) ($ibgeCatalogStatus['remote_hash'] ?? ''));
-            $catalogPinnedHash = trim((string) ($ibgeCatalogStatus['pinned_hash'] ?? ''));
-            $catalogPendingHash = trim((string) ($ibgeCatalogStatus['pending_hash'] ?? ''));
-            $lastSyncAt = trim((string) ($ibgeCatalogStatus['last_synced_at'] ?? ''));
-            $lastSyncAt = $lastSyncAt !== '' ? date('d/m/Y H:i', strtotime($lastSyncAt) ?: time()) : 'Nunca';
-            $pinnedAt = trim((string) ($ibgeCatalogStatus['pinned_at'] ?? ''));
-            $pinnedAt = $pinnedAt !== '' ? date('d/m/Y H:i', strtotime($pinnedAt) ?: time()) : 'Nunca';
-            $pendingCheckedAt = trim((string) ($ibgeCatalogStatus['pending_checked_at'] ?? ''));
-            $pendingCheckedAt = $pendingCheckedAt !== '' ? date('d/m/Y H:i', strtotime($pendingCheckedAt) ?: time()) : 'Nunca';
-            echo '<div style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap;">';
-            echo '<div style="flex:1 1 280px;min-width:280px;padding:12px;border:1px solid #d9e1ea;background:#fff;">';
-            echo '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">';
-            echo '<strong style="font-size:13px;color:#334155;">Fonte primária de municípios</strong>';
-            echo '<span style="display:inline-block;padding:3px 8px;border-radius:999px;background:' . $h($catalogTone[0]) . ';color:' . $h($catalogTone[2]) . ';font-size:11px;font-weight:700;border:1px solid ' . $h($catalogTone[1]) . ';">' . $h((string) ($ibgeCatalogStatus['label'] ?? '')) . '</span>';
-            echo '</div>';
-            echo '<div style="font-size:12px;color:#475569;line-height:1.55;margin-bottom:8px;">' . $h((string) ($ibgeCatalogStatus['message'] ?? '')) . '</div>';
-            echo '<div style="font-size:11px;color:#64748b;line-height:1.65;">';
-            echo 'URL: <span class="nfse-config-mono" style="font-size:11px;">' . $h((string) ($ibgeCatalogStatus['source_url'] ?? '')) . '</span><br />';
-            echo 'Municípios na URL: <strong>' . $h($catalogRemoteCount) . '</strong><br />';
-            echo 'Municípios no banco: <strong>' . $h($catalogLocalCount) . '</strong><br />';
-            echo 'Última sincronização: <strong>' . $h($lastSyncAt) . '</strong><br />';
-            echo 'Hash aprovado: <strong>' . ($catalogPinnedHash !== '' ? '<span class="nfse-config-mono" style="font-size:11px;">' . $h(substr($catalogPinnedHash, 0, 16)) . '...</span>' : '—') . '</strong><br />';
-            echo 'Aprovado em: <strong>' . $h($pinnedAt) . '</strong>';
             if ($catalogHash !== '') {
-                echo '<br />Hash remoto atual: <span class="nfse-config-mono" style="font-size:11px;">' . $h(substr($catalogHash, 0, 16)) . '...</span>';
+                $catalogFacts['Hash remoto atual'] = $shortHash($catalogHash);
             }
+            $catalogPendingHash = trim((string) ($ibgeCatalogStatus['pending_hash'] ?? ''));
             if ($catalogPendingHash !== '') {
-                echo '<br />Hash pendente: <span class="nfse-config-mono" style="font-size:11px;">' . $h(substr($catalogPendingHash, 0, 16)) . '...</span>';
-                echo '<br />Pendente desde: <strong>' . $h($pendingCheckedAt) . '</strong>';
+                $catalogFacts['Hash pendente'] = $shortHash($catalogPendingHash);
+                $catalogFacts['Pendente desde'] = Ui::h($formatDate((string) ($ibgeCatalogStatus['pending_checked_at'] ?? '')));
             }
             if ((string) ($ibgeCatalogStatus['error'] ?? '') !== '') {
-                echo '<br />Erro da fonte: <span style="color:#b91c1c;">' . $h((string) $ibgeCatalogStatus['error']) . '</span>';
+                $catalogFacts['Erro da fonte'] = '<span class="nfse-text-danger">' . Ui::h((string) $ibgeCatalogStatus['error']) . '</span>';
             }
-            echo '</div>';
+            $catalogActions = '';
             if (!empty($ibgeCatalogStatus['approval_required'])) {
-                echo '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">';
-                echo '<button type="submit" class="btn btn-warning" formaction="addonmodules.php?module=OpenNfse&action=approveIbgeHash" formmethod="post">Aprovar novo hash e sincronizar</button>';
-                echo '</div>';
+                $catalogActions = Ui::button('Aprovar novo hash e sincronizar', ['sm'], ['formaction' => 'addonmodules.php?module=OpenNfse&action=approveIbgeHash', 'formmethod' => 'post']);
             }
-            echo '</div>';
 
-            echo '<div style="flex:1 1 240px;min-width:240px;padding:12px;border:1px solid #d9e1ea;background:#fff;">';
-            echo '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">';
-            echo '<strong style="font-size:13px;color:#334155;">Validação do Código IBGE</strong>';
-            echo '<span style="display:inline-block;padding:3px 8px;border-radius:999px;background:' . $h($municipioTone[0]) . ';color:' . $h($municipioTone[2]) . ';font-size:11px;font-weight:700;border:1px solid ' . $h($municipioTone[1]) . ';">' . $h((string) ($configuredMunicipioStatus['label'] ?? '')) . '</span>';
-            echo '</div>';
-            echo '<div style="font-size:12px;color:#475569;line-height:1.55;margin-bottom:8px;">' . $h((string) ($configuredMunicipioStatus['message'] ?? '')) . '</div>';
-            echo '<div style="font-size:11px;color:#64748b;line-height:1.65;">';
-            echo 'Código configurado: <strong>' . $h((string) ($configuredMunicipioStatus['ibge_code'] ?? '—')) . '</strong><br />';
-            echo 'Município encontrado: <strong>' . $h((string) ($configuredMunicipioStatus['municipio'] ?? '—')) . '</strong>';
-            echo '</div>';
-            echo '</div>';
-
-            echo '<div style="flex:1 1 240px;min-width:240px;padding:12px;border:1px solid #d9e1ea;background:#fff;">';
-            echo '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">';
-            echo '<strong style="font-size:13px;color:#334155;">Status do ViaCEP</strong>';
-            echo '<span style="display:inline-block;padding:3px 8px;border-radius:999px;background:' . $h($viaCepTone[0]) . ';color:' . $h($viaCepTone[2]) . ';font-size:11px;font-weight:700;border:1px solid ' . $h($viaCepTone[1]) . ';">' . $h((string) ($viaCepStatus['label'] ?? '')) . '</span>';
-            echo '</div>';
-            echo '<div style="font-size:12px;color:#475569;line-height:1.55;margin-bottom:8px;">' . $h((string) ($viaCepStatus['message'] ?? '')) . '</div>';
-            echo '<div style="font-size:11px;color:#64748b;line-height:1.65;">';
-            echo 'CEP do prestador: <strong>' . $h((string) ($viaCepStatus['cep'] ?? '—')) . '</strong><br />';
-            echo 'IBGE retornado: <strong>' . $h((string) (($viaCepStatus['ibge'] ?? null) ?: '—')) . '</strong><br />';
-            echo 'Localidade: <strong>' . $h(trim((string) ($viaCepStatus['localidade'] ?? '')) !== '' ? ((string) $viaCepStatus['localidade'] . ' - ' . (string) ($viaCepStatus['uf'] ?? '')) : '—') . '</strong><br />';
-            echo 'Comparação com o prestador: <strong>' . $h(!empty($viaCepStatus['matches_expected']) ? 'Compatível' : 'Divergente/indisponível') . '</strong>';
-            echo '</div>';
-            echo '</div>';
+            echo '<div class="nfse-cfg-grid">';
+            echo self::statusPanel('Fonte primária de municípios', Ui::badge((string) ($ibgeCatalogStatus['label'] ?? ''), $catalogTone), (string) ($ibgeCatalogStatus['message'] ?? ''), $catalogFacts, $catalogActions);
+            echo self::statusPanel('Validação do Código IBGE', Ui::badge((string) ($configuredMunicipioStatus['label'] ?? ''), $municipioTone), (string) ($configuredMunicipioStatus['message'] ?? ''), [
+                'Código configurado' => Ui::h((string) ($configuredMunicipioStatus['ibge_code'] ?? '—')),
+                'Município encontrado' => Ui::h((string) ($configuredMunicipioStatus['municipio'] ?? '—')),
+            ]);
+            echo self::statusPanel('Status do ViaCEP', Ui::badge((string) ($viaCepStatus['label'] ?? ''), $viaCepTone), (string) ($viaCepStatus['message'] ?? ''), [
+                'CEP do prestador' => Ui::h((string) ($viaCepStatus['cep'] ?? '—')),
+                'IBGE retornado' => Ui::h((string) (($viaCepStatus['ibge'] ?? null) ?: '—')),
+                'Localidade' => Ui::h(trim((string) ($viaCepStatus['localidade'] ?? '')) !== '' ? ((string) $viaCepStatus['localidade'] . ' - ' . (string) ($viaCepStatus['uf'] ?? '')) : '—'),
+                'Comparação com o prestador' => Ui::h(!empty($viaCepStatus['matches_expected']) ? 'Compatível' : 'Divergente/indisponível'),
+            ]);
             echo '</div>';
         }
-        echo '<div style="margin-top:10px;padding:12px;border:1px solid #d9e1ea;background:#fafbfd;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">';
-        echo '<div style="font-size:12px;color:#475569;line-height:1.5;">Sincronize a base completa de municípios IBGE para acelerar resoluções de código e evitar dependência de consultas sob demanda durante a geração do PDF. Quando a fonte primária mudar, o módulo exige aprovação explícita do novo hash antes de atualizar o banco.</div>';
-        echo '<button type="submit" class="btn btn-primary" formaction="addonmodules.php?module=OpenNfse&action=syncIbgeMunicipios" formmethod="post">Sincronizar municípios IBGE agora</button>';
-        echo '</div>';
         $this->renderConfigSectionEnd();
-        echo '</div>';
+        $paneEnd();
 
-        echo '<div class="nfse-config-tab" data-tab="processamento">';
-        $this->renderConfigPaneHeader((string) $tabMeta['processamento']['title'], (string) $tabMeta['processamento']['description'], $tabStatuses['processamento'] ?? []);
-        $this->renderConfigSectionStart('Atualizações do módulo', 'Acompanhe a versão instalada, verifique novas versões publicadas no GitHub e mantenha um cache local da última checagem remota.');
+        $paneStart('processamento');
+        $this->renderConfigSectionStart(
+            'Atualizações do módulo',
+            'Acompanhe a versão instalada, verifique novas versões publicadas no GitHub e mantenha um cache local da última checagem remota.',
+            $this->updateCheckActions($updateStatus)
+        );
         $this->renderUpdateCheckContent($updateStatus);
         $this->renderConfigSectionEnd();
         $this->renderConfigSectionStart('Automação da fila', 'Ligue a fila/cron, que processa as emissões automáticas e manuais, e defina a regra da emissão manual.');
@@ -624,28 +522,26 @@ final class ConfigController
         $this->renderConfigSectionStart('Emissão automática', 'Defina quando a emissão entra na fila sozinha e para quais clientes. O custom field do cliente, quando preenchido, vale antes do grupo e da regra global.');
         $this->renderAutoEmitPolicyContent($config);
         $this->renderConfigSectionEnd();
- $this->renderConfigSectionStart('Automação de E-mail', 'Envie automaticamente o XML e o PDF ao cliente quando a consulta confirmar a autorização da NFS-e.');
- $this->renderConfigFormTableStart();
- $this->renderSelectRow('auto_send_nfse_email', 'Enviar PDF/XML automaticamente por e-mail?', [
- '1' => 'Sim',
- '0' => 'Não',
- ], (string) ($config['auto_send_nfse_email'] ?? '0'));
- $this->renderConfigFormTableEnd();
- $this->renderConfigSectionEnd();
- echo '</div>';
+        $this->renderConfigSectionStart('Automação de E-mail', 'Envie automaticamente o XML e o PDF ao cliente quando a consulta confirmar a autorização da NFS-e.');
+        $this->renderConfigFormTableStart();
+        $this->renderSelectRow('auto_send_nfse_email', 'Enviar PDF/XML automaticamente por e-mail?', [
+            '1' => 'Sim',
+            '0' => 'Não',
+        ], (string) ($config['auto_send_nfse_email'] ?? '0'));
+        $this->renderConfigFormTableEnd();
+        $this->renderConfigSectionEnd();
+        $paneEnd();
 
- echo '<div class="nfse-config-tab" data-tab="retencao">';
-        $this->renderConfigPaneHeader((string) $tabMeta['retencao']['title'], (string) $tabMeta['retencao']['description'], $tabStatuses['retencao'] ?? []);
+        $paneStart('retencao');
         $this->renderConfigSectionStart('Política de retenção', 'Use prazos curtos para reduzir volume desnecessário, sem perder o histórico necessário para auditoria e suporte.');
         $this->renderConfigFormTableStart();
         $this->renderTextRow('queue_done_retention_days', 'Reter fila DONE/RESOLVIDO (dias, 0=desativar)', $config['queue_done_retention_days'] ?? '30');
         $this->renderTextRow('logs_retention_days', 'Reter logs (dias, 0=desativar)', $config['logs_retention_days'] ?? '90');
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
-        echo '</div>';
+        $paneEnd();
 
-        echo '<div class="nfse-config-tab" data-tab="tributacao">';
-        $this->renderConfigPaneHeader((string) $tabMeta['tributacao']['title'], (string) $tabMeta['tributacao']['description'], $tabStatuses['tributacao'] ?? []);
+        $paneStart('tributacao');
         $this->renderConfigSectionStart('Parâmetros principais', 'Esses valores são usados como base na emissão quando não houver regra específica por grupo de produto ou serviço.');
         $this->renderConfigFormTableStart();
         $this->renderTributacaoServiceNbsFields($config);
@@ -672,49 +568,51 @@ final class ConfigController
         );
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
-        echo '</div>';
+        $paneEnd();
 
-        echo '<div class="nfse-config-save" id="nfse-config-save">';
-        echo '<div><strong>Finalizar alterações</strong><br /><span>Revise os campos da seção atual antes de salvar. As mudanças são aplicadas imediatamente após o envio.</span></div>';
-        echo '<div><input type="submit" value="Salvar alterações" class="btn btn-primary" /></div>';
+        echo '<div class="nfse-savebar nfse-savebar--sticky nfse-cfg-savebar nfse-config-save" id="nfse-config-save"' . (in_array($activeTab, $standaloneTabs, true) ? ' hidden' : '') . '>';
+        echo '<span class="nfse-savebar__note">Revise os campos da seção atual antes de salvar. As mudanças são aplicadas imediatamente após o envio.</span>';
+        echo '<input type="submit" value="Salvar alterações" class="nfse-btn nfse-btn--primary" />';
         echo '</div>';
         echo '</form>';
 
-        echo '<div class="nfse-config-tab" data-tab="servicosnbs">';
-        $this->renderConfigPaneHeader((string) $tabMeta['servicosnbs']['title'], (string) $tabMeta['servicosnbs']['description'], $tabStatuses['servicosnbs'] ?? []);
+        $paneStart('servicosnbs');
         $this->renderServiceNbsCatalogContent();
-        echo '</div>';
+        $paneEnd();
 
-        echo '<div class="nfse-config-tab" data-tab="sequenciais">';
-        $this->renderConfigPaneHeader((string) $tabMeta['sequenciais']['title'], (string) $tabMeta['sequenciais']['description'], $tabStatuses['sequenciais'] ?? []);
+        $paneStart('sequenciais');
         $this->sequenciaisController->renderSequenciaisContent();
-        echo '</div>';
+        $paneEnd();
 
-        echo '<div class="nfse-config-tab" data-tab="codigos">';
-        $this->renderConfigPaneHeader((string) $tabMeta['codigos']['title'], (string) $tabMeta['codigos']['description'], $tabStatuses['codigos'] ?? []);
+        $paneStart('codigos');
         $this->renderCodigosProdutosServicosContent();
-        echo '</div>';
+        $paneEnd();
 
-        echo '<div class="nfse-config-tab" data-tab="danfse">';
-        $this->renderConfigPaneHeader((string) $tabMeta['danfse']['title'], (string) $tabMeta['danfse']['description'], $tabStatuses['danfse'] ?? []);
+        $paneStart('danfse');
         $this->renderDanfseConfigContent($config);
-        echo '</div>';
+        $paneEnd();
 
         echo '<script>';
         echo '(function(){';
         echo 'var active=' . json_encode($activeTab, JSON_UNESCAPED_UNICODE) . ';';
-        echo 'var links=document.querySelectorAll(".nfse-config-tabs a[data-tab]");';
-        echo 'var panes=document.querySelectorAll(".nfse-config-tab");';
-        echo 'var saves=document.querySelectorAll(".nfse-config-save");';
+        echo 'var standalone=' . json_encode($standaloneTabs) . ';';
+        echo 'var root=document.getElementById("nfse-config");';
+        echo 'if(!root){return;}';
+        echo 'var links=root.querySelectorAll(".nfse-subnav a.nfse-subnav__item");';
+        echo 'var panes=root.querySelectorAll(".nfse-config-tab");';
+        echo 'var saves=root.querySelectorAll(".nfse-config-save");';
         echo 'var activeInput=document.getElementById("nfse-active-config-tab");';
+        echo 'function tabOf(a){var m=/[?&]tab=([^&#]*)/.exec(a.getAttribute("href")||"");return m?decodeURIComponent(m[1]):"";}';
+        // Em área estreita o submenu vira uma linha de chips com rolagem: traz a seção ativa para a vista.
+        echo 'function reveal(a){var nav=a.parentNode;if(!nav||nav.scrollWidth<=nav.clientWidth){return;}nav.scrollLeft+=a.getBoundingClientRect().left-nav.getBoundingClientRect().left-8;}';
         echo 'function show(tab,updateUrl){';
-        echo 'for(var i=0;i<panes.length;i++){var p=panes[i]; p.style.display=(p.getAttribute("data-tab")===tab)?"block":"none";}';
-        echo 'for(var j=0;j<links.length;j++){var a=links[j]; var on=(a.getAttribute("data-tab")===tab); if(on){a.classList.add("is-active");}else{a.classList.remove("is-active");}}';
-        echo 'for(var s=0;s<saves.length;s++){saves[s].style.display=(tab==="codigos"||tab==="sequenciais"||tab==="servicosnbs"||tab==="danfse")?"none":"flex";}';
+        echo 'for(var i=0;i<panes.length;i++){panes[i].hidden=panes[i].getAttribute("data-tab")!==tab;}';
+        echo 'for(var j=0;j<links.length;j++){if(tabOf(links[j])===tab){links[j].setAttribute("aria-current","page");reveal(links[j]);}else{links[j].removeAttribute("aria-current");}}';
+        echo 'for(var s=0;s<saves.length;s++){saves[s].hidden=standalone.indexOf(tab)!==-1;}';
         echo 'if(activeInput){activeInput.value=tab;}';
         echo 'if(updateUrl&&window.history&&window.history.replaceState){window.history.replaceState(null,"",' . json_encode('addonmodules.php?module=OpenNfse&action=config&tab=', JSON_UNESCAPED_UNICODE) . '+encodeURIComponent(tab));}';
         echo '}';
-        echo 'for(var k=0;k<links.length;k++){(function(a){a.addEventListener("click",function(e){e.preventDefault(); show(a.getAttribute("data-tab"),true);});})(links[k]);}';
+        echo 'for(var k=0;k<links.length;k++){(function(a){a.addEventListener("click",function(e){var tab=tabOf(a);if(!tab){return;}e.preventDefault();show(tab,true);});})(links[k]);}';
         echo 'var toggleButtons=document.querySelectorAll("[data-nfse-toggle-password]");';
         echo 'for(var t=0;t<toggleButtons.length;t++){(function(btn){btn.addEventListener("click",function(){var id=btn.getAttribute("data-nfse-toggle-password");var input=id?document.getElementById(id):null;if(!input){return;}var isPassword=input.getAttribute("type")==="password";input.setAttribute("type",isPassword?"text":"password");btn.textContent=isPassword?"Ocultar":"Mostrar";});})(toggleButtons[t]);}';
         echo 'var markAll=document.getElementById("nfse-mark-all-gateways");';
@@ -727,8 +625,47 @@ final class ConfigController
         echo '</script>';
         echo '</div>';
         echo '</div>';
+        echo '</div>';
 
         Module::ui()->renderFooter();
+    }
+
+    /**
+     * Lista de dados (rótulo e valor) dos painéis de status. Os valores já vêm em HTML escapado.
+     *
+     * @param array<string, string> $facts
+     */
+    private static function factsHtml(array $facts): string
+    {
+        if ($facts === []) {
+            return '';
+        }
+        $html = '<dl class="nfse-cfg-facts">';
+        foreach ($facts as $label => $valueHtml) {
+            $html .= '<dt>' . Ui::h((string) $label) . '</dt><dd>' . $valueHtml . '</dd>';
+        }
+
+        return $html . '</dl>';
+    }
+
+    /**
+     * Painel de status (municípios IBGE, ViaCEP): título e badge, mensagem, dados e ações.
+     *
+     * @param array<string, string> $facts
+     */
+    private static function statusPanel(string $title, string $badgeHtml, string $message, array $facts, string $actionsHtml = ''): string
+    {
+        $html = '<div class="nfse-cfg-panel">';
+        $html .= '<div class="nfse-cfg-panel__head"><span class="nfse-cfg-panel__title">' . Ui::h($title) . '</span>' . $badgeHtml . '</div>';
+        if ($message !== '') {
+            $html .= '<div class="nfse-cfg-panel__text">' . Ui::h($message) . '</div>';
+        }
+        $html .= self::factsHtml($facts);
+        if ($actionsHtml !== '') {
+            $html .= '<div class="nfse-actions">' . $actionsHtml . '</div>';
+        }
+
+        return $html . '</div>';
     }
 
 
@@ -738,10 +675,6 @@ final class ConfigController
      */
     private function renderAutoEmitPolicyContent(array $config): void
     {
-        $h = static function ($value): string {
-            return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-        };
-
         $trigger = EmissionPolicyService::resolveGlobalTrigger($config);
         $scope = strtolower(trim((string) ($config['auto_emit_scope'] ?? EmissionPolicyService::SCOPE_TODOS)));
         if (!in_array($scope, EmissionPolicyService::validScopes(), true)) {
@@ -761,64 +694,58 @@ final class ConfigController
             EmissionPolicyService::SCOPE_GRUPOS => 'Só os grupos selecionados',
         ], $scope);
 
-        echo '<tr id="nfse-auto-emit-groups-row">';
-        echo '<td class="fieldlabel"><div class="nfse-config-label-title">Grupos de clientes</div></td>';
-        echo '<td class="fieldarea">';
         $groups = $this->listClientGroups();
         if (empty($groups)) {
-            echo '<span class="nfse-config-note">Nenhum grupo de clientes cadastrado no WHMCS.</span>';
+            $groupsHtml = '<span class="nfse-muted">Nenhum grupo de clientes cadastrado no WHMCS.</span>';
         } else {
-            echo '<div style="max-height:180px;overflow:auto;border:1px solid #d9e1ea;padding:6px 10px;background:#fff;">';
+            $groupsHtml = '<div class="nfse-cfg-checklist" role="group" aria-label="Grupos de clientes">';
             foreach ($groups as $group) {
                 $gid = (int) ($group['id'] ?? 0);
                 $checked = in_array($gid, $selectedGroups, true) ? ' checked' : '';
-                echo '<label style="display:block;margin:2px 0;font-weight:normal;"><input type="checkbox" name="auto_emit_group_ids[]" value="' . $h($gid) . '"' . $checked . ' /> '
-                    . $h((string) ($group['groupname'] ?? '')) . ' <span class="nfse-config-note">(#' . $h($gid) . ')</span></label>';
+                $groupsHtml .= '<label class="nfse-check"><input type="checkbox" name="auto_emit_group_ids[]" value="' . $gid . '"' . $checked . ' /> <span>'
+                    . Ui::h((string) ($group['groupname'] ?? '')) . ' <span class="nfse-muted">(#' . $gid . ')</span></span></label>';
             }
-            echo '</div>';
+            $groupsHtml .= '</div>';
         }
-        echo '<div class="nfse-config-help">Clientes fora dos grupos marcados não têm emissão automática, salvo se o custom field do cliente disser o contrário.</div>';
-        echo '</td>';
-        echo '</tr>';
+        echo self::rowWithId(
+            Ui::formRow('Grupos de clientes', $groupsHtml, 'Clientes fora dos grupos marcados não têm emissão automática, salvo se o custom field do cliente disser o contrário.'),
+            'nfse-auto-emit-groups-row'
+        );
 
-        echo '<tr>';
-        echo '<td class="fieldlabel"><div class="nfse-config-label-title">Enfileirar emissão de acordo com o custom field do cliente</div></td>';
-        echo '<td class="fieldarea"><select name="auto_emit_customfield_id" class="form-control nfse-config-select">';
-        echo '<option value="0"' . ($customFieldId === 0 ? ' selected' : '') . '>Não usar (desligado)</option>';
+        $fieldOptions = ['0' => 'Não usar (desligado)'];
         $fieldFound = false;
         foreach ($this->listClientCustomFields() as $field) {
             $fid = (int) ($field['id'] ?? 0);
-            $isSelected = $fid === $customFieldId;
-            $fieldFound = $fieldFound || $isSelected;
+            $fieldFound = $fieldFound || $fid === $customFieldId;
             $type = (string) ($field['fieldtype'] ?? '');
-            echo '<option value="' . $h($fid) . '"' . ($isSelected ? ' selected' : '') . '>'
-                . $h((string) ($field['fieldname'] ?? '')) . ' (#' . $h($fid) . ($type !== '' ? ', ' . $h($type) : '') . ')</option>';
+            $fieldOptions[(string) $fid] = (string) ($field['fieldname'] ?? '') . ' (#' . $fid . ($type !== '' ? ', ' . $type : '') . ')';
         }
         if ($customFieldId > 0 && !$fieldFound) {
-            echo '<option value="' . $h($customFieldId) . '" selected>#' . $h($customFieldId) . ' (campo não encontrado)</option>';
+            $fieldOptions[(string) $customFieldId] = '#' . $customFieldId . ' (campo não encontrado)';
         }
-        echo '</select>';
+        $fieldId = $this->configFieldId('auto_emit_customfield_id');
+        $fieldHtml = Ui::select('auto_emit_customfield_id', $fieldOptions, (string) $customFieldId, ['id' => $fieldId], 'nfse-cfg-field');
         if ($customFieldId > 0 && !$fieldFound) {
-            echo '<div class="alert alert-warning" style="margin:6px 0 0 0;font-size:12px;">'
-                . $h(EmissionPolicyService::MSG_CUSTOMFIELD_MISSING)
-                . ' Selecione outro campo ou "Não usar (desligado)".</div>';
+            $fieldHtml .= Ui::callout('warn', EmissionPolicyService::MSG_CUSTOMFIELD_MISSING, 'Selecione outro campo ou "Não usar (desligado)".');
         }
-        echo '<div class="nfse-config-help">Crie o campo em Configurações &gt; Campos personalizados do cliente (Setup &gt; Custom Client Fields) com <strong>Field Type: Drop Down</strong>, marque <strong>Admin Only</strong> (para o cliente não alterar) e use exatamente estas opções, separadas por vírgula:</div>';
-        echo '<div class="nfse-config-mono" style="font-size:11px;margin-top:4px;word-break:break-word;">' . $h(implode(',', array_keys(EmissionPolicyService::customFieldOptions()))) . '</div>';
-        echo '<div class="nfse-config-help">"' . $h(EmissionPolicyService::CF_NAO_CONFIGURADO) . '" segue o grupo e a regra global. "'
-            . $h(EmissionPolicyService::CF_NAO_EMITIR) . '" e "' . $h(EmissionPolicyService::CF_APENAS_MANUAL) . '" desligam a emissão automática do cliente; a emissão manual continua seguindo a opção de faturas não pagas acima. "'
-            . $h(EmissionPolicyService::CF_APENAS_PAGAS) . '" emite no pagamento e "' . $h(EmissionPolicyService::CF_TODAS) . '" emite na geração (e no pagamento, se ainda não houver NFS-e). Valor vazio ou diferente dessas opções é tratado como "'
-            . $h(EmissionPolicyService::CF_NAO_CONFIGURADO) . '" e gera um aviso no log.</div>';
-        echo '</td>';
-        echo '</tr>';
+        $fieldHtml .= '<div class="nfse-form__help">Crie o campo em Configurações &gt; Campos personalizados do cliente (Setup &gt; Custom Client Fields) com <strong>Field Type: Drop Down</strong>, marque <strong>Admin Only</strong> (para o cliente não alterar) e use exatamente estas opções, separadas por vírgula:</div>';
+        $fieldHtml .= '<div class="nfse-cfg-code">' . Ui::h(implode(',', array_keys(EmissionPolicyService::customFieldOptions()))) . '</div>';
+        $fieldHtml .= '<div class="nfse-form__help">"' . Ui::h(EmissionPolicyService::CF_NAO_CONFIGURADO) . '" segue o grupo e a regra global. "'
+            . Ui::h(EmissionPolicyService::CF_NAO_EMITIR) . '" e "' . Ui::h(EmissionPolicyService::CF_APENAS_MANUAL) . '" desligam a emissão automática do cliente; a emissão manual continua seguindo a opção de faturas não pagas acima. "'
+            . Ui::h(EmissionPolicyService::CF_APENAS_PAGAS) . '" emite no pagamento e "' . Ui::h(EmissionPolicyService::CF_TODAS) . '" emite na geração (e no pagamento, se ainda não houver NFS-e). Valor vazio ou diferente dessas opções é tratado como "'
+            . Ui::h(EmissionPolicyService::CF_NAO_CONFIGURADO) . '" e gera um aviso no log.</div>';
+        echo Ui::formRow('Enfileirar emissão de acordo com o custom field do cliente', $fieldHtml, '', ['id' => $fieldId]);
         $this->renderConfigFormTableEnd();
 
-        echo '<div id="nfse-auto-emit-fiscal-warning" class="alert alert-warning" style="margin:12px 0 4px 0;font-size:12px;line-height:1.5;">';
-        echo '<strong>Atenção fiscal (emissão na geração da fatura):</strong> a NFS-e é emitida antes do pagamento. ';
-        echo 'O ISS é devido mesmo que a fatura nunca seja paga; a competência é a data de emissão; e o prazo do município para cancelar a NFS-e é curto. ';
-        echo 'Se a fatura for cancelada ou alterada depois, o cancelamento da NFS-e continua manual. ';
-        echo 'Na geração, a emissão só vale para os gateways marcados em "Emitir ao gerar a fatura" (aba Integração com WHMCS). Confirme com a contabilidade antes de ligar.';
-        echo '<div style="margin-top:8px;"><strong>Valor da NFS-e x valor pago:</strong> ' . $h(self::AUTO_EMIT_VALUE_WARNING) . '</div>';
+        echo '<div id="nfse-auto-emit-fiscal-warning" class="nfse-cfg-block">';
+        echo Ui::callout(
+            'warn',
+            'Atenção fiscal (emissão na geração da fatura)',
+            'A NFS-e é emitida antes do pagamento. O ISS é devido mesmo que a fatura nunca seja paga; a competência é a data de emissão; e o prazo do município para cancelar a NFS-e é curto. '
+                . 'Se a fatura for cancelada ou alterada depois, o cancelamento da NFS-e continua manual. '
+                . 'Na geração, a emissão só vale para os gateways marcados em "Emitir ao gerar a fatura" (aba Integração com WHMCS). Confirme com a contabilidade antes de ligar.',
+            '<p><strong>Valor da NFS-e x valor pago:</strong> ' . Ui::h(self::AUTO_EMIT_VALUE_WARNING) . '</p>'
+        );
         echo '</div>';
 
         echo '<script>(function(){'
@@ -829,7 +756,7 @@ final class ConfigController
             . 'var groups=document.getElementById("nfse-auto-emit-groups-row");'
             . 'function sync(){'
             . 'var t=trig?trig.value:"";'
-            . 'if(warn){warn.style.display=(t==="gerada"||(cf&&cf.value!=="0"))?"block":"none";}'
+            . 'if(warn){warn.style.display=(t==="gerada"||(cf&&cf.value!=="0"))?"":"none";}'
             . 'if(groups){groups.style.display=(scope&&scope.value==="grupos")?"":"none";}'
             . '}'
             . 'if(trig){trig.addEventListener("change",sync);}'
@@ -837,6 +764,14 @@ final class ConfigController
             . 'if(cf){cf.addEventListener("change",sync);}'
             . 'sync();'
             . '})();</script>';
+    }
+
+    /**
+     * Acrescenta um id ao primeiro elemento (a linha do formulário) para os scripts que mostram ou escondem a linha.
+     */
+    private static function rowWithId(string $rowHtml, string $id): string
+    {
+        return preg_replace('/^<div /', '<div id="' . Ui::h($id) . '" ', $rowHtml, 1) ?? $rowHtml;
     }
 
     /** @return array<int, array{id: int, groupname: string}> */
@@ -1336,66 +1271,60 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         }
     }
 
+    private function updateCheckActions(array $status): string
+    {
+        $downloadUrl = trim((string) ($status['download_url'] ?? ''));
+        $changelogUrl = trim((string) ($status['changelog_url'] ?? ''));
+
+        $html = Ui::button('Verificar atualizações agora', ['sm'], ['formaction' => 'addonmodules.php?module=OpenNfse&action=checkUpdates', 'formmethod' => 'post']);
+        if ($downloadUrl !== '') {
+            $html .= Ui::button('Abrir releases', ['sm'], ['href' => $downloadUrl, 'target' => '_blank', 'rel' => 'noopener noreferrer']);
+        }
+        if ($changelogUrl !== '' && $changelogUrl !== $downloadUrl) {
+            $html .= Ui::button('Ver changelog', ['sm'], ['href' => $changelogUrl, 'target' => '_blank', 'rel' => 'noopener noreferrer']);
+        }
+
+        return $html;
+    }
+
     private function renderUpdateCheckContent(array $status): void
     {
-        $h = static function ($value): string {
-            return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-        };
-
         $tone = match ((string) ($status['status'] ?? 'never_checked')) {
-            'ok' => !empty($status['update_available'])
-                ? ['#fff7ed', '#f59e0b', '#9a3412']
-                : ['#ecfdf3', '#16a34a', '#166534'],
-            'error' => ['#fef2f2', '#ef4444', '#991b1b'],
-            default => ['#eff6ff', '#3b82f6', '#1d4ed8'],
+            'ok' => !empty($status['update_available']) ? 'warn' : 'ok',
+            'error' => 'danger',
+            default => 'emitida',
         };
         $lastCheckedAt = trim((string) ($status['last_checked_at'] ?? ''));
         $lastCheckedDisplay = $lastCheckedAt !== '' ? date('d/m/Y H:i', strtotime($lastCheckedAt) ?: time()) : 'Nunca';
-        $manifestUrl = (string) ($status['manifest_url'] ?? '');
-        $downloadUrl = trim((string) ($status['download_url'] ?? ''));
-        $changelogUrl = trim((string) ($status['changelog_url'] ?? ''));
         $minimumWhmcs = trim((string) ($status['minimum_whmcs'] ?? ''));
         $minimumPhp = trim((string) ($status['minimum_php'] ?? ''));
 
-        echo '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:stretch;">';
-        echo '<div style="flex:1 1 320px;min-width:320px;padding:12px;border:1px solid #d9e1ea;background:#fff;">';
-        echo '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">';
-        echo '<strong style="font-size:13px;color:#334155;">Status da atualização</strong>';
-        echo '<span style="display:inline-block;padding:3px 8px;border-radius:999px;background:' . $h($tone[0]) . ';color:' . $h($tone[2]) . ';font-size:11px;font-weight:700;border:1px solid ' . $h($tone[1]) . ';">' . $h((string) ($status['label'] ?? '')) . '</span>';
-        echo '</div>';
-        echo '<div style="font-size:12px;color:#475569;line-height:1.55;margin-bottom:8px;">' . $h((string) ($status['summary'] ?? '')) . '</div>';
-        echo '<div style="font-size:11px;color:#64748b;line-height:1.65;">';
-        echo 'Versão instalada: <strong>' . $h((string) ($status['current_version'] ?? '—')) . '</strong><br />';
-        echo 'Última versão conhecida: <strong>' . $h((string) ($status['latest_version'] ?? '—')) . '</strong><br />';
-        echo 'Última checagem: <strong>' . $h($lastCheckedDisplay) . '</strong><br />';
-        echo 'Manifesto remoto: <span class="nfse-config-mono" style="font-size:11px;">' . $h($manifestUrl) . '</span>';
+        $statusLine = Ui::badge((string) ($status['label'] ?? ''), $tone);
+        $summary = trim((string) ($status['summary'] ?? ''));
+        if ($summary !== '') {
+            $statusLine .= '<span>' . Ui::h($summary) . '</span>';
+        }
+        $facts = [
+            'Versão instalada' => Ui::h((string) ($status['current_version'] ?? '—')),
+            'Última versão conhecida' => Ui::h((string) ($status['latest_version'] ?? '—')),
+            'Última checagem' => Ui::h($lastCheckedDisplay),
+            'Manifesto remoto' => '<span class="nfse-mono">' . Ui::h((string) ($status['manifest_url'] ?? '')) . '</span>',
+        ];
         if ($minimumWhmcs !== '') {
-            echo '<br />WHMCS mínimo informado: <strong>' . $h($minimumWhmcs) . '</strong>';
+            $facts['WHMCS mínimo informado'] = Ui::h($minimumWhmcs);
         }
         if ($minimumPhp !== '') {
-            echo '<br />PHP mínimo informado: <strong>' . $h($minimumPhp) . '</strong>';
+            $facts['PHP mínimo informado'] = Ui::h($minimumPhp);
         }
         if (trim((string) ($status['message'] ?? '')) !== '') {
-            echo '<br />Notas da versão: <strong>' . $h((string) $status['message']) . '</strong>';
+            $facts['Notas da versão'] = Ui::h((string) $status['message']);
         }
         if (trim((string) ($status['error'] ?? '')) !== '') {
-            echo '<br />Erro: <span style="color:#b91c1c;">' . $h((string) $status['error']) . '</span>';
+            $facts['Erro'] = '<span class="nfse-text-danger">' . Ui::h((string) $status['error']) . '</span>';
         }
-        echo '</div>';
-        echo '</div>';
-        echo '<div style="flex:0 0 260px;min-width:260px;padding:12px;border:1px solid #d9e1ea;background:#fafbfd;display:flex;flex-direction:column;justify-content:space-between;gap:12px;">';
-        echo '<div style="font-size:12px;color:#475569;line-height:1.55;">O módulo consulta o manifesto de atualização publicado no GitHub e mantém um cache local da última checagem. A validação automática ocorre no cron no máximo uma vez por dia.</div>';
-        echo '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
-        echo '<button type="submit" class="btn btn-primary" formaction="addonmodules.php?module=OpenNfse&action=checkUpdates" formmethod="post">Verificar atualizações agora</button>';
-        if ($downloadUrl !== '') {
-            echo '<a href="' . $h($downloadUrl) . '" target="_blank" rel="noopener noreferrer" class="btn btn-default">Abrir releases</a>';
-        }
-        if ($changelogUrl !== '' && $changelogUrl !== $downloadUrl) {
-            echo '<a href="' . $h($changelogUrl) . '" target="_blank" rel="noopener noreferrer" class="btn btn-default">Ver changelog</a>';
-        }
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
+
+        $this->renderConfigBlock('<div class="nfse-cfg-status">' . $statusLine . '</div>' . self::factsHtml($facts));
+        $this->renderConfigBlock('O módulo consulta o manifesto de atualização publicado no GitHub e mantém um cache local da última checagem. A validação automática ocorre no cron no máximo uma vez por dia.', 'nfse-cfg-note');
     }
 
 
@@ -1629,13 +1558,12 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
     {
         $msg = (string) ($_REQUEST['msg'] ?? '');
         if ($msg === 'danfse_saved') {
-            echo '<div class="successbox">Configuração do DANFS-e salva.</div>';
+            echo Ui::callout('ok', 'Configuração do DANFS-e salva.');
         } elseif ($msg === 'danfse_invalid') {
             $detail = trim((string) ($_REQUEST['detail'] ?? ''));
-            $suffix = $detail !== '' ? ' ' . $detail : '';
-            echo '<div class="errorbox">Revise os campos da configuração do DANFS-e.' . htmlspecialchars($suffix, ENT_QUOTES, 'UTF-8') . '</div>';
+            echo Ui::callout('danger', 'Revise os campos da configuração do DANFS-e.', $detail);
         } elseif ($msg === 'danfse_error') {
-            echo '<div class="errorbox">Erro ao salvar a configuração do DANFS-e.</div>';
+            echo Ui::callout('danger', 'Erro ao salvar a configuração do DANFS-e.');
         }
 
         $defaults = $this->getDefaultDanfseConfig();
@@ -1651,9 +1579,9 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         ];
 
         $this->renderConfigSectionStart('Cabeçalho do DANFS-e', 'Defina o logotipo e os dados institucionais exibidos no cabeçalho do PDF gerado.');
-        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=saveDanfseConfig">';
+        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=saveDanfseConfig" class="nfse-cfg-cardform">';
         if ($token !== '') {
-            echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
+            echo '<input type="hidden" name="token" value="' . Ui::h($token) . '" />';
         }
         $this->renderConfigFormTableStart();
         $this->renderTextareaRow('danfse_logo_svg', 'Logo SVG', (string) (($config['danfse_logo_svg'] ?? '') !== '' ? $config['danfse_logo_svg'] : $defaults['danfse_logo_svg']));
@@ -1662,35 +1590,29 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         $this->renderTextRow('danfse_telefone', 'Telefone', (string) (($config['danfse_telefone'] ?? '') !== '' ? $config['danfse_telefone'] : $defaults['danfse_telefone']));
         $this->renderTextRow('danfse_email', 'E-mail', (string) (($config['danfse_email'] ?? '') !== '' ? $config['danfse_email'] : $defaults['danfse_email']));
         $this->renderConfigFormTableEnd();
-        echo '<div style="padding:6px 0 2px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button type="submit" class="btn btn-primary">Salvar configuração DANFS-e</button></div>';
+        echo Ui::saveBar(Ui::button('Salvar configuração DANFS-e', ['primary']));
         echo '</form>';
         $this->renderConfigSectionEnd();
+
         $this->renderConfigSectionStart('Pré-visualização', 'Visualize como o cabeçalho do PDF DANFS-e deve ficar com base nas configurações atuais.');
-        echo '<div class="nfse-config-box" style="margin:16px;padding:18px;">';
-        echo '<div style="border:1px solid #d8e1ea;border-radius:10px;background:#fff;padding:16px 18px;">';
-        echo '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">';
-        echo '<div style="flex:1 1 280px;text-align:center;min-width:280px;">';
-        echo '<div style="font-weight:700;font-size:15px;color:#1f2937;">DANFSe v1.0</div>';
-        echo '<div style="font-weight:700;font-size:15px;color:#1f2937;">Documento Auxiliar da NFS-e</div>';
+        $html = '<div class="nfse-cfg-preview">';
+        $html .= '<div class="nfse-cfg-preview__title"><div>DANFSe v1.0</div><div>Documento Auxiliar da NFS-e</div>';
         if ($preview['environment'] === 'homologacao') {
-            echo '<div style="font-weight:700;font-size:15px;color:#c00000;">NFS-e SEM VALIDADE JURÍDICA</div>';
+            $html .= '<div class="nfse-text-danger">NFS-e SEM VALIDADE JURÍDICA</div>';
         }
-        echo '</div>';
-        echo '<div style="display:flex;gap:10px;align-items:flex-start;flex:1 1 290px;justify-content:flex-end;min-width:290px;">';
+        $html .= '</div>';
+        $html .= '<div class="nfse-cfg-preview__org">';
         if (trim((string) $preview['logo_svg']) !== '' && stripos((string) $preview['logo_svg'], '<svg') !== false) {
-            echo '<div style="width:48px;height:48px;display:flex;align-items:flex-start;justify-content:center;overflow:hidden;">' . $preview['logo_svg'] . '</div>';
+            $html .= '<div class="nfse-cfg-logo">' . $preview['logo_svg'] . '</div>';
         }
-        echo '<div style="min-width:220px;text-align:left;">';
-        echo '<div style="font-weight:700;font-size:13px;color:#1f2937;">' . htmlspecialchars((string) $preview['municipio_nome'], ENT_QUOTES, 'UTF-8') . '</div>';
-        echo '<div style="font-size:12px;color:#475569;">' . htmlspecialchars((string) $preview['secretaria_nome'], ENT_QUOTES, 'UTF-8') . '</div>';
-        echo '<div style="font-size:12px;color:#475569;">' . htmlspecialchars((string) $preview['telefone'], ENT_QUOTES, 'UTF-8') . '</div>';
-        echo '<div style="font-size:12px;color:#475569;">' . htmlspecialchars((string) $preview['email'], ENT_QUOTES, 'UTF-8') . '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '<div class="nfse-config-note" style="padding:0 16px 10px 16px;">A pré-visualização é ilustrativa e reflete o cabeçalho configurado. O PDF final continua aplicando automaticamente o aviso em homologação.</div>';
-        echo '</div>';
+        $html .= '<div class="nfse-cfg-preview__org-text">';
+        $html .= '<div class="nfse-cfg-preview__org-name">' . Ui::h((string) $preview['municipio_nome']) . '</div>';
+        $html .= '<div>' . Ui::h((string) $preview['secretaria_nome']) . '</div>';
+        $html .= '<div>' . Ui::h((string) $preview['telefone']) . '</div>';
+        $html .= '<div>' . Ui::h((string) $preview['email']) . '</div>';
+        $html .= '</div></div></div>';
+        $this->renderConfigBlock($html);
+        $this->renderConfigBlock('A pré-visualização é ilustrativa e reflete o cabeçalho configurado. O PDF final continua aplicando automaticamente o aviso em homologação.', 'nfse-cfg-note');
         $this->renderConfigSectionEnd();
     }
 
@@ -1851,7 +1773,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         if (preg_match('/<svg\b/i', $svg) === 1) {
             $svg = preg_replace(
                 '/<svg\b/i',
-                '<svg style="display:block;width:100%;height:100%;max-width:48px;max-height:48px;" preserveAspectRatio="xMidYMid meet"',
+                '<svg preserveAspectRatio="xMidYMid meet"',
                 $svg,
                 1
             ) ?? $svg;
@@ -1865,26 +1787,24 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
     {
         $msg = (string) ($_REQUEST['msg'] ?? '');
         if ($msg === 'service_nbs_saved') {
-            echo '<div class="successbox">Relação de código de serviço e NBS adicionada.</div>';
+            echo Ui::callout('ok', 'Relação de código de serviço e NBS adicionada.');
         } elseif ($msg === 'service_nbs_exists') {
-            echo '<div class="errorbox">Essa relação já existe no catálogo.</div>';
+            echo Ui::callout('danger', 'Essa relação já existe no catálogo.');
         } elseif ($msg === 'service_nbs_invalid') {
-            echo '<div class="errorbox">Informe código de serviço com 6 dígitos, NBS com 9 dígitos e uma descrição.</div>';
+            echo Ui::callout('danger', 'Informe código de serviço com 6 dígitos, NBS com 9 dígitos e uma descrição.');
         } elseif ($msg === 'service_nbs_deleted') {
-            echo '<div class="successbox">Relação de código de serviço e NBS removida.</div>';
+            echo Ui::callout('ok', 'Relação de código de serviço e NBS removida.');
         } elseif ($msg === 'service_nbs_updated') {
-            echo '<div class="successbox">Relação de código de serviço e NBS atualizada.</div>';
+            echo Ui::callout('ok', 'Relação de código de serviço e NBS atualizada.');
         } elseif ($msg === 'service_nbs_in_use') {
             $usageDetail = trim((string) ($_REQUEST['usage'] ?? ''));
-            $message = 'Não é possível excluir essa relação porque ela está em uso.';
-            if ($usageDetail !== '') {
-                $message .= ' ' . $usageDetail;
-            } else {
-                $message .= ' Revise a configuração padrão e os grupos mapeados.';
-            }
-            echo '<div class="errorbox">' . htmlspecialchars($message, ENT_QUOTES, 'UTF-8') . '</div>';
+            echo Ui::callout(
+                'danger',
+                'Não é possível excluir essa relação porque ela está em uso.',
+                $usageDetail !== '' ? $usageDetail : 'Revise a configuração padrão e os grupos mapeados.'
+            );
         } elseif ($msg === 'service_nbs_error') {
-            echo '<div class="errorbox">Erro ao processar a relação de código de serviço e NBS. Tente novamente e, se persistir, revise os vínculos dessa relação nas demais configurações do módulo.</div>';
+            echo Ui::callout('danger', 'Erro ao processar a relação de código de serviço e NBS.', 'Tente novamente e, se persistir, revise os vínculos dessa relação nas demais configurações do módulo.');
         }
 
         $repo = new ServiceNbsCatalogRepository();
@@ -1894,13 +1814,14 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         $usageMap = $this->getServiceNbsUsageMap();
         $editId = (int) ($_GET['edit_service_nbs_id'] ?? 0);
         $editRow = $editId > 0 ? $repo->findById($editId) : null;
+        $digitsOnly = 'this.value=this.value.replace(/\D/g, \'\');';
 
         $this->renderConfigSectionStart('Relações cadastradas', 'As opções salvas aqui passam a alimentar a seleção de código de serviço e NBS usada no módulo. Total atual: ' . $catalogCount . ' relação(ões).');
         if (empty($rows)) {
-            echo '<div class="nfse-config-note" style="padding:14px 16px;">Nenhuma relação cadastrada até o momento.</div>';
+            $this->renderConfigBlock('Nenhuma relação cadastrada até o momento.', 'nfse-cfg-note');
         } else {
-            echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-            echo '<tr><th style="width:14%;">Código de Serviço</th><th style="width:14%;">NBS</th><th style="width:42%;">Descrição</th><th style="width:18%;">Uso atual</th><th style="width:12%;">Ações</th></tr>';
+            echo '<div class="nfse-table-wrap"><table class="nfse-table">';
+            echo '<thead><tr><th scope="col">Código de Serviço</th><th scope="col">NBS</th><th scope="col">Descrição</th><th scope="col">Uso atual</th><th scope="col">Ações</th></tr></thead><tbody>';
             foreach ($rows as $row) {
                 $id = (int) ($row['id'] ?? 0);
                 $usageKey = (string) ($row['codigo_servico'] ?? '') . '|' . (string) ($row['nbs'] ?? '');
@@ -1910,56 +1831,92 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
                     'summary' => 'Livre para remover',
                 ];
                 echo '<tr>';
-                echo '<td><span class="nfse-config-mono">' . htmlspecialchars((string) ($row['codigo_servico'] ?? ''), ENT_QUOTES, 'UTF-8') . '</span></td>';
-                echo '<td><span class="nfse-config-mono">' . htmlspecialchars((string) ($row['nbs'] ?? ''), ENT_QUOTES, 'UTF-8') . '</span></td>';
-                echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($row['descricao'] ?? ''), ENT_QUOTES, 'UTF-8') . '</td>';
-                echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars((string) ($usage['summary'] ?? 'Livre para remover'), ENT_QUOTES, 'UTF-8') . '</td>';
+                echo '<td class="nfse-nowrap"><span class="nfse-mono">' . Ui::h((string) ($row['codigo_servico'] ?? '')) . '</span></td>';
+                echo '<td class="nfse-nowrap"><span class="nfse-mono">' . Ui::h((string) ($row['nbs'] ?? '')) . '</span></td>';
+                echo '<td class="nfse-break">' . Ui::h((string) ($row['descricao'] ?? '')) . '</td>';
+                echo '<td class="nfse-break">' . Ui::h((string) ($usage['summary'] ?? 'Livre para remover')) . '</td>';
                 echo '<td>';
-                echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=deleteServiceNbsCatalog" style="display:inline-block;margin:0;">';
+                echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=deleteServiceNbsCatalog" class="nfse-inline-form nfse-actions">';
                 if ($token !== '') {
-                    echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
+                    echo '<input type="hidden" name="token" value="' . Ui::h($token) . '" />';
                 }
                 echo '<input type="hidden" name="id" value="' . $id . '" />';
-                echo '<a href="addonmodules.php?module=OpenNfse&action=config&tab=servicosnbs&edit_service_nbs_id=' . $id . '" class="btn btn-xs btn-default" style="margin-right:6px;">Editar</a>';
-                echo '<button type="submit" class="btn btn-xs btn-default" onclick="return confirm(\'Remover esta relação também a tornará indisponível nas demais telas. Continuar?\');">Excluir</button>';
+                echo Ui::button('Editar', ['sm'], ['href' => 'addonmodules.php?module=OpenNfse&action=config&tab=servicosnbs&edit_service_nbs_id=' . $id]);
+                echo Ui::button('Excluir', ['sm', 'danger'], ['onclick' => 'return confirm(\'Remover esta relação também a tornará indisponível nas demais telas. Continuar?\');']);
                 echo '</form>';
                 echo '</td>';
                 echo '</tr>';
             }
-            echo '</table>';
+            echo '</tbody></table></div>';
         }
         $this->renderConfigSectionEnd();
 
         if ($editRow) {
             $this->renderConfigSectionStart('Editar relação', 'Atualize o código de serviço, a NBS ou a descrição. Se o vínculo estiver em uso, a alteração é propagada para Tributação e para os grupos mapeados.');
-            echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=updateServiceNbsCatalog">';
+            echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=updateServiceNbsCatalog" class="nfse-cfg-cardform">';
             if ($token !== '') {
-                echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
+                echo '<input type="hidden" name="token" value="' . Ui::h($token) . '" />';
             }
             echo '<input type="hidden" name="id" value="' . (int) ($editRow['id'] ?? 0) . '" />';
             $this->renderConfigFormTableStart();
-            echo '<tr><td class="fieldlabel"><div class="nfse-config-label-title">Código de Serviço</div></td><td class="fieldarea"><input type="text" name="codigo_servico_catalog" class="form-control nfse-config-input nfse-config-mono" maxlength="6" inputmode="numeric" pattern="[0-9]*" oninput="this.value=this.value.replace(/\\D/g, \'\');" value="' . htmlspecialchars((string) ($editRow['codigo_servico'] ?? ''), ENT_QUOTES, 'UTF-8') . '" /><div class="nfse-config-help">Use 6 dígitos numéricos, sem pontuação.</div></td></tr>';
-            echo '<tr><td class="fieldlabel"><div class="nfse-config-label-title">NBS</div></td><td class="fieldarea"><input type="text" name="nbs_catalog" class="form-control nfse-config-input nfse-config-mono" maxlength="9" inputmode="numeric" pattern="[0-9]*" oninput="this.value=this.value.replace(/\\D/g, \'\');" value="' . htmlspecialchars((string) ($editRow['nbs'] ?? ''), ENT_QUOTES, 'UTF-8') . '" /><div class="nfse-config-help">Use 9 dígitos numéricos para a NBS vinculada ao código de serviço.</div></td></tr>';
-            echo '<tr><td class="fieldlabel"><div class="nfse-config-label-title">Descrição</div></td><td class="fieldarea"><textarea name="descricao_catalog" class="form-control nfse-config-input" rows="3" style="resize:vertical;">' . htmlspecialchars((string) ($editRow['descricao'] ?? ''), ENT_QUOTES, 'UTF-8') . '</textarea><div class="nfse-config-help">Texto exibido nas listas de seleção para facilitar a identificação da NBS.</div></td></tr>';
+            $this->renderCatalogFields(
+                (string) ($editRow['codigo_servico'] ?? ''),
+                (string) ($editRow['nbs'] ?? ''),
+                (string) ($editRow['descricao'] ?? ''),
+                false,
+                $digitsOnly
+            );
             $this->renderConfigFormTableEnd();
-            echo '<div style="padding:6px 0 2px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button type="submit" class="btn btn-primary">Salvar edição</button><a href="addonmodules.php?module=OpenNfse&action=config&tab=servicosnbs" class="btn btn-default">Cancelar</a></div>';
+            echo Ui::saveBar(
+                Ui::button('Cancelar', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=config&tab=servicosnbs'])
+                . Ui::button('Salvar edição', ['primary'])
+            );
             echo '</form>';
             $this->renderConfigSectionEnd();
         }
 
         $this->renderConfigSectionStart('Adicionar nova relação', 'Cadastre um novo código de serviço e a NBS correspondente para disponibilizar essa opção nas demais configurações.');
-        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=saveServiceNbsCatalog">';
+        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=saveServiceNbsCatalog" class="nfse-cfg-cardform">';
         if ($token !== '') {
-            echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
+            echo '<input type="hidden" name="token" value="' . Ui::h($token) . '" />';
         }
         $this->renderConfigFormTableStart();
-        echo '<tr><td class="fieldlabel"><div class="nfse-config-label-title">Código de Serviço</div></td><td class="fieldarea"><input type="text" name="codigo_servico_catalog" class="form-control nfse-config-input nfse-config-mono" maxlength="6" inputmode="numeric" pattern="[0-9]*" oninput="this.value=this.value.replace(/\\D/g, \'\');" placeholder="Ex.: 010301" /><div class="nfse-config-help">Use 6 dígitos numéricos, sem pontuação.</div></td></tr>';
-        echo '<tr><td class="fieldlabel"><div class="nfse-config-label-title">NBS</div></td><td class="fieldarea"><input type="text" name="nbs_catalog" class="form-control nfse-config-input nfse-config-mono" maxlength="9" inputmode="numeric" pattern="[0-9]*" oninput="this.value=this.value.replace(/\\D/g, \'\');" placeholder="Ex.: 115061000" /><div class="nfse-config-help">Use 9 dígitos numéricos para a NBS vinculada ao código de serviço.</div></td></tr>';
-        echo '<tr><td class="fieldlabel"><div class="nfse-config-label-title">Descrição</div></td><td class="fieldarea"><textarea name="descricao_catalog" class="form-control nfse-config-input" rows="3" style="resize:vertical;" placeholder="Descrição amigável da NBS"></textarea><div class="nfse-config-help">Texto exibido nas listas de seleção para facilitar a identificação da NBS.</div></td></tr>';
+        $this->renderCatalogFields('', '', '', true, $digitsOnly);
         $this->renderConfigFormTableEnd();
-        echo '<div style="padding:6px 0 2px 0;"><button type="submit" class="btn btn-primary">Adicionar relação</button></div>';
+        echo Ui::saveBar(Ui::button('Adicionar relação', ['primary']));
         echo '</form>';
         $this->renderConfigSectionEnd();
+    }
+
+    /**
+     * Campos do catálogo (código de serviço, NBS e descrição), iguais no cadastro e na edição.
+     */
+    private function renderCatalogFields(string $codigo, string $nbs, string $descricao, bool $withPlaceholders, string $digitsOnly): void
+    {
+        $codigoId = $this->configFieldId('codigo_servico_catalog');
+        echo Ui::formRow('Código de Serviço', Ui::input('codigo_servico_catalog', $codigo, 'text', [
+            'id' => $codigoId,
+            'maxlength' => '6',
+            'inputmode' => 'numeric',
+            'pattern' => '[0-9]*',
+            'oninput' => $digitsOnly,
+            'placeholder' => $withPlaceholders ? 'Ex.: 010301' : null,
+        ], 'nfse-cfg-field nfse-mono'), 'Use 6 dígitos numéricos, sem pontuação.', ['id' => $codigoId]);
+
+        $nbsId = $this->configFieldId('nbs_catalog');
+        echo Ui::formRow('NBS', Ui::input('nbs_catalog', $nbs, 'text', [
+            'id' => $nbsId,
+            'maxlength' => '9',
+            'inputmode' => 'numeric',
+            'pattern' => '[0-9]*',
+            'oninput' => $digitsOnly,
+            'placeholder' => $withPlaceholders ? 'Ex.: 115061000' : null,
+        ], 'nfse-cfg-field nfse-mono'), 'Use 9 dígitos numéricos para a NBS vinculada ao código de serviço.', ['id' => $nbsId]);
+
+        $descId = $this->configFieldId('descricao_catalog');
+        $textarea = '<textarea name="descricao_catalog" id="' . Ui::h($descId) . '" class="nfse-input" rows="3"'
+            . ($withPlaceholders ? ' placeholder="Descrição amigável da NBS"' : '') . '>' . Ui::h($descricao) . '</textarea>';
+        echo Ui::formRow('Descrição', $textarea, 'Texto exibido nas listas de seleção para facilitar a identificação da NBS.', ['id' => $descId]);
     }
 
 
@@ -2215,7 +2172,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         if (empty($servicoOptions) || empty($nbsOptionsByService)) {
             $this->renderTextRow('codigo_servico', 'Código de Serviço Padrão', $config['codigo_servico'] ?? '');
             $this->renderTextRow('nbs_padrao', 'NBS Padrão', $config['nbs_padrao'] ?? '');
-            echo '<tr><td class="fieldlabel"></td><td class="fieldarea"><div class="nfse-config-help">Quando o catálogo estiver disponível, esses campos passam a usar a relação cadastrada na subaba Código de Serviços e NBS.</div></td></tr>';
+            echo '<div class="nfse-cfg-block nfse-cfg-note">Quando o catálogo estiver disponível, esses campos passam a usar a relação cadastrada na subaba Código de Serviços e NBS.</div>';
             return;
         }
 
@@ -2231,27 +2188,19 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
 
         $jsNbsOptions = json_encode($nbsOptionsByService, JSON_UNESCAPED_UNICODE);
 
-        echo '<tr>';
-        echo '<td class="fieldlabel"><div class="nfse-config-label-title">Código de Serviço Padrão</div></td>';
-        echo '<td class="fieldarea">';
-        echo '<select name="codigo_servico" id="nfse-tributacao-servico" class="form-control nfse-config-select">';
-        echo '<option value="">Selecione</option>';
-        foreach ($servicoOptions as $value => $label) {
-            $selected = $value === $selectedServico ? ' selected' : '';
-            echo '<option value="' . htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8') . '"' . $selected . '>' . htmlspecialchars((string) $label, ENT_QUOTES, 'UTF-8') . '</option>';
-        }
-        echo '</select>';
-        echo '<div class="nfse-config-help">As opções são carregadas do catálogo mantido na subaba Código de Serviços e NBS.</div>';
-        echo '</td>';
-        echo '</tr>';
-
-        echo '<tr>';
-        echo '<td class="fieldlabel"><div class="nfse-config-label-title">NBS Padrão</div></td>';
-        echo '<td class="fieldarea">';
-        echo '<select name="nbs_padrao" id="nfse-tributacao-nbs" class="form-control nfse-config-select"></select>';
-        echo '<div class="nfse-config-help" id="nfse-tributacao-nbs-help">Selecione um código de serviço para carregar as NBS relacionadas.</div>';
-        echo '</td>';
-        echo '</tr>';
+        echo Ui::formRow(
+            'Código de Serviço Padrão',
+            Ui::select('codigo_servico', ['' => 'Selecione'] + $servicoOptions, $selectedServico, ['id' => 'nfse-tributacao-servico'], 'nfse-cfg-field'),
+            'As opções são carregadas do catálogo mantido na subaba Código de Serviços e NBS.',
+            ['id' => 'nfse-tributacao-servico']
+        );
+        echo Ui::formRow(
+            'NBS Padrão',
+            '<select name="nbs_padrao" id="nfse-tributacao-nbs" class="nfse-input nfse-cfg-field"></select>'
+            . '<div class="nfse-form__help" id="nfse-tributacao-nbs-help">Selecione um código de serviço para carregar as NBS relacionadas.</div>',
+            '',
+            ['id' => 'nfse-tributacao-nbs']
+        );
 
         echo '<script>(function(){var selectedNbs=' . json_encode($selectedNbs, JSON_UNESCAPED_UNICODE) . ';var nbsOptions=' . $jsNbsOptions . ';var servicoEl=document.getElementById("nfse-tributacao-servico");var nbsEl=document.getElementById("nfse-tributacao-nbs");var helpEl=document.getElementById("nfse-tributacao-nbs-help");if(!servicoEl||!nbsEl){return;}function fill(){var servico=servicoEl.value||"";nbsEl.innerHTML="";if(servico===""){var placeholder=document.createElement("option");placeholder.value="";placeholder.textContent="Selecione um código de serviço primeiro";nbsEl.appendChild(placeholder);nbsEl.disabled=true;if(helpEl){helpEl.textContent="Cadastre novas combinações na subaba Código de Serviços e NBS sempre que necessário.";}return;}var opts=nbsOptions[servico]||{};var first="";for(var key in opts){if(!opts.hasOwnProperty(key)){continue;}if(first===""){first=key;}var option=document.createElement("option");option.value=key;option.textContent=opts[key];if(selectedNbs!==""&&selectedNbs===key){option.selected=true;}nbsEl.appendChild(option);}if(nbsEl.options.length===0){var empty=document.createElement("option");empty.value="";empty.textContent="(Sem NBS cadastrada para este código)";nbsEl.appendChild(empty);nbsEl.disabled=true;if(helpEl){helpEl.textContent="Adicione uma NBS relacionada a este código na subaba Código de Serviços e NBS.";}return;}nbsEl.disabled=false;if(selectedNbs===""||!opts.hasOwnProperty(selectedNbs)){nbsEl.value=first;}if(helpEl){helpEl.textContent="A NBS selecionada será usada como padrão quando não houver regra específica por grupo.";}selectedNbs=nbsEl.value||"";}fill();servicoEl.addEventListener("change",function(){selectedNbs="";fill();});})();</script>';
     }
@@ -2260,7 +2209,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
     public function renderCodigosProdutosServicosContent(): void
     {
         if ((string) ($_GET['codes_saved'] ?? '') === '1') {
-            echo '<div class="successbox">Configuração salva.</div>';
+            echo Ui::callout('ok', 'Configuração salva.');
         }
 
         $config = (new ConfigRepository())->get();
@@ -2274,18 +2223,16 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         $nbsOptions = $catalogRepo->getNbsOptionsByServiceCode();
 
         $this->renderConfigSectionStart('Mapeamento por grupo', 'Associe cada grupo do WHMCS a um código de serviço e NBS. Quando estiver em "Padrão", o módulo usa os valores definidos na aba Tributação.');
-        echo '<div class="nfse-config-box" style="margin:16px 16px 0 16px;">';
-        echo '<div class="nfse-config-note">Revise esses mapeamentos sempre que novos grupos de produto forem criados no WHMCS ou quando houver atualização fiscal.</div>';
-        echo '</div>';
+        $this->renderConfigBlock('Revise esses mapeamentos sempre que novos grupos de produto forem criados no WHMCS ou quando houver atualização fiscal.', 'nfse-cfg-note');
 
-        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=saveCodigos">';
+        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=saveCodigos" class="nfse-cfg-cardform">';
         $token = (new TokenService())->token();
         if ($token !== '') {
-            echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
+            echo '<input type="hidden" name="token" value="' . Ui::h($token) . '" />';
         }
 
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;margin-top:16px;">';
-        echo '<tr><th style="width:22%;">Grupo</th><th style="width:18%;">Código de Serviço</th><th style="width:60%;">NBS</th></tr>';
+        echo '<div class="nfse-table-wrap"><table class="nfse-table nfse-cfg-table">';
+        echo '<thead><tr><th scope="col">Grupo</th><th scope="col">Código de Serviço</th><th scope="col">NBS</th></tr></thead><tbody>';
 
         foreach ($groups as $g) {
             $gid = (int) ($g->id ?? 0);
@@ -2298,44 +2245,24 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
             $curServico = $current['codigo_servico'] !== null ? (string) $current['codigo_servico'] : '';
             $curNbs = $current['nbs'] !== null ? (string) $current['nbs'] : '';
             $rowServicoOptions = $servicoOptions;
-            $rowNbsOptions = $nbsOptions;
             if ($curServico !== '' && !isset($rowServicoOptions[$curServico])) {
                 $rowServicoOptions[$curServico] = $curServico . ' (Atual fora do catálogo)';
             }
-            if ($curServico !== '' && !isset($rowNbsOptions[$curServico])) {
-                $rowNbsOptions[$curServico] = [];
-            }
-            if ($curServico !== '' && $curNbs !== '' && !isset($rowNbsOptions[$curServico][$curNbs])) {
-                $rowNbsOptions[$curServico][$curNbs] = $curNbs . ' - Valor atual fora do catálogo';
-            }
 
             echo '<tr>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '</td>';
-
+            echo '<td class="nfse-break">' . Ui::h($name) . '</td>';
+            echo '<td>' . Ui::select('codigo_servico[' . $gid . ']', $rowServicoOptions, $curServico, ['data-gid' => (string) $gid, 'aria-label' => 'Código de serviço: ' . $name], 'nfse-input--sm nfse-servico') . '</td>';
             echo '<td>';
-            echo '<select class="form-control nfse-servico" name="codigo_servico[' . (int) $gid . ']" data-gid="' . (int) $gid . '" style="width:100%;max-width:240px;">';
-            foreach ($rowServicoOptions as $val => $label) {
-                $sel = $val === $curServico ? ' selected' : '';
-                echo '<option value="' . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . '"' . $sel . '>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
-            }
-            echo '</select>';
+            echo '<select class="nfse-input nfse-input--sm nfse-nbs" name="nbs[' . $gid . ']" data-gid="' . $gid . '" aria-label="' . Ui::h('NBS: ' . $name) . '"></select>';
+            echo '<div class="nfse-cell-meta nfse-nbs-help" data-gid="' . $gid . '"></div>';
+            echo '<input type="hidden" class="nfse-cur-servico" data-gid="' . $gid . '" value="' . Ui::h($curServico) . '" />';
+            echo '<input type="hidden" class="nfse-cur-nbs" data-gid="' . $gid . '" value="' . Ui::h($curNbs) . '" />';
             echo '</td>';
-
-            echo '<td>';
-            echo '<select class="form-control nfse-nbs" name="nbs[' . (int) $gid . ']" data-gid="' . (int) $gid . '" style="width:100%;max-width:100%;">';
-            echo '</select>';
-            echo '<div class="help-block nfse-nbs-help" data-gid="' . (int) $gid . '" style="margin:4px 0 0 0;">';
-            echo '</div>';
-            echo '</td>';
-
             echo '</tr>';
-
-            echo '<input type="hidden" class="nfse-cur-servico" data-gid="' . (int) $gid . '" value="' . htmlspecialchars($curServico, ENT_QUOTES, 'UTF-8') . '" />';
-            echo '<input type="hidden" class="nfse-cur-nbs" data-gid="' . (int) $gid . '" value="' . htmlspecialchars($curNbs, ENT_QUOTES, 'UTF-8') . '" />';
         }
 
-        echo '</table>';
-        echo '<div style="padding-top:12px;"><button type="submit" class="btn btn-primary">Salvar</button></div>';
+        echo '</tbody></table></div>';
+        echo Ui::saveBar(Ui::button('Salvar', ['primary']));
         echo '</form>';
         $this->renderConfigSectionEnd();
 
@@ -2362,110 +2289,19 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
     }
 
 
+    /**
+     * Tela antiga do mapeamento (sem rota própria hoje: action=codigos redireciona para a aba de Configurações).
+     */
     public function showCodigosProdutosServicos(): void
     {
         Module::ui()->renderHeader('Códigos Produtos/Serviços - OpenNfse');
         $this->renderTabs('config', 'Códigos de produtos e serviços');
-
+        echo '<div class="nfse-ui nfse-page">';
         if ((string) ($_GET['saved'] ?? '') === '1') {
-            echo '<div class="successbox">Configuração salva.</div>';
+            echo Ui::callout('ok', 'Configuração salva.');
         }
-
-        $config = (new ConfigRepository())->get();
-        $defaultServico = (string) ($config['codigo_servico'] ?? '');
-        $defaultNbs = (string) ($config['nbs_padrao'] ?? '');
-
-        $groups = Capsule::table('tblproductgroups')->orderBy('order', 'asc')->orderBy('name', 'asc')->get();
-        $map = (new GroupServiceCodeRepository())->getAllByGroupId();
-        $catalogRepo = new ServiceNbsCatalogRepository();
-        $servicoOptions = $catalogRepo->getServiceOptions(true);
-        $nbsOptions = $catalogRepo->getNbsOptionsByServiceCode();
-
-        echo '<div class="alert alert-info" style="margin-bottom:10px;">';
-        echo 'Mapeie cada Grupo do WHMCS para um Código de Serviço e NBS. Se escolher Padrão, o módulo usará os valores padrão da Config.';
+        $this->renderCodigosProdutosServicosContent();
         echo '</div>';
-
-        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=saveCodigos">';
-        $token = (new TokenService())->token();
-        if ($token !== '') {
-            echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
-        }
-
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;">';
-        echo '<tr><th>Grupo</th><th>Código de Serviço</th><th>NBS</th></tr>';
-
-        foreach ($groups as $g) {
-            $gid = (int) ($g->id ?? 0);
-            if ($gid <= 0) {
-                continue;
-            }
-            $name = (string) ($g->name ?? '');
-
-            $current = $map[$gid] ?? ['codigo_servico' => null, 'nbs' => null];
-            $curServico = $current['codigo_servico'] !== null ? (string) $current['codigo_servico'] : '';
-            $curNbs = $current['nbs'] !== null ? (string) $current['nbs'] : '';
-            $rowServicoOptions = $servicoOptions;
-            $rowNbsOptions = $nbsOptions;
-            if ($curServico !== '' && !isset($rowServicoOptions[$curServico])) {
-                $rowServicoOptions[$curServico] = $curServico . ' (Atual fora do catálogo)';
-            }
-            if ($curServico !== '' && !isset($rowNbsOptions[$curServico])) {
-                $rowNbsOptions[$curServico] = [];
-            }
-            if ($curServico !== '' && $curNbs !== '' && !isset($rowNbsOptions[$curServico][$curNbs])) {
-                $rowNbsOptions[$curServico][$curNbs] = $curNbs . ' - Valor atual fora do catálogo';
-            }
-
-            echo '<tr>';
-            echo '<td>' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '</td>';
-
-            echo '<td>';
-            echo '<select class="form-control nfse-servico" name="codigo_servico[' . (int) $gid . ']" data-gid="' . (int) $gid . '" style="max-width:240px;">';
-            foreach ($rowServicoOptions as $val => $label) {
-                $sel = $val === $curServico ? ' selected' : '';
-                echo '<option value="' . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . '"' . $sel . '>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
-            }
-            echo '</select>';
-            echo '</td>';
-
-            echo '<td>';
-            echo '<select class="form-control nfse-nbs" name="nbs[' . (int) $gid . ']" data-gid="' . (int) $gid . '" style="min-width:520px;max-width:780px;">';
-            echo '</select>';
-            echo '<div class="help-block nfse-nbs-help" data-gid="' . (int) $gid . '" style="margin:4px 0 0 0;">';
-            echo '</div>';
-            echo '</td>';
-
-            echo '</tr>';
-
-            echo '<input type="hidden" class="nfse-cur-servico" data-gid="' . (int) $gid . '" value="' . htmlspecialchars($curServico, ENT_QUOTES, 'UTF-8') . '" />';
-            echo '<input type="hidden" class="nfse-cur-nbs" data-gid="' . (int) $gid . '" value="' . htmlspecialchars($curNbs, ENT_QUOTES, 'UTF-8') . '" />';
-        }
-
-        echo '</table>';
-        echo '<p><button type="submit" class="btn btn-primary">Salvar</button></p>';
-        echo '</form>';
-
-        $mergedNbsOptions = $nbsOptions;
-        foreach ($map as $currentRow) {
-            $curServico = $currentRow['codigo_servico'] !== null ? (string) $currentRow['codigo_servico'] : '';
-            $curNbs = $currentRow['nbs'] !== null ? (string) $currentRow['nbs'] : '';
-            if ($curServico === '') {
-                continue;
-            }
-            if (!isset($mergedNbsOptions[$curServico])) {
-                $mergedNbsOptions[$curServico] = [];
-            }
-            if ($curNbs !== '' && !isset($mergedNbsOptions[$curServico][$curNbs])) {
-                $mergedNbsOptions[$curServico][$curNbs] = $curNbs . ' - Valor atual fora do catálogo';
-            }
-        }
-
-        $jsNbsOptions = json_encode($mergedNbsOptions, JSON_UNESCAPED_UNICODE);
-        $jsDefaultServico = json_encode($defaultServico, JSON_UNESCAPED_UNICODE);
-        $jsDefaultNbs = json_encode($defaultNbs, JSON_UNESCAPED_UNICODE);
-
-        echo '<script>(function(){var nbsOptions=' . $jsNbsOptions . ';var defaultServico=' . $jsDefaultServico . ';var defaultNbs=' . $jsDefaultNbs . ';function curVal(cls,gid){var el=document.querySelector(cls+\'[data-gid="\'+gid+\'"]\');return el?el.value:\'\';}function fill(gid){var servEl=document.querySelector(\'.nfse-servico[data-gid="\'+gid+\'"]\');var nbsEl=document.querySelector(\'.nfse-nbs[data-gid="\'+gid+\'"]\');var help=document.querySelector(\'.nfse-nbs-help[data-gid="\'+gid+\'"]\');if(!servEl||!nbsEl){return;}var serv=servEl.value||\'\';var curNbs=curVal(\'.nfse-cur-nbs\',gid);nbsEl.innerHTML=\'\';if(serv===\'\'){var opt=document.createElement(\'option\');opt.value=\'\';opt.textContent=\'Padrão\';nbsEl.appendChild(opt);nbsEl.disabled=true;var s=defaultServico?defaultServico:\'-\';var n=defaultNbs?defaultNbs:\'-\';if(help){help.textContent=\'Usará: Código \' + s + \' e NBS \' + n; }return;}nbsEl.disabled=false;var opts=nbsOptions[serv]||{};var first=\'\';for(var k in opts){if(!opts.hasOwnProperty(k)){continue;}if(first===\'\'){first=k;}var o=document.createElement(\'option\');o.value=k;o.textContent=opts[k];if(curNbs!==\'\'&&curNbs===k){o.selected=true;}nbsEl.appendChild(o);}if(nbsEl.options.length===0){var o2=document.createElement(\'option\');o2.value=\'\';o2.textContent=\'(Sem opções)\' ;nbsEl.appendChild(o2);nbsEl.disabled=true;}else if(curNbs===\'\'){nbsEl.value=first;}if(help){help.textContent=\'\';}}var servs=document.querySelectorAll(\'.nfse-servico\');for(var i=0;i<servs.length;i++){(function(el){var gid=el.getAttribute(\'data-gid\');fill(gid);el.addEventListener(\'change\',function(){var h=document.querySelector(\'.nfse-cur-nbs[data-gid="\'+gid+\'"]\');if(h){h.value=\'\';}fill(gid);});})(servs[i]);}})();</script>';
-
         Module::ui()->renderFooter();
     }
 

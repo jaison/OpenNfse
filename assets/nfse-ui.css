@@ -663,3 +663,66 @@
   .nfse-form__label { padding-top: 0; }
   .nfse-filterbar__actions { margin-left: 0; }
 }
+
+/* Configurações */
+
+/* Submenu: com as pílulas de status, os nomes das seções quebram em duas linhas em vez de cortar
+   (e, sem espaço nem assim, a pílula desce para a linha de baixo). */
+.nfse-cfg a.nfse-subnav__item { flex-wrap: wrap; row-gap: 2px; }
+.nfse-cfg .nfse-subnav__label { flex: 1 1 0; min-width: auto; overflow: visible; white-space: normal; }
+/* Abas da tela (painéis alternados por JS) e formulário principal com os mesmos 16px entre blocos. */
+.nfse-cfg-pane { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.nfse-cfg-pane[hidden], .nfse-cfg-savebar[hidden] { display: none; }
+.nfse-ui form.nfse-cfg-form { display: flex; flex-direction: column; gap: var(--space-4); margin: 0; }
+/* Nas seções com formulário próprio, o formulário principal fica todo oculto: sem ele, não sobra espaço vazio. */
+.nfse-ui form.nfse-cfg-form:not(:has(> .nfse-cfg-pane:not([hidden]))) { display: none; }
+.nfse-ui form.nfse-cfg-cardform { margin: 0; }
+.nfse-cfg-pending { font-size: 12px; line-height: 16px; color: var(--muted); }
+/* Card de subseção: título + descrição empilhados no cabeçalho; blocos de texto com o mesmo recuo das linhas do formulário. */
+.nfse-cfg-card { min-width: 0; }
+.nfse-cfg-card > .nfse-card__head { align-items: flex-start; }
+.nfse-cfg-card__heading { min-width: 0; flex: 1 1 320px; }
+.nfse-ui h3.nfse-card__title { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.nfse-cfg-block { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--divider); min-width: 0; }
+.nfse-card__head + .nfse-cfg-block, .nfse-cfg-block:first-child { border-top: 0; }
+.nfse-cfg-note, .nfse-cfg-block.nfse-cfg-note { display: block; font-size: 12px; line-height: 18px; color: var(--muted); }
+.nfse-cfg-note > div + div { margin-top: var(--space-1); }
+.nfse-cfg-note strong { color: var(--ink-2); }
+/* Campos: largura confortável no lado direito; textarea só cresce na vertical. */
+.nfse-input.nfse-cfg-field { width: 100%; max-width: 560px; }
+.nfse-ui textarea.nfse-input { width: 100%; resize: vertical; line-height: 18px; }
+.nfse-cfg-inline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); max-width: 560px; }
+.nfse-cfg-inline .nfse-input { flex: 1 1 200px; min-width: 0; }
+.nfse-cfg-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 16px; color: var(--ink-2); overflow-wrap: anywhere; }
+.nfse-cfg-checklist { display: flex; flex-direction: column; gap: var(--space-1); max-width: 560px; max-height: 180px; overflow: auto; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-card); }
+/* Status (certificado, atualização, municípios): badge + resumo, lista de dados e ações. */
+.nfse-cfg-status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.nfse-ui dl.nfse-cfg-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; font-size: 12px; line-height: 18px; }
+.nfse-ui .nfse-cfg-facts dt { font-weight: 400; color: var(--muted); }
+.nfse-ui .nfse-cfg-facts dd { margin: 0; color: var(--ink); font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.nfse-cfg-facts .nfse-mono { font-weight: 400; }
+.nfse-cfg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--space-3); padding: var(--space-3) var(--space-4) var(--space-4); }
+.nfse-cfg-panel { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.nfse-cfg-panel__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.nfse-cfg-panel__title { font-size: 13px; line-height: 18px; font-weight: 600; color: var(--ink); }
+.nfse-cfg-panel__text { font-size: 12px; line-height: 18px; color: var(--ink-2); }
+/* Barra de salvar do formulário principal: card próprio, fixa no rodapé. */
+.nfse-savebar.nfse-cfg-savebar { border: 1px solid var(--border); border-radius: var(--radius-xl); }
+/* Tabelas da tela: selects ocupam a célula; colunas de rótulo não quebram. */
+.nfse-cfg-table select.nfse-input { width: 100%; min-width: 160px; }
+.nfse-cfg-table .nfse-input--w-sm { width: 140px; }
+/* Pré-visualização do cabeçalho do DANFS-e. */
+.nfse-cfg-preview { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) 18px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-card); }
+.nfse-cfg-preview__title { flex: 1 1 240px; min-width: 0; text-align: center; font-size: 15px; line-height: 20px; font-weight: 700; color: var(--ink); }
+.nfse-cfg-preview__org { flex: 1 1 260px; min-width: 0; display: flex; align-items: flex-start; justify-content: flex-end; gap: 10px; }
+.nfse-cfg-preview__org-text { min-width: 0; font-size: 12px; line-height: 18px; color: var(--ink-2); overflow-wrap: anywhere; }
+.nfse-cfg-preview__org-name { font-size: 13px; font-weight: 700; color: var(--ink); }
+.nfse-cfg-logo { flex: none; width: 48px; height: 48px; display: flex; align-items: flex-start; justify-content: center; overflow: hidden; }
+.nfse-cfg-logo svg { display: block; width: 100%; height: 100%; max-width: 48px; max-height: 48px; }
+@container nfse-page (max-width: 999px) {
+  .nfse-cfg a.nfse-subnav__item { flex-wrap: nowrap; }
+  .nfse-cfg .nfse-subnav__label { flex: none; white-space: nowrap; }
+}
+@container nfse-page (max-width: 699px) {
+  .nfse-cfg-preview__org { justify-content: flex-start; }
+}
