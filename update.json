@@ -1,10 +1,10 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.27",
+  "latest_version": "0.1.28",
   "release_date": "2026-11-05",
   "download_url": "https://github.com/jaison/OpenNfse/releases",
   "changelog_url": "https://github.com/jaison/OpenNfse/releases",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Correção: o número do endereço do tomador saía repetido na NFS-e (\"RUA X, 541, 541\"), porque ia junto no logradouro e também no campo número. Agora o número sai do logradouro e vai só no campo número; números do nome da rua (ex.: \"Rua 7 de Setembro\") não são mais lidos como número. Nova opção em Configurações › Dados Padrão do Tomador: \"Origem do Bairro do Tomador\". O padrão é \"Endereço 2 é o Bairro\" (o Endereço 2 do cliente passa a ir como bairro, e não mais como complemento); também é possível escolher um campo personalizado do cliente. O bairro padrão continua valendo quando a origem estiver vazia. IMPORTANTE: antes de atualizar, apague a pasta modules/addons/OpenNfse e envie a nova (a pasta não guarda dados: a configuração fica no banco, os XML/PDF ficam em attachments/ e o certificado fica obrigatoriamente fora do webroot)."
+  "message": "Correção em Configurações: quando o Código de Serviço não começa com 0 (ex.: 14.01.01), a aba Tributação abria em \"Selecione\" em vez do código salvo, e salvar as configurações apagava o código de serviço padrão. Com um código assim no catálogo, a tela de Configurações também podia parar de carregar. Agora o código salvo aparece selecionado e a tela carrega normalmente. Se você salvou as configurações na v0.1.27 ou antes com um código assim, confira o Código de Serviço Padrão e o mapeamento por grupo depois de atualizar. IMPORTANTE: antes de atualizar, apague a pasta modules/addons/OpenNfse e envie a nova (a pasta não guarda dados: a configuração fica no banco, os XML/PDF ficam em attachments/ e o certificado fica obrigatoriamente fora do webroot)."
 }
