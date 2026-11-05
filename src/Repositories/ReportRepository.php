@@ -680,24 +680,26 @@ final class ReportRepository
             $notas[] = (array) $r;
         }
 
+        // Folga no limite: a mesma chave pode ter mais de um registro CANCELAMENTO.
         $historico = [];
         $query = $this->historicoCancelamentos($start, $end)
             ->join('tblclients as c', 'c.id', '=', 'h.userid')
             ->select([
                 'h.invoiceid',
                 'h.numero_nf',
+                'h.chave_acesso',
                 'h.cancelado_em as data',
                 'c.companyname',
                 'c.firstname',
                 'c.lastname',
             ])
             ->orderBy('h.cancelado_em', 'desc')
-            ->limit($limit);
+            ->limit($limit * 4);
         foreach ($query->get() as $r) {
             $historico[] = (array) $r;
         }
 
-        return self::mergeRecentByDate($historico, $notas, $limit);
+        return self::mergeRecentByDate(self::recentesPorDocumento($historico), $notas, $limit);
     }
 
     /**
@@ -798,14 +800,47 @@ final class ReportRepository
             if ($canceladoEm === '') {
                 continue;
             }
-            $chave = trim((string) ($row['chave_acesso'] ?? ''));
-            $doc = $chave !== '' ? 'chave:' . $chave : 'evento:' . (int) ($row['invoiceid'] ?? 0) . '|' . $canceladoEm;
+            $doc = self::documentoCancelado($row, $canceladoEm);
             if (!isset($out[$doc]) || strcmp($canceladoEm, $out[$doc]) > 0) {
                 $out[$doc] = $canceladoEm;
             }
         }
 
         return $out;
+    }
+
+    /**
+     * Cancelamentos recentes do histórico (data em 'data'), um por documento, com a mesma regra
+     * de cancelamentosPorDocumento: fica a linha com a data mais recente.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    public static function recentesPorDocumento(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $data = trim((string) ($row['data'] ?? ''));
+            if ($data === '') {
+                continue;
+            }
+            $doc = self::documentoCancelado($row, $data);
+            if (!isset($out[$doc]) || strcmp($data, trim((string) ($out[$doc]['data'] ?? ''))) > 0) {
+                $out[$doc] = $row;
+            }
+        }
+
+        return array_values($out);
+    }
+
+    /**
+     * Documento do cancelamento: a chave; sem chave, fatura e data do cancelamento (como a aba Cancelamentos).
+     */
+    private static function documentoCancelado(array $row, string $canceladoEm): string
+    {
+        $chave = trim((string) ($row['chave_acesso'] ?? ''));
+
+        return $chave !== '' ? 'chave:' . $chave : 'evento:' . (int) ($row['invoiceid'] ?? 0) . '|' . $canceladoEm;
     }
 
     /**
