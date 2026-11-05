@@ -227,6 +227,15 @@ Ao salvar a configuração, `auto_emit_on_payment` é gravado como `1` sempre qu
 
 Ao escolher o gatilho `gerada`, ou com o custom field configurado, a tela mostra um aviso: a NFS-e é emitida antes do pagamento, o ISS é devido mesmo que a fatura nunca seja paga, a competência é a data de emissão e o prazo do município para cancelar a NFS-e é curto. Se a fatura for cancelada ou alterada depois da emissão, o cancelamento da NFS-e continua manual (ver [Cancelamento](#cancelamento)).
 
+## Observações da fatura
+
+O WHMCS mostra o campo `tblinvoices.notes` ao cliente, como "Observações" na fatura e no PDF. Por isso o addon (`InvoiceHistoryService`) acrescenta nele só duas linhas:
+
+- emissão: "NFS-e emitida com sucesso. Número: … Chave: …", gravada pelo `emitir()` ou pela [consulta de status](#consulta-de-status) que leva a nota para `EMITIDA` (por exemplo, `PROCESSANDO` depois de um timeout);
+- cancelamento: "NFS-e cancelada com sucesso. Motivo: …" ou, no [cancelamento de XML órfão](#cancelamento-de-xml-órfão), "NFS-e órfã cancelada com sucesso. Chave: … Motivo: …".
+
+Consultas de status, envios e falhas de e-mail, alertas e ações do admin (reemissão) ficam só no log do addon (`mod_opennfse_logs`). As linhas já gravadas nas observações por versões anteriores não são alteradas.
+
 ## Emissão
 
 ### Emissão manual pelo admin
@@ -260,6 +269,7 @@ Botão **Reemitir NFS-e** (`NotasController::reemitir()`), disponível quando a 
 - Com a fila ligada, enfileira (`QUEUE_REEMITIR_ADMIN`). Sem fila, chama `emitir()` na hora.
 - Quando a fatura já tem item ativo, inclusive se outro pedido o criou no instante do enfileiramento, a reemissão não é registrada: grava o log `ADMIN_REEMITIR_BLOCKED` com motivo `active_queue` e mostra ao admin o aviso de item já ativo na fila.
 - A reemissão gera uma DPS nova, com o próximo número da sequência.
+- O pedido fica no log (`ADMIN_REEMITIR_ENQUEUE` ou `ADMIN_REEMITIR_DIRECT`, com a origem), não nas observações da fatura.
 
 ### Emissão automática na geração da fatura
 
@@ -414,6 +424,7 @@ flowchart TD
 - **Erro transitório na consulta**: o status é preservado e o erro é limpo. Uma nota em `ERRO` volta para `PROCESSANDO`, para ser consultada de novo.
 - **Outro erro**: `ERRO`. Se a nota já estava em `ERRO` com o mesmo código de erro da API, a mensagem anterior é mantida.
 - As consultas que alteram a nota atualizam `last_status_checked_at`, usado pelo cron para priorizar as notas consultadas há mais tempo.
+- A consulta grava `CONSULTA_NFSE` ou `CONSULTA_DPS`. Quando muda o status ou localiza a chave, grava também `CONSULTA_STATUS_ATUALIZADO`, com o status antes e depois. Isso não vai para as observações da fatura; a única exceção é a consulta que leva a nota para `EMITIDA`, que acrescenta lá a linha de emissão com o número e a chave salvos. Uma nota que já estava `EMITIDA` não ganha outra linha.
 
 ### Indisponibilidade da API (503 e timeout)
 
@@ -474,7 +485,7 @@ O cron segura o lock do cron e, dentro do lote, cada emissão pega também o loc
 
 ## Envio de XML e PDF por e-mail
 
-`InvoiceEmailService::sendToClient()` exige nota `EMITIDA` com XML. Gera o PDF do DANFS-e na hora, monta assunto e corpo (`EmailTemplateService`) e envia ao e-mail do cliente com o XML e o PDF anexados. O resultado vai para os logs (`EMAIL_NFSE_*`) e para as notas da fatura.
+`InvoiceEmailService::sendToClient()` exige nota `EMITIDA` com XML. Gera o PDF do DANFS-e na hora, monta assunto e corpo (`EmailTemplateService`) e envia ao e-mail do cliente com o XML e o PDF anexados. O resultado, sucesso ou falha com o motivo, vai só para os logs (`EMAIL_NFSE_*`), não para as observações da fatura.
 
 Os anexos são montados pelo próprio `InvoiceEmailService`, a partir do XML salvo da nota e do PDF gerado:
 
@@ -526,7 +537,7 @@ Logs:
 | Log | Quando |
 |---|---|
 | `EMAIL_NFSE_AUTO_SENT` | E-mail enviado (com a chave e o número da tentativa). |
-| `EMAIL_NFSE_AUTO_ERROR` | Falha no envio, com a próxima tentativa (`proxima_tentativa_at`) ou `null` quando as tentativas acabaram. A falha também vai para as notas da fatura. |
+| `EMAIL_NFSE_AUTO_ERROR` | Falha no envio, com a próxima tentativa (`proxima_tentativa_at`) ou `null` quando as tentativas acabaram. A falha não vai para as observações da fatura. |
 | `EMAIL_NFSE_AUTO_SKIPPED` | Disparo não enviado com o envio automático ligado. O campo `motivo` traz `ja_enviado_para_chave`, `nota_nao_emitida` ou `nota_sem_chave`. Só é gravado quando a nota passa a `EMITIDA`, nunca a cada consulta, e não é gravado com `ja_enviado_para_chave` na rede de segurança da fila. Com `auto_send_nfse_email = 0`, nada é enviado e nada é registrado. |
 
 **Novas tentativas**: depois de uma falha, o módulo agenda até 3 novas tentativas, 15 minutos, 1 hora e 6 horas depois da falha anterior (`email_automatico_tentativas` e `email_automatico_proxima_tentativa_at`; regras em `AutomaticEmailPolicy`). Elas são executadas pelo cron, sob o lock do cron, com um claim próprio (`claimAutomaticEmailRetry()`) que exige a falha da chave atual e a tentativa vencida. Se a última tentativa falhar, a nota fica com `FALHOU` e as notas da fatura indicam o envio manual. Com `auto_send_nfse_email = 0`, as tentativas pendentes ficam paradas. A nota que deixa de estar `EMITIDA` ou ganha chave nova não recebe a tentativa pendente da chave anterior.
@@ -548,7 +559,7 @@ Botão **Cancelar NFS-e** na fatura → formulário (`cancelForm`) → `cancel` 
 
 ### Cancelamento de XML órfão
 
-No relatório **Auditoria XML**, um XML de NFS-e salvo em disco mas sem vínculo com a nota atual da fatura pode ser cancelado (`cancelOrphanXml` → `NfseService::cancelarNfseOrfaPorXmlPath()`). A chave vem do XML ou, se faltar, da consulta da DPS. O módulo recusa o cancelamento se o histórico fiscal já tiver cancelamento para aquela chave. O resultado vai para o histórico fiscal e para as notas da fatura, sem alterar a nota atual.
+No relatório **Auditoria XML**, um XML de NFS-e salvo em disco mas sem vínculo com a nota atual da fatura pode ser cancelado (`cancelOrphanXml` → `NfseService::cancelarNfseOrfaPorXmlPath()`). A chave vem do XML ou, se faltar, da consulta da DPS. O módulo recusa o cancelamento se o histórico fiscal já tiver cancelamento para aquela chave. O resultado vai para o histórico fiscal e para as observações da fatura, com a chave da nota órfã, sem alterar a nota atual.
 
 ## Alertas de NFS-e
 
@@ -601,15 +612,14 @@ Se a tabela `mod_opennfse_alertas` ainda não existir na hora de gravar, o `Aler
 
 - **Dashboard**: card **Alertas de NFS-e** no bloco "Exigem atenção", com o total de alertas abertos de qualquer período. O card leva à lista.
 - **Lista de alertas** (action `alertas`, `AlertasController`): filtros por situação (abertos, que é o padrão, resolvidos ou todos), tipo e fatura, com até 500 alertas, do mais novo para o mais antigo. Quando há mais alertas que isso, a lista avisa "Exibindo os 500 alertas mais recentes. Use os filtros para ver os demais.". Mostra data, fatura e status dela, cliente, número e chave da NFS-e, tipo, detalhes e, nos resolvidos, quando e por quem. Se a nota atual da fatura não é mais a do alerta, a linha avisa "A nota atual da fatura é outra.". Se é a mesma nota, mas fora de `EMITIDA`, mostra o status atual.
-- **Log**: `NFSE_ALERTA_CRIADO` na abertura e `NFSE_ALERTA_RESOLVIDO` na resolução.
-- **Histórico da fatura**: uma linha em `tblinvoices.notes` (`InvoiceHistoryService`) na abertura ("Alerta: <tipo>. <detalhes>") e outra na resolução, com o admin.
+- **Log**: `NFSE_ALERTA_CRIADO` na abertura e `NFSE_ALERTA_RESOLVIDO` na resolução, com o admin. O alerta não vai para as observações da fatura, que o cliente vê.
 
 ### Como resolver
 
 Na lista de alertas, cada alerta aberto tem duas ações:
 
 - **Cancelar NFS-e**: atalho para o formulário de cancelamento existente (`cancelForm`), exibido quando a nota do alerta ainda é a nota atual da fatura e está `EMITIDA` com chave. O cancelamento segue o fluxo normal e não fecha o alerta.
-- **Marcar como resolvido** (`alertaResolver`, `POST` com token CSRF e confirmação): grava `resolvido_em` e `resolvido_por` (o `adminid` da sessão), limpa `chave_aberto`, registra o log e o histórico e volta à lista com os mesmos filtros. Um alerta já resolvido não é alterado de novo.
+- **Marcar como resolvido** (`alertaResolver`, `POST` com token CSRF e confirmação): grava `resolvido_em` e `resolvido_por` (o `adminid` da sessão), limpa `chave_aberto`, registra o log e volta à lista com os mesmos filtros. Um alerta já resolvido não é alterado de novo.
 
 ## Área do cliente
 

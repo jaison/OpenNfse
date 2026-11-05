@@ -347,14 +347,11 @@ final class NfseService
         $this->resolvePreviousQueueErrors($invoiceId, $notaId, $logRepo, $correlationId);
 
  $logRepo->insert($notaId, 'EMISSAO_RESPONSE', null, $result->nfseXml ?? 'OK', $correlationId);
-        $historyMessage = 'NFS-e emitida com sucesso.';
-        if ($numeroNf !== null && trim($numeroNf) !== '') {
-            $historyMessage .= ' Número: ' . trim($numeroNf) . '.';
-        }
-        if ($result->chaveAcesso !== null && trim((string) $result->chaveAcesso) !== '') {
-            $historyMessage .= ' Chave: ' . trim((string) $result->chaveAcesso) . '.';
-        }
-        (new InvoiceHistoryService())->append($invoiceId, $historyMessage);
+        (new InvoiceHistoryService())->appendEmission(
+            $invoiceId,
+            $numeroNf,
+            $result->chaveAcesso !== null ? (string) $result->chaveAcesso : null
+        );
     }
 
     /**
@@ -503,7 +500,12 @@ final class NfseService
                     $this->resolvePreviousQueueErrors($invoiceId, $notaId, $logRepo, $correlationId);
                 }
                 if ($statusAfter !== $statusBefore) {
-                    (new InvoiceHistoryService())->append($invoiceId, 'Consulta de status atualizou a NFS-e para ' . $statusAfter . '.');
+                    $this->logConsultaStatus($logRepo, $notaId, $invoiceId, $statusBefore, $statusAfter, 'status_atualizado', $correlationId);
+                }
+                // A emissão confirmada pela consulta (ex.: PROCESSANDO após timeout) também vai para as
+                // observações da fatura. Nota que já estava EMITIDA recebeu a linha em emitir().
+                if ($statusAfter === 'EMITIDA' && $statusBefore !== 'EMITIDA') {
+                    (new InvoiceHistoryService())->appendEmission($invoiceId, $numeroNf, (string) $chave);
                 }
             } elseif ($resp->errorMessage) {
                 if ($this->shouldRetryConsultaAfterServiceUnavailable($resp->errorMessage)) {
@@ -557,10 +559,16 @@ final class NfseService
                     (new FiscalHistoryRepository())->recordSnapshot($notaAtual, 'consulta');
                 }
             }
-            if ($statusBefore === 'EMITIDA') {
-                (new InvoiceHistoryService())->append($invoiceId, 'Consulta de status localizou e salvou a chave da NFS-e.');
-            } elseif ($statusBefore !== 'PROCESSANDO') {
-                (new InvoiceHistoryService())->append($invoiceId, 'Consulta de status localizou a chave da NFS-e e manteve a nota em processamento.');
+            if ($statusBefore !== 'PROCESSANDO') {
+                $this->logConsultaStatus(
+                    $logRepo,
+                    $notaId,
+                    $invoiceId,
+                    $statusBefore,
+                    (string) ($update['status'] ?? $statusBefore),
+                    'chave_localizada',
+                    $correlationId
+                );
             }
         } elseif ($resp->errorMessage) {
             if ($this->shouldRetryConsultaAfterServiceUnavailable($resp->errorMessage)) {
@@ -722,7 +730,7 @@ final class NfseService
             'eventoXmlGZipB64' => $result->eventoXmlGZipB64,
         ];
         $logRepo->insert($notaId, 'CANCELAMENTO_RESPONSE', null, json_encode($cancelResponsePayload, JSON_UNESCAPED_UNICODE), $correlationId);
-        (new InvoiceHistoryService())->append($invoiceId, 'NFS-e cancelada com sucesso. Motivo: ' . $xMotivo);
+        (new InvoiceHistoryService())->appendCancellation($invoiceId, $xMotivo);
     }
 
     public function consultarChaveAcessoPorIdDps(string $idDps): ?string
@@ -917,7 +925,38 @@ final class NfseService
             'eventoXmlGZipB64' => $result->eventoXmlGZipB64,
         ];
         $logRepo->insert($notaId, 'CANCELAMENTO_ORFAO_RESPONSE', null, json_encode($cancelResponsePayload, JSON_UNESCAPED_UNICODE), $correlationId);
-        (new InvoiceHistoryService())->append($invoiceId, 'NFS-e órfã cancelada com sucesso. Chave: ' . $chave . '. Motivo: ' . $xMotivo);
+        (new InvoiceHistoryService())->appendCancellation($invoiceId, $xMotivo, $chave);
+    }
+
+    /**
+     * Resultado da consulta de status que muda a nota. Vai só para o log do addon: as observações
+     * da fatura (visíveis ao cliente) recebem apenas emissão e cancelamento.
+     */
+    private function logConsultaStatus(
+        LogRepository $logRepo,
+        int $notaId,
+        int $invoiceId,
+        string $statusBefore,
+        string $statusAfter,
+        string $evento,
+        string $correlationId
+    ): void {
+        try {
+            $logRepo->insert(
+                $notaId > 0 ? $notaId : null,
+                'CONSULTA_STATUS_ATUALIZADO',
+                json_encode([
+                    'invoiceid' => $invoiceId,
+                    'evento' => $evento,
+                    'status_antes' => $statusBefore,
+                    'status_depois' => $statusAfter,
+                ], JSON_UNESCAPED_UNICODE),
+                null,
+                $correlationId
+            );
+        } catch (\Throwable $e) {
+            return;
+        }
     }
 
     private function buildSdkConfig(array $config): array

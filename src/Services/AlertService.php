@@ -12,8 +12,8 @@ use OpenNfse\Repositories\LogRepository;
 /**
  * Alertas de NFS-e que pedem revisão manual (mod_opennfse_alertas).
  *
- * Um alerta nunca cancela nem bloqueia nada: ele aparece no dashboard, vai para o log
- * e para o histórico da fatura. raise() é idempotente por (invoiceid, tipo, chave_acesso)
+ * Um alerta nunca cancela nem bloqueia nada: ele aparece no dashboard e vai para o log do addon.
+ * Não vai para as observações da fatura, que o cliente vê. raise() é idempotente por (invoiceid, tipo, chave_acesso)
  * enquanto o alerta estiver aberto.
  */
 final class AlertService
@@ -39,20 +39,16 @@ final class AlertService
 
     private ?LogRepository $logRepository;
 
-    private ?InvoiceHistoryService $history;
-
     public function __construct(
         ?AlertRepositoryInterface $repository = null,
         ?callable $ensureSchema = null,
-        ?LogRepository $logRepository = null,
-        ?InvoiceHistoryService $history = null
+        ?LogRepository $logRepository = null
     ) {
         $this->repository = $repository ?? new AlertRepository();
         $this->ensureSchema = $ensureSchema ?? static function (): void {
             (new Migrator())->up();
         };
         $this->logRepository = $logRepository ?? new LogRepository();
-        $this->history = $history ?? new InvoiceHistoryService();
     }
 
     public static function label(string $tipo): string
@@ -102,7 +98,6 @@ final class AlertService
             'chave_acesso' => $chave !== '' ? $chave : null,
             'detalhes' => $detalhes,
         ]);
-        $this->appendHistory($invoiceId, 'Alerta: ' . self::label($tipo) . '. ' . $detalhes);
 
         return $id;
     }
@@ -130,10 +125,6 @@ final class AlertService
             'tipo' => $tipo,
             'admin_id' => $adminId > 0 ? $adminId : null,
         ]);
-        $this->appendHistory(
-            $invoiceId,
-            'Alerta "' . self::label($tipo) . '" marcado como resolvido' . ($adminId > 0 ? ' pelo admin #' . $adminId : '') . '.'
-        );
 
         return true;
     }
@@ -184,19 +175,6 @@ final class AlertService
 
         try {
             $this->logRepository->insert($notaId, $tipo, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), null);
-        } catch (\Throwable $e) {
-            return;
-        }
-    }
-
-    private function appendHistory(int $invoiceId, string $message): void
-    {
-        if ($this->history === null) {
-            return;
-        }
-
-        try {
-            $this->history->append($invoiceId, $message);
         } catch (\Throwable $e) {
             return;
         }

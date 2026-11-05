@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OpenNfse\Tests\Services;
 
+use OpenNfse\Repositories\LogRepository;
+use OpenNfse\Repositories\NotaRepository;
 use OpenNfse\Services\AutoEmailService;
 use PHPUnit\Framework\TestCase;
 use WHMCS\Database\Capsule;
@@ -31,5 +33,23 @@ final class AutoEmailServiceTest extends TestCase
     {
         (new AutoEmailService())->processRetries();
         $this->addToAssertionCount(1);
+    }
+
+    public function testAutomaticEmailFailureIsLoggedAndNotWrittenToInvoiceNotes(): void
+    {
+        // Sem nota no stub, o envio falha com "NFS-e não encontrada para esta fatura.".
+        Capsule::$rows['tblinvoices'] = [(object) ['id' => 10, 'notes' => '']];
+
+        $service = new AutoEmailService();
+        $send = new \ReflectionMethod($service, 'send');
+        $send->setAccessible(true);
+        $send->invoke($service, 10, 1, 'CHAVE', 1, new NotaRepository(), new LogRepository(), 'corr');
+
+        $this->assertArrayNotHasKey('tblinvoices', Capsule::$updates);
+        $logs = Capsule::$inserts['mod_opennfse_logs'] ?? [];
+        $this->assertSame(['EMAIL_NFSE_AUTO_ERROR'], array_column($logs, 'tipo'));
+        $this->assertSame('NFS-e não encontrada para esta fatura.', $logs[0]['response']);
+        $request = json_decode((string) $logs[0]['request'], true);
+        $this->assertSame(1, $request['tentativa']);
     }
 }
