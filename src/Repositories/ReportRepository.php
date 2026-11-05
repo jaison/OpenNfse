@@ -374,13 +374,16 @@ final class ReportRepository
             }
         }
 
-        $canceladasQueries = [
-            $this->notasCanceladasForaDoHistorico($start, $end, 'n.cancelado_em'),
-            $this->historicoCancelamentos($start, $end, true),
-        ];
-        foreach ($canceladasQueries as $query) {
-            $series = self::addDailyCounts($series, $query->get(), 'canceladas');
-        }
+        $series = self::addDailyCounts(
+            $series,
+            $this->notasCanceladasForaDoHistorico($start, $end, 'n.cancelado_em')->get(),
+            'canceladas'
+        );
+        $series = self::addDailyCounts(
+            $series,
+            self::countByDay($this->historicoCancelamentosPorDocumento($start, $end)),
+            'canceladas'
+        );
 
         $issueSets = [];
         foreach (Capsule::table('mod_opennfse_notas as n')
@@ -431,9 +434,9 @@ final class ReportRepository
             ->whereBetween('n.emitida_em', [$start, $end])
             ->count();
 
-        // Canceladas: histórico mais as linhas cuja chave não tem cancelamento no histórico.
+        // Canceladas: documentos do histórico mais as linhas cuja chave não tem cancelamento no histórico.
         $canceladas = (int) $this->notasCanceladasForaDoHistorico($start, $end)->count()
-            + (int) $this->historicoCancelamentos($start, $end)->count();
+            + count($this->historicoCancelamentosPorDocumento($start, $end));
 
         $rejeitadas = (int) Capsule::table('mod_opennfse_notas as n')
             ->where('n.status', 'REJEITADA')
@@ -752,14 +755,75 @@ final class ReportRepository
     /**
      * Registros CANCELAMENTO do histórico com cancelado_em no período.
      */
-    private function historicoCancelamentos(string $start, string $end, bool $groupByDay = false)
+    private function historicoCancelamentos(string $start, string $end)
     {
-        $query = Capsule::table('mod_opennfse_notas_history as h')
+        return Capsule::table('mod_opennfse_notas_history as h')
             ->where('h.tipo_registro', 'CANCELAMENTO')
             ->whereNotNull('h.cancelado_em')
             ->whereBetween('h.cancelado_em', [$start, $end]);
+    }
 
-        return $groupByDay ? $this->groupByDay($query, 'h.cancelado_em') : $query;
+    /**
+     * Cancelamentos do histórico no período, um por documento (ver cancelamentosPorDocumento).
+     *
+     * @return array<string, string>
+     */
+    private function historicoCancelamentosPorDocumento(string $start, string $end): array
+    {
+        return self::cancelamentosPorDocumento(
+            $this->historicoCancelamentos($start, $end)
+                ->select(['h.invoiceid', 'h.chave_acesso', 'h.cancelado_em'])
+                ->get()
+        );
+    }
+
+    /**
+     * Um cancelamento por documento, como na aba Cancelamentos: a mesma chave com mais de um registro
+     * CANCELAMENTO conta uma vez, no cancelado_em mais recente. Sem chave, conta por fatura e data do
+     * cancelamento, como a aba.
+     *
+     * @param iterable<object|array> $rows linhas com invoiceid, chave_acesso e cancelado_em
+     * @return array<string, string> documento => cancelado_em
+     */
+    public static function cancelamentosPorDocumento(iterable $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $row = (array) $row;
+            $canceladoEm = trim((string) ($row['cancelado_em'] ?? ''));
+            if ($canceladoEm === '') {
+                continue;
+            }
+            $chave = trim((string) ($row['chave_acesso'] ?? ''));
+            $doc = $chave !== '' ? 'chave:' . $chave : 'evento:' . (int) ($row['invoiceid'] ?? 0) . '|' . $canceladoEm;
+            if (!isset($out[$doc]) || strcmp($canceladoEm, $out[$doc]) > 0) {
+                $out[$doc] = $canceladoEm;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Conta as datas por dia, no formato (dia, total) do addDailyCounts.
+     *
+     * @param array<array-key, string> $datas
+     * @return array<int, array{dia: string, total: int}>
+     */
+    public static function countByDay(array $datas): array
+    {
+        $totais = [];
+        foreach ($datas as $data) {
+            $dia = substr(trim((string) $data), 0, 10);
+            $totais[$dia] = ($totais[$dia] ?? 0) + 1;
+        }
+
+        $out = [];
+        foreach ($totais as $dia => $total) {
+            $out[] = ['dia' => (string) $dia, 'total' => $total];
+        }
+
+        return $out;
     }
 
     private function groupByDay($query, string $field)
