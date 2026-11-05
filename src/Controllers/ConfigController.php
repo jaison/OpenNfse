@@ -1380,11 +1380,11 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         $label = match ($status) {
             'ok' => 'OK',
             'critical' => $daysLeft !== null
-                ? ($daysLeft <= 1 ? 'Crítico 1d' : 'Crítico ' . $daysLeft . 'd')
+                ? ($daysLeft <= 1 ? 'Expira em 1 dia' : 'Expira em ' . $daysLeft . ' dias')
                 : 'Crítico',
             'expiring' => $daysLeft !== null
-                ? ($daysLeft <= 1 ? 'Expira 1d' : 'Expira ' . $daysLeft . 'd')
-                : 'Expira',
+                ? ($daysLeft <= 1 ? 'Expira em 1 dia' : 'Expira em ' . $daysLeft . ' dias')
+                : 'Expira em breve',
             'expired' => 'Expirado',
             'missing' => 'Revisar',
             default => 'Atenção',

@@ -561,7 +561,9 @@
 
 /* Campos de formulário (filtros e configurações). */
 .nfse-field__label { font-size: 12px; line-height: 16px; color: var(--muted); }
-.nfse-ui select.nfse-input { padding-right: var(--space-6); }
+.nfse-ui select.nfse-input { padding-right: 28px; -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; background-size: 12px 12px; }
+/* Select múltiplo e com size: lista nativa, sem a seta. */
+.nfse-ui select.nfse-input[multiple], .nfse-ui select.nfse-input[size] { padding-right: var(--space-2); background-image: none; }
 .nfse-input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
 .nfse-input[aria-invalid="true"] { border-color: var(--danger-border); box-shadow: 0 0 0 1px var(--danger-border); }
 .nfse-input--w-xs { width: 96px; }
@@ -728,6 +730,8 @@
 .nfse-cfg .nfse-subnav__group:first-child { padding-top: 0; }
 .nfse-cfg.nfse-ui a.nfse-subnav__item, .nfse-cfg .nfse-ui a.nfse-subnav__item { min-height: 36px; }
 .nfse-cfg .nfse-subnav__dot { width: 7px; height: 7px; }
+/* Pílulas de status em texto normal ("Expira em 27 dias"), não em maiúsculas. */
+.nfse-cfg .nfse-subnav .nfse-badge, .nfse-cfg .nfse-sechead .nfse-badge { text-transform: none; letter-spacing: 0; font-weight: 500; }
 .nfse-cfg .nfse-sechead { align-items: flex-start; }
 .nfse-cfg.nfse-ui h2.nfse-sechead__title, .nfse-cfg .nfse-ui h2.nfse-sechead__title { font-size: 20px; line-height: 28px; }
 .nfse-cfg .nfse-sechead__summary { font-size: 13px; line-height: 20px; max-width: 620px; }
