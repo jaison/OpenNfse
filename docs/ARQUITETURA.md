@@ -145,7 +145,7 @@ O uso dos campos do WHMCS está em [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_
 
 ### Navegação do admin (`src/Views/AdminNav.php`)
 
-Classe pura, testada em `tests/Views/AdminNavTest.php`: barra de navegação das telas do addon (logo, abas, estado da fila e versão), linha de título de cada tela e o estilo que esconde o título "OpenNfse" do WHMCS só nas telas do addon (hook `AdminAreaHeadOutput`).
+Classe pura, testada em `tests/Views/AdminNavTest.php`: barra de navegação das telas do addon (logo, título da tela, abas, estado da fila e versão) e o estilo que esconde o título "OpenNfse" do WHMCS só nas telas do addon (hook `AdminAreaHeadOutput`).
 
 ### Views da Dashboard (`src/Views/Dashboard/`)
 

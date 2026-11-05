@@ -130,16 +130,16 @@ trait AdminHelpersTrait
 
 
     /**
-     * Barra de navegação do addon (Views\AdminNav) e a linha de título da tela.
-     * $title null usa o título padrão da aba; '' não mostra a linha (a Dashboard monta a dela).
+     * Barra de navegação do addon (Views\AdminNav), com o título da tela.
+     * $title null usa o título padrão da aba; $detail só vai na dica (title) do título.
      * $context aceita dados já lidos pela tela, para não repetir consultas: config e queue
      * (QueueRepository::currentSnapshot()).
      *
      * @param array{config?: array<string, mixed>, queue?: array<string, mixed>} $context
      */
-    public function renderTabs(string $active, ?string $title = null, ?string $subtitle = null, array $context = []): void
+    public function renderTabs(string $active, ?string $title = null, ?string $subtitle = null, array $context = [], string $detail = ''): void
     {
-        echo AdminNav::shell($active, $this->navData($context), $title, $subtitle);
+        echo AdminNav::shell($active, $this->navData($context), $title, $subtitle, $detail);
     }
 
     /**

@@ -381,6 +381,7 @@ final class AdminController
         $config = (new ConfigRepository())->get();
         $auditoriaSummary = $this->reportsController->getAuditoriaDashboardSummary(null, $period['start'], $period['end']);
         $queueSnapshot = (new QueueRepository())->currentSnapshot();
+        $certificate = $this->configController->evaluateCertificateFromConfig($config);
 
         $html = DashboardView::render([
             'today' => $today,
@@ -392,7 +393,7 @@ final class AdminController
             'feed_items' => $feedItems,
             'nao_emitidas' => (int) ($auditoriaSummary['total_invoices'] ?? 0),
             'alertas_abertos' => $this->alertasController->countOpen(),
-            'certificate' => $this->configController->evaluateCertificateFromConfig($config),
+            'certificate' => $certificate,
             'customfield_missing' => EmissionPolicyContextLoader::configuredCustomFieldMissing($config),
             'now' => time(),
             'queue' => $queueSnapshot,
@@ -404,8 +405,9 @@ final class AdminController
         ]);
 
         Module::ui()->renderHeader('Dashboard - OpenNfse');
-        // A barra reaproveita a configuração e o estado da fila já lidos aqui; a linha de título vem da DashboardView.
-        $this->renderTabs('dashboard', '', null, ['config' => $config, 'queue' => $queueSnapshot]);
+        // A barra reaproveita a configuração e o estado da fila já lidos aqui; o certificado vai só na dica do título.
+        $title = DashboardView::titleParts($period, $certificate);
+        $this->renderTabs('dashboard', 'Visão geral', $title['subtitle'], ['config' => $config, 'queue' => $queueSnapshot], $title['detail']);
         echo $html;
         Module::ui()->renderFooter();
     }
