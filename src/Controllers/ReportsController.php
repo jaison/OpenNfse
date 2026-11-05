@@ -2434,10 +2434,12 @@ final class ReportsController
         $documentService = new FiscalDocumentReportService();
         if ($useCompetenciaLayout) {
             // Por competência, um documento por chave de acesso, a partir do histórico fiscal.
+            $notaRows = $repo->listNotas($filters, 5000);
             $documents = $documentService->buildCompetenciaZipDocuments(
                 $repo->listHistoryDocuments($filters, 20000),
-                $repo->listNotas($filters, 5000),
-                explode(',', $status)
+                $notaRows,
+                explode(',', $status),
+                $repo->listHistoryChaves(array_column($notaRows, 'chave_acesso'))
             );
         } else {
             $rows = $tab === 'cancelamentos'

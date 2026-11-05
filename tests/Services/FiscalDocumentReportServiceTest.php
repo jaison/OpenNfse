@@ -188,6 +188,30 @@ final class FiscalDocumentReportServiceTest extends TestCase
         );
     }
 
+    public function testCancellationRecordWithoutDateIsNotACancellation(): void
+    {
+        // Backfill de linha EMITIDA que só tinha falha de cancelamento: CANCELAMENTO sem cancelado_em.
+        $semData = $this->cancelamento(2, 100, 'K1', 'x/nfse_1.xml', 'x/cancelamento_falho.xml');
+        $semData['cancelado_em'] = null;
+        $history = [$semData, $this->emissao(1, 100, 'K1', 'x/nfse_1.xml')];
+        $notas = [$this->nota(100, 'EMITIDA', 'K1', 'x/nfse_1.xml')];
+
+        $this->assertSame(['Emitidas' => ['x/nfse_1.xml']], $this->layout($history, $notas));
+    }
+
+    public function testRowWhoseKeyIsInHistoryOutsideTheWindowIsNotDuplicated(): void
+    {
+        $notas = [
+            $this->nota(100, 'EMITIDA', 'K1', 'x/nfse_1.xml'),
+            $this->nota(101, 'EMITIDA', 'K2', 'x/nfse_2.xml'),
+        ];
+
+        $docs = (new FiscalDocumentReportService())->buildCompetenciaZipDocuments([], $notas, self::STATUSES, ['K1']);
+
+        $this->assertCount(1, $docs);
+        $this->assertSame(['x/nfse_2.xml'], $docs[0]['paths']);
+    }
+
     public function testMergeCancelamentosKeepsReplacedNotaAndSkipsDuplicates(): void
     {
         $history = [

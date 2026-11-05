@@ -26,15 +26,22 @@ final class FiscalDocumentReportService
     /**
      * Documentos do ZIP por competência. Chave com CANCELAMENTO no histórico vai para Canceladas, com o XML
      * da nota e o de cancelamento; sem cancelamento, vai para Emitidas (ou Estrangeiros) só com o XML da nota.
-     * Linhas da tabela atual cuja chave não está no histórico (e as sem chave) completam a lista, como antes.
+     * Só conta como cancelamento o registro com cancelado_em: o backfill grava CANCELAMENTO sem data
+     * quando a linha tinha apenas uma falha de cancelamento.
+     * Linhas da tabela atual cuja chave não está no histórico em data nenhuma (e as sem chave) completam a lista.
      *
      * @param array<int, array<string, mixed>> $historyRows registros EMISSAO/CANCELAMENTO, do mais novo ao mais antigo
      * @param array<int, array<string, mixed>> $notaRows linhas de mod_opennfse_notas já filtradas
      * @param array<int, string> $statuses status aceitos (vazio = todos)
+     * @param array<int, string> $historyChaves chaves das linhas que existem no histórico, em qualquer data
      * @return array<int, array{directory: string, paths: array<int, string>, row: array<string, mixed>}>
      */
-    public function buildCompetenciaZipDocuments(array $historyRows, array $notaRows, array $statuses = []): array
-    {
+    public function buildCompetenciaZipDocuments(
+        array $historyRows,
+        array $notaRows,
+        array $statuses = [],
+        array $historyChaves = []
+    ): array {
         $statuses = array_values(array_filter(array_map(
             static fn ($s): string => strtoupper(trim((string) $s)),
             $statuses
@@ -56,7 +63,7 @@ final class FiscalDocumentReportService
             }
             $tipo = strtoupper($this->text($row['tipo_registro'] ?? null));
             $slot = $tipo === 'CANCELAMENTO' ? 'cancelamento' : ($tipo === 'EMISSAO' ? 'emissao' : '');
-            if ($slot === '') {
+            if ($slot === '' || ($slot === 'cancelamento' && $this->text($row['cancelado_em'] ?? null) === '')) {
                 continue;
             }
             $pathField = $slot === 'cancelamento' ? 'cancel_xml_path' : 'xml_path';
@@ -69,6 +76,12 @@ final class FiscalDocumentReportService
 
         $documents = [];
         $seenChaves = [];
+        foreach ($historyChaves as $chave) {
+            $chave = $this->text($chave);
+            if ($chave !== '') {
+                $seenChaves[$chave] = true;
+            }
+        }
         $seenPaths = [];
 
         foreach ($byChave as $chave => $records) {
