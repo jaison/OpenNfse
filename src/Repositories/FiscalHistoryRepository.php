@@ -42,6 +42,32 @@ final class FiscalHistoryRepository
 
     public function recordCancellation(array $nota, string $origin = 'runtime'): void
     {
+        $this->upsertHistoryRecord($this->buildCancellationData($nota, $origin));
+    }
+
+    /**
+     * Grava o cancelamento só se a chave ainda não tiver um no histórico. Não altera registro existente.
+     */
+    public function ensureCancellationRecorded(array $nota, string $origin = 'runtime'): void
+    {
+        $chave = $this->normalizeNullableString($nota['chave_acesso'] ?? null);
+        if ($chave !== null && $this->hasCancellationByChave($chave)) {
+            return;
+        }
+
+        $data = $this->buildCancellationData($nota, $origin);
+        if (Capsule::table(self::TABLE)->where('fingerprint', $data['fingerprint'])->exists()) {
+            return;
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $data['created_at'] = $now;
+        $data['updated_at'] = $now;
+        Capsule::table(self::TABLE)->insert($data);
+    }
+
+    private function buildCancellationData(array $nota, string $origin): array
+    {
         $data = $this->mapNotaToHistory($nota, 'CANCELAMENTO', $origin);
         $data['status_fiscal'] = 'CANCELADA';
         $data['fingerprint'] = sha1(implode('|', [
@@ -52,7 +78,7 @@ final class FiscalHistoryRepository
             (string) ($data['cancel_codigo_motivo'] ?? ''),
         ]));
 
-        $this->upsertHistoryRecord($data);
+        return $data;
     }
 
     public function recordSnapshot(array $nota, string $origin = 'runtime'): void

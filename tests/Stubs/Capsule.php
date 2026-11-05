@@ -74,6 +74,11 @@ final class CapsuleQueryStub
         return Capsule::$rows[$this->table] ?? [];
     }
 
+    public function exists(): bool
+    {
+        return !empty(Capsule::$rows[$this->table]);
+    }
+
     public function update(array $data): int
     {
         return 0;
