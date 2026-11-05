@@ -2206,6 +2206,23 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
     }
 
 
+    /**
+     * Opções do select de código de serviço. Códigos sem zero à esquerda (ex.: "140101") viram chave
+     * int no array do PHP, por isso a comparação com o valor salvo é feita como string.
+     */
+    public static function renderServiceCodeOptions(array $options, string $selected): string
+    {
+        $html = '';
+        foreach ($options as $value => $label) {
+            $value = (string) $value;
+            $html .= '<option value="' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '"' . ($value === $selected ? ' selected' : '') . '>'
+                . htmlspecialchars((string) $label, ENT_QUOTES, 'UTF-8') . '</option>';
+        }
+
+        return $html;
+    }
+
+
     public function renderCodigosProdutosServicosContent(): void
     {
         if ((string) ($_GET['codes_saved'] ?? '') === '1') {
