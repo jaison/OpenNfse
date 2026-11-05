@@ -599,7 +599,7 @@ Se a tabela `mod_opennfse_alertas` ainda não existir na hora de gravar, o `Aler
 
 ### Onde o alerta aparece
 
-- **Dashboard**: card **Alertas de NFS-e** no bloco "Exigem atenção", com o total de alertas abertos de qualquer período. O card leva à lista.
+- **Dashboard**: item **N alertas de NFS-e abertos** na barra de saúde, com o total de alertas abertos de qualquer período. O link "Ver alertas" leva à lista. Sem alerta aberto, o item não aparece.
 - **Lista de alertas** (action `alertas`, `AlertasController`): filtros por situação (abertos, que é o padrão, resolvidos ou todos), tipo e fatura, com até 500 alertas, do mais novo para o mais antigo. Quando há mais alertas que isso, a lista avisa "Exibindo os 500 alertas mais recentes. Use os filtros para ver os demais.". Mostra data, fatura e status dela, cliente, número e chave da NFS-e, tipo, detalhes e, nos resolvidos, quando e por quem. Se a nota atual da fatura não é mais a do alerta, a linha avisa "A nota atual da fatura é outra.". Se é a mesma nota, mas fora de `EMITIDA`, mostra o status atual.
 - **Log**: `NFSE_ALERTA_CRIADO` na abertura e `NFSE_ALERTA_RESOLVIDO` na resolução.
 - **Histórico da fatura**: uma linha em `tblinvoices.notes` (`InvoiceHistoryService`) na abertura ("Alerta: <tipo>. <detalhes>") e outra na resolução, com o admin.
@@ -616,6 +616,32 @@ Na lista de alertas, cada alerta aberto tem duas ações:
 - **Menu**: item **Notas Fiscais** no menu Billing (`index.php?m=OpenNfse`). Lista até 50 notas `EMITIDA` com XML das faturas do cliente logado, com aviso configurável no topo (`client_area_notice_*`).
 - **Fatura**: o hook `ClientAreaPageViewInvoice` mostra o resumo só quando a nota da fatura está `EMITIDA`, a mesma regra da lista: número, data de emissão, chave e, com XML, os botões de XML, PDF e e-mail. Com qualquer outro status (`PROCESSANDO`, `ERRO`, `REJEITADA`, `CANCELADA`), a fatura não mostra nada da NFS-e.
 - **Ações** (`downloadXml`, `downloadPdf`, `sendEmail`): só por `POST`, com token CSRF e conferindo se a fatura pertence ao cliente logado. Download exige nota `EMITIDA`.
+
+## Dashboard
+
+Em **Addons > OpenNfse > Dashboard** (`AdminController::showDashboard()`, HTML em `src/Views/Dashboard/`). De cima para baixo:
+
+- **Cabeçalho**: logo, título e versão. Com versão nova, a pílula mostra "v0.1.26 → 0.1.27 disponível" e leva a **Configurações > Processamento**, onde ficam os detalhes e os links de download. À direita, o período:
+  - setas de mês, com o nome do mês ("Outubro 2026") ou o intervalo quando o período não é um mês inteiro;
+  - **Hoje**, **7 dias** e **Personalizado** (data inicial e final).
+- **Barra de saúde**: "Operação em dia" quando erros, pendentes, rejeitadas, aguardando status e faturas pagas sem nota estão em zero. Senão, um item lista só os contadores acima de zero, com link para a fila no período (crítico quando há erro ou rejeitada). Faturas pagas sem nota têm item próprio, com link para a auditoria. Também aparecem o certificado vencido ou com 30 dias ou menos, o custom field apagado e os alertas abertos.
+- **Indicadores**: emitidas, valor emitido, canceladas, taxa de sucesso, processadas e XMLs armazenados.
+- **Emissões por dia**: calendário de calor do período, em semanas de domingo a sábado, com marcadores de canceladas e erros por dia. Faixas fixas: 0–7, 8–13, 14–18, 19–23 e 24 ou mais. Ao lado, a média por dia da semana. Média e médias por dia da semana contam só os dias até hoje.
+- **Linha do tempo**: uma faixa por série (Emitidas, Canceladas, Erros), cada uma com escala própria e o mesmo eixo de datas.
+- **Atividade recente**: até 10 eventos (emissões, cancelamentos e erros), do mais novo para o mais antigo, com filtros Tudo, Emitidas, Canceladas e Erros e link para o relatório completo.
+
+Parâmetros da URL (`action=dashboard`):
+
+| Parâmetro | Valores | Uso |
+|---|---|---|
+| `periodo` | `hoje`, `7_dias`, `mes_atual` (padrão), `mes_anterior`, `personalizado` | Período da tela. |
+| `data_inicial`, `data_final` | `AAAA-MM-DD` | Com `periodo=personalizado`. As setas de mês usam o primeiro e o último dia do mês. Data inválida vira o mês atual; datas invertidas são trocadas. |
+| `dia` | `AAAA-MM-DD` dentro do período | Clique num dia do calendário: a atividade recente mostra só esse dia. Clicar de novo no mesmo dia tira o filtro. Valor inválido ou fora do período é ignorado. |
+| `feed` | `tudo` (padrão), `emitidas`, `canceladas`, `erros` | Filtro da atividade recente. |
+
+A seta para trás vai ao mês anterior; a seta para frente, ao mês seguinte. Num período que não é um mês inteiro (Hoje, 7 dias, personalizado), a seta para trás vai ao mês antes do mês da data final, e a seta para frente, ao mês inteiro da data final. A seta para frente fica desativada quando o mês ainda não começou.
+
+A tela não faz consulta por dia: usa `dashboardOverview`, `dashboardDailySeries` e as três listas recentes (`dashboardRecentEmitidas`, `dashboardRecentCancelamentos`, `dashboardRecentIssues`). Com `dia`, as listas recentes rodam só nesse dia, e os contadores dos filtros vêm da série diária.
 
 ## Relatórios
 

@@ -36,7 +36,7 @@ Todos ficam em `modules/addons/OpenNfse/`:
 
 ### Controllers (`src/Controllers/`)
 
-- `AdminController`: roteador do admin. Cada action declara o método HTTP (`GET`/`POST`) e se exige token CSRF. Delega às classes abaixo e renderiza o dashboard, que avisa quando o custom field da emissão automática não existe mais.
+- `AdminController`: roteador do admin. Cada action declara o método HTTP (`GET`/`POST`) e se exige token CSRF. Delega às classes abaixo. Na Dashboard, só lê os dados (`ReportRepository`, atualização, certificado, auditoria, alertas) e imprime o HTML de `Views/Dashboard/DashboardView`.
 - `ConfigController`: configuração geral (inclusive a política de emissão automática, com a lista de `tblclientgroups` e dos custom fields de cliente em `tblcustomfields`, e o aviso quando o campo configurado foi apagado), certificado (validação e teste de conexão), DANFS-e, catálogo Serviço/NBS, mapeamento por grupo de produto, sincronização IBGE e verificação de atualização.
 - `QueueController`: tela da fila e ações `filaCheckNow`, `filaRetry` e `filaProcessNow`.
 - `NotasController`: emissão, reemissão, consulta de status, cancelamento, downloads e envio por e-mail a partir da fatura.
@@ -142,6 +142,17 @@ O uso dos campos do WHMCS está em [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_
 - `CorrelationIdGenerator`: gera o `correlation_id` que liga fila e logs de uma mesma operação.
 - `ActionFormRenderer`: formulários `POST` com token para as ações das telas.
 - `NameNormalizer` e `UfNormalizer`: normalização de nomes de município e UF.
+
+### Views da Dashboard (`src/Views/Dashboard/`)
+
+Classes puras, sem acesso ao banco, testadas em `tests/Views/Dashboard/`. O HTML usa as classes `nfse-` do OpenNfse UI em `assets/nfse-ui.css`.
+
+- `DashboardPeriod`: lê `periodo`, `data_inicial` e `data_final`, monta o rótulo ("Outubro 2026", "05/11/2026" ou o intervalo), as setas de mês e valida o dia escolhido (`dia`).
+- `DashboardCalendar`: grade do calendário de calor (semanas de domingo a sábado que cobrem o período), faixas fixas de calor, resumo (total, média por dia corrido e pico) e média por dia da semana.
+- `DashboardStrips`: linha do tempo em faixas (Emitidas, Canceladas, Erros), cada uma com escala própria, e os rótulos do eixo de datas.
+- `DashboardHealth`: itens da barra de saúde (operação em dia, pendências da fila, faturas pagas sem nota, certificado, custom field, alertas).
+- `DashboardFeed`: junta emissões, cancelamentos e erros recentes numa lista, com o filtro `feed` e o resumo das mensagens de erro da API.
+- `DashboardView`: monta o HTML da tela com os itens acima.
 
 ### Migrations
 
