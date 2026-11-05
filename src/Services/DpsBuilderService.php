@@ -6,6 +6,7 @@ namespace OpenNfse\Services;
 
 use OpenNfse\Exceptions\NfseModuleException;
 use OpenNfse\Exceptions\NfseValidationException;
+use OpenNfse\Helpers\EnderecoParser;
 use WHMCS\Database\Capsule;
 
 final class DpsBuilderService
@@ -153,9 +154,7 @@ final class DpsBuilderService
 
             $cep = preg_replace('/\D/', '', (string) ($client['postcode'] ?? ''));
             if ($cep) {
-                $logradouro = trim((string) ($client['address1'] ?? ''));
-                $complemento = trim((string) ($client['address2'] ?? ''));
-                $numero = $this->inferNumeroEndereco($logradouro) ?? (string) ($config['tomador_numero_padrao'] ?? 'S/N');
+                [$logradouro, $numero, $complemento] = $this->montarEnderecoTomador($client, $config);
                 $bairro = (string) ($config['tomador_bairro_padrao'] ?? '');
                 $tomadorCodigoIbge = null;
                 $cidade = (string) ($client['city'] ?? '');
@@ -179,12 +178,10 @@ final class DpsBuilderService
         } else {
             $toma['cNaoNIF'] = '2';
 
-            $logradouro = trim((string) ($client['address1'] ?? ''));
-            $complemento = trim((string) ($client['address2'] ?? ''));
+            [$logradouro, $numero, $complemento] = $this->montarEnderecoTomador($client, $config);
             $cidade = trim((string) ($client['city'] ?? ''));
             $estado = trim((string) ($client['state'] ?? ''));
             $endPost = trim((string) ($client['postcode'] ?? ''));
-            $numero = $this->inferNumeroEndereco($logradouro) ?? (string) ($config['tomador_numero_padrao'] ?? 'S/N');
             $bairro = (string) ($config['tomador_bairro_padrao'] ?? '');
 
             if ($logradouro === '') {
@@ -535,17 +532,25 @@ final class DpsBuilderService
         return trim($value);
     }
 
-    private function inferNumeroEndereco(string $logradouro): ?string
+    /**
+     * @return array{0: string, 1: string, 2: string} [xLgr, nro, xCpl]
+     */
+    private function montarEnderecoTomador(array $client, array $config): array
     {
-        if ($logradouro === '') {
-            return null;
-        }
+        [$logradouro, $numero, $resto] = EnderecoParser::separarNumero((string) ($client['address1'] ?? ''));
+        $numero ??= (string) ($config['tomador_numero_padrao'] ?? 'S/N');
 
-        if (preg_match('/\\b(\\d{1,6}[A-Za-z]?)\\b/u', $logradouro, $m)) {
-            return (string) $m[1];
-        }
+        $partesComplemento = array_filter(
+            [$resto, trim((string) ($client['address2'] ?? ''))],
+            static fn (string $parte): bool => $parte !== ''
+        );
+        $complemento = implode(' - ', $partesComplemento);
 
-        return null;
+        return [
+            mb_substr($logradouro, 0, 255),
+            mb_substr($numero, 0, 60),
+            trim(mb_substr($complemento, 0, 156)),
+        ];
     }
 
     private function assertSdkAvailable(): void

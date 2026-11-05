@@ -97,4 +97,87 @@ final class DpsBuilderServiceTest extends TestCase
             $this->assertStringContainsString('<vServMoeda>' . $esperado . '</vServMoeda>', $xml, "total $total");
         }
     }
+
+    private function clienteComEndereco(string $address1, string $address2 = ''): array
+    {
+        return $this->clientePfSemEndereco() + [
+            'address1' => $address1, 'address2' => $address2,
+            'city' => 'São Paulo', 'state' => 'SP', 'postcode' => '01310-100',
+        ];
+    }
+
+    private function configComPadroes(): array
+    {
+        return $this->config(DpsLayoutService::MODE_NT009) + [
+            'tomador_numero_padrao' => 'S/N',
+            'tomador_bairro_padrao' => 'Centro',
+            'tomador_codigo_ibge_padrao' => '3550308',
+        ];
+    }
+
+    private function enderecoNacional(string $address1, string $address2 = ''): string
+    {
+        $xml = $this->buildXml($this->configComPadroes(), $this->clienteComEndereco($address1, $address2), '100.00');
+        return $this->enderecoTomador($xml);
+    }
+
+    private function enderecoTomador(string $xml): string
+    {
+        $this->assertMatchesRegularExpression('#<toma>.*?<end>(.*?)</end>#s', $xml);
+        preg_match('#<toma>.*?<end>(.*?)</end>#s', $xml, $m);
+        return $m[1];
+    }
+
+    public function testNumeroDoTomadorNaoSeRepeteNoLogradouro(): void
+    {
+        $end = $this->enderecoNacional('RUA ANTÔNIO MONTEIRO DE REZENDE, 541', 'limoeiro');
+
+        $this->assertStringContainsString(
+            '<xLgr>RUA ANTÔNIO MONTEIRO DE REZENDE</xLgr><nro>541</nro><xCpl>limoeiro</xCpl>',
+            $end
+        );
+    }
+
+    public function testNumeroNoNomeDaRuaNaoViraNumeroDoImovel(): void
+    {
+        $end = $this->enderecoNacional('RUA 7 DE SETEMBRO, 100');
+        $this->assertStringContainsString('<xLgr>RUA 7 DE SETEMBRO</xLgr><nro>100</nro>', $end);
+
+        $end = $this->enderecoNacional('RUA 7 DE SETEMBRO');
+        $this->assertStringContainsString('<xLgr>RUA 7 DE SETEMBRO</xLgr><nro>S/N</nro>', $end);
+        $this->assertStringNotContainsString('<xCpl>', $end);
+    }
+
+    public function testRestoDaLinhaVaiParaOComplemento(): void
+    {
+        $end = $this->enderecoNacional('AV. BRASIL, 1500, SALA 3', 'Bloco B');
+        $this->assertStringContainsString('<xLgr>AV. BRASIL</xLgr><nro>1500</nro><xCpl>SALA 3 - Bloco B</xCpl>', $end);
+
+        $end = $this->enderecoNacional('AV. BRASIL, 1500, SALA 3');
+        $this->assertStringContainsString('<xLgr>AV. BRASIL</xLgr><nro>1500</nro><xCpl>SALA 3</xCpl>', $end);
+    }
+
+    public function testComplementoRespeitaTamanhoMaximo(): void
+    {
+        $end = $this->enderecoNacional('AV. BRASIL, 1500, SALA 3', str_repeat('ç', 200));
+        preg_match('#<xCpl>(.*?)</xCpl>#u', $end, $m);
+        $this->assertSame(156, mb_strlen($m[1]));
+    }
+
+    public function testTomadorExteriorRecebeOMesmoTratamento(): void
+    {
+        Capsule::$rows['tblcurrencies'] = [(object) ['code' => 'USD']];
+        $cliente = [
+            'companyname' => 'Acme Inc', 'email' => 'billing@acme.example', 'country' => 'US', 'currency' => 2,
+            'address1' => 'Market Street, 500, Suite 12', 'address2' => 'Floor 3',
+            'city' => 'San Francisco', 'state' => 'CA', 'postcode' => '94105',
+        ];
+
+        $end = $this->enderecoTomador($this->buildXml($this->configComPadroes(), $cliente, '100.00', ''));
+
+        $this->assertStringContainsString(
+            '<xLgr>Market Street</xLgr><nro>500</nro><xCpl>Suite 12 - Floor 3</xCpl>',
+            $end
+        );
+    }
 }
