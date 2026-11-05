@@ -517,3 +517,149 @@
 @container nfse-page (max-width: 699px) {
   .nfse-days { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ==========================================================================
+   Componentes de tela (Fila, Relatórios, Configurações)
+   Uso e exemplos em docs/UI.md; helpers PHP em src/Views/Ui.php.
+   ========================================================================== */
+
+/* Utilitários de texto e células. */
+.nfse-muted { color: var(--muted); }
+.nfse-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.nfse-nowrap { white-space: nowrap; }
+.nfse-break { overflow-wrap: anywhere; word-break: break-word; }
+.nfse-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.nfse-cell-stack { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; }
+.nfse-cell-meta { font-size: 11px; line-height: 14px; color: var(--muted); }
+.nfse-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.nfse-ui form.nfse-inline-form { display: inline-flex; margin: 0; }
+
+/* Botões: variante discreta ("Limpar", "Cancelar") e o tamanho pequeno de texto em linhas de tabela. */
+.nfse-btn--ghost { background: transparent; border-color: transparent; color: var(--ink-2); }
+.nfse-btn--ghost:hover { background: var(--surface-subtle); }
+.nfse-ui a.nfse-btn--ghost, .nfse-ui a.nfse-btn--ghost:hover { color: var(--ink-2); }
+.nfse-btn--danger:hover { background: var(--danger-bg); }
+.nfse-ui a.nfse-btn--danger, .nfse-ui a.nfse-btn--danger:hover { color: var(--danger-ink); }
+.nfse-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* Badges: tom de aviso sem borda para tabelas. */
+.nfse-badge--neutro { background: var(--badge-neutro-bg); color: var(--badge-neutro-ink); }
+
+/* Cabeçalho de seção: título + resumo à esquerda, ações à direita. */
+.nfse-sechead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-2) var(--space-4); }
+.nfse-sechead__text { min-width: 0; }
+.nfse-ui h2.nfse-sechead__title { margin: 0; font-size: 16px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.nfse-sechead__summary { margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.nfse-sechead__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+
+/* Barra de filtros: um card, campos numa linha onde couber, ações no fim. */
+.nfse-filterbar { padding: var(--space-3) var(--space-4); }
+.nfse-ui form.nfse-filterbar__form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); margin: 0; }
+.nfse-filterbar__actions { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; }
+.nfse-filterbar .nfse-input, .nfse-input--sm { min-height: 32px; height: 32px; padding: 4px var(--space-2); }
+.nfse-filterbar .nfse-btn { min-height: 32px; height: 32px; padding-block: 0; }
+
+/* Campos de formulário (filtros e configurações). */
+.nfse-field__label { font-size: 12px; line-height: 16px; color: var(--muted); }
+.nfse-ui select.nfse-input { padding-right: var(--space-6); }
+.nfse-input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.nfse-input[aria-invalid="true"] { border-color: var(--danger-border); box-shadow: 0 0 0 1px var(--danger-border); }
+.nfse-input--w-xs { width: 96px; }
+.nfse-input--w-sm { width: 140px; }
+.nfse-input--w-md { width: 200px; }
+.nfse-input--w-lg { width: 320px; }
+.nfse-input--full { width: 100%; }
+
+/* Tabelas: cabeçalho claro, linhas de 13px, rodapé com contagem e paginação no mesmo card. */
+.nfse-card--table { overflow: hidden; }
+.nfse-card--table .nfse-card__head + .nfse-table-wrap .nfse-table thead th { border-top: 0; }
+.nfse-table thead th { background: var(--surface-subtle); color: var(--ink-2); font-size: 12px; font-weight: 600; }
+.nfse-table td { font-size: 13px; vertical-align: top; }
+.nfse-table tbody tr:first-child td { border-top: 0; }
+.nfse-table .nfse-center { text-align: center; }
+.nfse-table td.nfse-num, .nfse-table th.nfse-num { text-align: right; font-variant-numeric: tabular-nums; }
+.nfse-table__empty { padding: var(--space-4); color: var(--muted); text-align: center; }
+/* Linhas destacadas: fundo bem leve no tom (a primeira coluna pode estar oculta pela escolha de colunas). */
+.nfse-table tr.nfse-row--danger { background: rgba(139, 34, 22, 0.04); }
+.nfse-table tr.nfse-row--info { background: rgba(31, 95, 191, 0.04); }
+.nfse-table tr.nfse-row--warn { background: var(--warn-bg); }
+.nfse-tfoot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); padding: 10px var(--space-4); border-top: 1px solid var(--divider); font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.nfse-tfoot__summary b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.nfse-tfoot__tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.nfse-ui form.nfse-tfoot__form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
+.nfse-pager { display: inline-flex; align-items: center; gap: var(--space-1); }
+.nfse-pager__current { padding: 0 var(--space-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Linha de indicadores num card só (mesmo visual da Dashboard). */
+.nfse-kpis .nfse-kpi:last-child { border-right: 0; }
+.nfse-kpis--sm .nfse-kpi { padding: var(--space-3) var(--space-4); }
+.nfse-kpis--sm .nfse-kpi__value { font-size: 22px; line-height: 28px; }
+.nfse-kpi__value--danger { color: var(--danger-ink); }
+.nfse-kpi__value--warn { color: var(--warn-ink); }
+
+/* Avisos: ícone + título + texto, no visual da barra de saúde. */
+.nfse-callout { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--surface-card); color: var(--ink-2); }
+.nfse-callout__icon { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+.nfse-callout__body { flex: 1; min-width: 0; }
+.nfse-callout__title { font-size: 13px; line-height: 18px; font-weight: 600; }
+.nfse-callout__text { font-size: 12px; line-height: 18px; }
+.nfse-callout__text p { margin: 0 0 var(--space-1); }
+.nfse-callout a { color: inherit; font-weight: 600; text-decoration: underline; }
+.nfse-callout--info { background: var(--badge-emitida-bg); border-color: var(--accent-soft); color: var(--badge-emitida-ink); }
+.nfse-callout--ok { background: var(--ok-bg); border-color: var(--ok-bg); color: var(--ok-ink); }
+.nfse-callout--warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-ink); }
+.nfse-callout--danger { background: var(--danger-bg); border-color: var(--danger-border); color: var(--danger-ink); }
+
+/* Formulários em linhas: rótulo à esquerda (~240px), campo à direita, ajuda embaixo. */
+.nfse-form { display: flex; flex-direction: column; }
+.nfse-form__row { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--space-2) var(--space-4); align-items: start; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--divider); }
+.nfse-form__row:first-child { border-top: 0; }
+.nfse-ui label.nfse-form__label, .nfse-form__label { margin: 0; padding-top: 6px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.nfse-form__req { color: var(--danger-ink); margin-left: 2px; }
+.nfse-form__field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.nfse-form__help { font-size: 12px; line-height: 16px; color: var(--muted); }
+.nfse-form__error { font-size: 12px; line-height: 16px; color: var(--danger-ink); }
+.nfse-form__row--invalid .nfse-input { border-color: var(--danger-border); box-shadow: 0 0 0 1px var(--danger-border); }
+.nfse-form__row--invalid .nfse-form__label { color: var(--danger-ink); }
+
+/* Barra de salvar: uma ação principal no fim da seção; fixa no rodapé quando o formulário é longo. */
+.nfse-savebar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--divider); background: var(--surface-card); border-radius: 0 0 var(--radius-xl) var(--radius-xl); }
+.nfse-savebar--sticky { position: sticky; bottom: 0; z-index: 5; box-shadow: 0 -4px 12px rgba(29, 36, 51, 0.06); }
+.nfse-savebar__note { margin-right: auto; font-size: 12px; color: var(--muted); }
+
+/* Submenu de seção (Relatórios, Configurações): lista vertical à esquerda, conteúdo à direita. */
+.nfse-withnav { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.nfse-withnav__content { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.nfse-subnav { display: flex; flex-direction: column; gap: 2px; padding: var(--space-2); }
+.nfse-subnav__group { padding: var(--space-2) 10px var(--space-1); font-size: 11px; line-height: 14px; font-weight: 600; color: var(--muted); }
+.nfse-ui a.nfse-subnav__item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 32px; padding: 6px 10px; border-radius: var(--radius-lg); font-size: 13px; line-height: 20px; color: var(--ink-2); text-decoration: none; }
+.nfse-ui a.nfse-subnav__item:hover { background: var(--surface-subtle); color: var(--ink); text-decoration: none; }
+.nfse-ui a.nfse-subnav__item[aria-current="page"], .nfse-ui a.nfse-subnav__item[aria-current="page"]:hover { background: var(--badge-emitida-bg); color: var(--badge-emitida-ink); font-weight: 600; }
+.nfse-subnav__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nfse-subnav__meta { flex: none; font-size: 11px; line-height: 14px; font-weight: 400; color: var(--muted); }
+.nfse-subnav__item .nfse-badge { flex: none; font-size: 10px; padding: 2px 6px; }
+.nfse-subnav__dot { flex: none; width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--zero); }
+.nfse-subnav__dot--ok { background: var(--ok-ink); }
+.nfse-subnav__dot--warn { background: var(--warn-border); }
+.nfse-subnav__dot--danger { background: var(--danger-ink); }
+
+/* Menu suspenso simples (ex.: escolha de colunas da tabela). */
+.nfse-menu { position: relative; display: inline-flex; }
+.nfse-menu__panel { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; width: 220px; max-height: 320px; overflow: auto; padding: 10px var(--space-3); background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-pop); }
+.nfse-menu__panel[hidden] { display: none; }
+.nfse-menu__list { display: flex; flex-direction: column; gap: 6px; }
+.nfse-ui label.nfse-check { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-size: 13px; font-weight: 400; color: var(--ink-2); cursor: pointer; }
+.nfse-menu__foot { display: flex; justify-content: space-between; gap: var(--space-2); margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--divider); }
+
+/* Área estreita: submenu vira uma linha de chips com rolagem; formulário empilha rótulo e campo. */
+@container nfse-page (max-width: 999px) {
+  .nfse-withnav { grid-template-columns: minmax(0, 1fr); }
+  .nfse-subnav { flex-direction: row; overflow-x: auto; padding: var(--space-1); gap: var(--space-1); }
+  .nfse-subnav__group { display: none; }
+  .nfse-ui a.nfse-subnav__item { flex: none; border-radius: var(--radius-pill); border: 1px solid var(--border-strong); min-height: 30px; padding: 4px var(--space-3); font-size: 12px; }
+}
+@container nfse-page (max-width: 699px) {
+  .nfse-form__row { grid-template-columns: minmax(0, 1fr); }
+  .nfse-form__label { padding-top: 0; }
+  .nfse-filterbar__actions { margin-left: 0; }
+}

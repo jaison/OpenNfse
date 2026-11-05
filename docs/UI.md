@@ -1,0 +1,289 @@
+# Componentes de tela do admin (OpenNfse UI)
+
+Guia para montar e migrar as telas do addon (Fila, Relatórios, Configurações) no padrão da Dashboard.
+O CSS está em `assets/nfse-ui.css`, na seção **"Componentes de tela"**, e os helpers PHP em
+[`src/Views/Ui.php`](../src/Views/Ui.php) (funções puras, testadas em `tests/Views/UiTest.php`).
+Os tokens (cores, espaços, raios) são as variáveis CSS de `.nfse-ui`; a Fila
+(`QueueController::showFila`) é o exemplo completo.
+
+## Regras
+
+- **Comportamento congelado.** URLs, parâmetros GET/POST, nomes de campos, actions, token CSRF,
+  ids e classes usados por JS ficam iguais. Só mudam o HTML, as classes e o CSS (e textos).
+- **Sem `style=""` novo**, exceto tamanhos que vêm do dado (largura/altura de barra). Sem cor em hex no PHP.
+- **Escape.** Os helpers escapam todo texto. Parâmetros terminados em `Html` recebem HTML pronto:
+  quem chama escapa (`Ui::h()`).
+- **Só `.nfse-btn`**: nada de `btn btn-success`/`btn-primary` do Bootstrap. Uma ação principal
+  (`primary`) por área.
+- Textos em pt-BR, rótulos em caixa normal ("Data inicial", não "DATA INICIAL").
+- Avisos `successbox`/`errorbox` viram `Ui::callout()`. `Module::ui()->renderError()` e
+  `renderSuccess()` já usam o callout.
+
+## Estrutura da página
+
+```php
+Module::ui()->renderHeader('OpenNfse');
+$this->renderTabs('fila');              // barra de navegação com o título da tela
+echo '<div class="nfse-ui nfse-page">'; // tokens + coluna com espaço de 16px entre os blocos
+// … callouts, barra de filtros, indicadores, cabeçalho de seção, card com a tabela …
+echo '</div>';
+Module::ui()->renderFooter();
+```
+
+Dentro de `.nfse-page` ficam os cards (`.nfse-card`: fundo branco, borda, raio 12px). O fundo da
+página é o do WHMCS. As quebras de layout usam container queries sobre `.nfse-page` (a largura
+da área da tela, com o menu lateral do WHMCS aberto ou fechado).
+
+## Submenu de seção (Relatórios, Configurações)
+
+Lista vertical à esquerda (`.nfse-subnav`), conteúdo à direita. Abaixo de 1000px de área vira uma
+linha de chips com rolagem horizontal acima do conteúdo. A descrição da seção vai para o
+cabeçalho da seção (`Ui::sectionHeader`), não para o item do menu.
+
+```php
+echo Ui::withNav(
+    Ui::subnav([
+        ['group' => 'Notas'],
+        ['label' => 'Emitidas', 'href' => 'addonmodules.php?module=OpenNfse&action=relatorios&tab=emitidas', 'current' => true],
+        ['label' => 'Logs', 'href' => '…', 'meta' => 'Técnico'],                    // texto discreto
+        ['label' => 'Certificado', 'href' => '…', 'pill' => 'Expira 27d', 'tone' => 'warn'], // pílula de status
+        ['label' => 'Fila', 'href' => '…', 'dot' => 'danger'],                     // ponto (ok|warn|danger)
+    ], 'Seções do relatório'),
+    $conteudoHtml
+);
+```
+
+```html
+<div class="nfse-withnav">
+  <nav class="nfse-card nfse-subnav" aria-label="Seções do relatório">
+    <div class="nfse-subnav__group">Notas</div>
+    <a class="nfse-subnav__item" href="…" aria-current="page"><span class="nfse-subnav__label">Emitidas</span></a>
+    <a class="nfse-subnav__item" href="…"><span class="nfse-subnav__label">Certificado</span><span class="nfse-badge nfse-badge--warn">Expira 27d</span></a>
+  </nav>
+  <div class="nfse-withnav__content">…</div>
+</div>
+```
+
+O item ativo usa o mesmo destaque da aba ativa da barra (fundo azul-claro, texto azul, 600).
+
+## Cabeçalho de seção
+
+h2 de 16px + resumo de uma linha (12px, discreto) à esquerda; botões à direita, na mesma linha.
+
+```php
+echo Ui::sectionHeader('Notas emitidas', 'Notas emitidas no período, com XML e PDF.', Ui::button('Exportar CSV', [], ['href' => $csvUrl]), 'sec-emitidas');
+```
+
+```html
+<div class="nfse-sechead">
+  <div class="nfse-sechead__text">
+    <h2 class="nfse-sechead__title" id="sec-emitidas">Notas emitidas</h2>
+    <div class="nfse-sechead__summary">Notas emitidas no período, com XML e PDF.</div>
+  </div>
+  <div class="nfse-sechead__actions"><a class="nfse-btn" href="…">Exportar CSV</a></div>
+</div>
+```
+
+O `id` serve para o `aria-labelledby` do card logo abaixo.
+
+## Barra de filtros
+
+Um card, campos numa linha onde couber (inputs de 32px), "Filtrar" (primary) e "Limpar" (ghost)
+no fim. Os campos ocultos de sempre (`module`, `action`, `tab`…) vão em `hidden`.
+
+```php
+echo Ui::filterBar(
+    ['id' => 'nfse-fila-filters', 'method' => 'get', 'action' => 'addonmodules.php', 'hidden' => ['module' => 'OpenNfse', 'action' => 'fila']],
+    Ui::field('Fatura', Ui::input('invoiceid', $invoice, 'text', ['placeholder' => 'ID da fatura'], 'nfse-input--w-sm'))
+    . Ui::field('Status', Ui::select('status', ['' => 'Todos os status', 'ERROR' => 'ERROR'], $status, [], 'nfse-input--w-md'))
+    . Ui::field('Data inicial', Ui::input('data_inicial', $from, 'date')),
+    Ui::button('Filtrar', ['primary']) . Ui::button('Limpar', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=fila']),
+    'Filtros da fila'
+);
+```
+
+```html
+<section class="nfse-card nfse-filterbar" aria-label="Filtros da fila">
+  <form class="nfse-filterbar__form" id="nfse-fila-filters" method="get" action="addonmodules.php">
+    <input type="hidden" name="module" value="OpenNfse" /> …
+    <label class="nfse-field"><span class="nfse-field__label">Fatura</span><input type="text" name="invoiceid" value="" class="nfse-input nfse-input--w-sm" placeholder="ID da fatura" /></label>
+    <div class="nfse-filterbar__actions"><button type="submit" class="nfse-btn nfse-btn--primary">Filtrar</button><a class="nfse-btn nfse-btn--ghost" href="…">Limpar</a></div>
+  </form>
+</section>
+```
+
+Larguras de campo: `nfse-input--w-xs` (96px), `--w-sm` (140px), `--w-md` (200px), `--w-lg`
+(320px), `--full`. Fora da barra de filtros, `nfse-input--sm` deixa o campo com 32px.
+
+## Indicadores
+
+Uma linha de indicadores num card só, com divisórias (o visual da Dashboard), sem caixas separadas.
+
+```php
+echo Ui::kpis([
+    ['label' => 'Itens filtrados', 'value' => 120],             // int: formatado com ponto de milhar
+    ['label' => 'Erros', 'value' => 3, 'tone' => 'danger'],      // tons: zero, ok, warn, danger
+    ['label' => 'Pendentes', 'value' => 0],                      // zero sem tom → esmaecido
+    ['label' => 'Valor emitido', 'value' => 'R$ 58.700,87'],
+]);
+```
+
+```html
+<div class="nfse-kpis nfse-kpis--sm">
+  <div class="nfse-kpi"><div class="nfse-kpi__label">Erros</div><div class="nfse-kpi__value nfse-kpi__value--danger">3</div></div>
+</div>
+```
+
+`Ui::kpis($cells, false)` usa o tamanho cheio (24px) da Dashboard.
+
+## Tabela
+
+Dentro de `.nfse-card.nfse-card--table` e `.nfse-table-wrap` (rola na horizontal sem rolar a
+página). Cabeçalho claro, linhas de 13px, números à direita, status com badge, rodapé com
+contagem e paginação no mesmo card.
+
+```php
+echo '<section class="nfse-card nfse-card--table" aria-labelledby="sec-emitidas">';
+echo '<div class="nfse-table-wrap"><table class="nfse-table"><thead><tr>'
+    . '<th>Quando</th><th>Status</th><th class="nfse-num">NFS-e</th><th>Fatura</th><th class="nfse-num">Valor</th><th>Ações</th>'
+    . '</tr></thead><tbody>';
+if ($rows === []) {
+    echo Ui::emptyRow(6, 'Nenhuma nota no período.');
+}
+foreach ($rows as $r) {
+    echo '<tr><td class="nfse-nowrap">05/11/2026<div class="nfse-cell-meta">10:32</div></td>'
+        . '<td>' . Ui::statusBadge($r['status']) . '</td>'
+        . '<td class="nfse-num">' . Ui::h($r['numero']) . '</td>'
+        . '<td><a href="invoices.php?action=edit&amp;id=12">12</a></td>'
+        . '<td class="nfse-num">R$ 10,00</td>'
+        . '<td><div class="nfse-actions">' . Ui::button('Baixar XML', ['sm'], ['href' => $xmlUrl]) . '</div></td></tr>';
+}
+echo '</tbody></table></div>';
+echo Ui::tableFooter(
+    Ui::rangeText($first, $last, $total, 'notas'),                           // "Exibindo 1–50 de 120 notas"
+    Ui::pager($filtros, $page, $totalPages)                                   // Anterior · Página x de y · Próxima
+    . Ui::pageForm($filtros, $page, $totalPages, $perPage, [50, 100, 500])    // selects page e per_page + Aplicar
+    . Ui::button('Exportar CSV', ['sm'], ['href' => $csvUrl])
+);
+echo '</section>';
+```
+
+- Classes de célula: `nfse-num` (direita, números tabulares), `nfse-center`, `nfse-nowrap`,
+  `nfse-break` (quebra textos longos), `nfse-mono` (ids e chaves), `nfse-muted`.
+- Valor vazio: `<span class="nfse-muted">-</span>`.
+- Célula com mais de uma linha: `<div class="nfse-cell-stack">…</div>`; texto secundário:
+  `<div class="nfse-cell-meta">…</div>`.
+- Ações da linha: `<div class="nfse-actions">` com `nfse-btn nfse-btn--sm`; formulários POST da
+  linha com `<form class="nfse-inline-form">`.
+- Linha destacada: `<tr class="nfse-row--danger">` (erro), `nfse-row--warn` (atenção),
+  `nfse-row--info` (aguardando).
+- `Ui::pager` e `Ui::pageForm` montam os links e o form com os **mesmos parâmetros** de antes
+  (`page`, `per_page`, mais os filtros que você passar).
+
+### Status
+
+`Ui::statusBadge($status)` aplica o tom do StatusBadge do OpenNfse UI:
+
+| Status | Tom |
+|---|---|
+| EMITIDA | `nfse-badge--emitida` |
+| CANCELADA, SUBSTITUÍDA | `nfse-badge--cancelada` |
+| ERRO, ERROR, RESOLVIDO | `nfse-badge--erro` |
+| REJEITADA | `nfse-badge--danger` |
+| DONE, OK | `nfse-badge--ok` |
+| demais (PENDING, RUNNING, WAIT_STATUS, PROCESSANDO…) | neutro |
+
+Para outros rótulos: `Ui::badge('Expira 27d', 'warn')` (tons: emitida, cancelada, erro, ok,
+danger, warn, neutro).
+
+## Avisos (callout)
+
+Ícone + título (13px, 600) + texto (12px), nos tons `info`, `ok`, `warn`, `danger`. warn e danger
+saem com `role="alert"`, os outros com `role="status"`.
+
+```php
+echo Ui::callout('ok', 'Configuração salva');
+echo Ui::callout('danger', 'Erro ao consultar status', 'Verifique os logs do módulo.');
+echo Ui::callout('warn', 'Certificado perto do vencimento', 'Vence em 27 dias.', ' <a href="…">Renovar</a>'); // HTML extra no fim
+```
+
+```html
+<div class="nfse-callout nfse-callout--warn" role="alert">
+  <svg class="nfse-callout__icon" …></svg>
+  <div class="nfse-callout__body"><div class="nfse-callout__title">…</div><div class="nfse-callout__text">…</div></div>
+</div>
+```
+
+## Botões
+
+Use `Ui::button($label, $variants, $attrs)` ou as classes direto:
+
+| Classe | Uso |
+|---|---|
+| `nfse-btn` | ação secundária |
+| `nfse-btn--primary` | a ação principal da área (uma só) |
+| `nfse-btn--ghost` | ação discreta: "Limpar", "Cancelar" |
+| `nfse-btn--danger` | ação destrutiva |
+| `nfse-btn--sm` | 28px, para tabelas, rodapés e cabeçalhos de card |
+| `nfse-btn--icon` (+ `--xs`) | só ícone, exige `aria-label` |
+
+`Ui::button` gera `<button type="submit">` (troque com `['type' => 'button']`) ou `<a>` quando
+recebe `href`. Desativado: `aria-disabled="true"` num `<span class="nfse-btn">` ou `disabled` no botão.
+
+## Formulários (Configurações)
+
+Cards por subseção, linhas com rótulo à esquerda (~240px, 13px 600) e campo à direita, ajuda
+embaixo (12px). Abaixo de 700px de área o rótulo fica em cima. A ação de salvar é um botão
+primary no fim da seção, numa `savebar` (fixa no rodapé em formulários longos).
+
+```php
+echo '<section class="nfse-card" aria-labelledby="sec-prestador">';
+echo '<div class="nfse-card__head"><h2 class="nfse-card__title" id="sec-prestador">Dados do prestador</h2></div>';
+echo '<div class="nfse-form">';
+echo Ui::formRow('CNPJ', Ui::input('cnpj', $cnpj, 'text', ['id' => 'cnpj', 'required' => true], 'nfse-input--w-md'), 'Só números.', ['id' => 'cnpj', 'required' => true]);
+echo Ui::formRow('Série', Ui::input('serie', $serie, 'text', ['id' => 'serie', 'aria-invalid' => 'true'], 'nfse-input--w-xs'), '', ['id' => 'serie', 'error' => 'Informe a série.']);
+echo '</div>';
+echo Ui::saveBar(Ui::button('Salvar configurações', ['primary']), '', true);
+echo '</section>';
+```
+
+```html
+<div class="nfse-form__row nfse-form__row--invalid">
+  <label class="nfse-form__label" for="serie">Série</label>
+  <div class="nfse-form__field"><input … class="nfse-input" /><div class="nfse-form__error">Informe a série.</div><div class="nfse-form__help">…</div></div>
+</div>
+```
+
+Campos: `.nfse-input` serve para input, select e textarea. Inválido: `aria-invalid="true"` no
+campo ou `nfse-form__row--invalid` na linha. Obrigatório: `required` no campo e
+`'required' => true` no `formRow` (asterisco). Checkbox com texto: `<label class="nfse-check">`.
+
+## Chips de atalho
+
+Atalhos como meses (Agosto, Setembro, Outubro) viram chips:
+
+```php
+echo Ui::chips([
+    ['label' => 'Agosto', 'href' => $urlAgosto],
+    ['label' => 'Setembro', 'href' => $urlSetembro, 'current' => true],
+], 'Atalhos de mês', true); // true = chips pequenos (26px)
+```
+
+## Menu suspenso
+
+Ex.: escolha de colunas da Fila. O painel abre e fecha pelo atributo `hidden`.
+
+```html
+<div class="nfse-menu">
+  <button type="button" class="nfse-btn nfse-btn--sm" aria-haspopup="true" aria-expanded="false" aria-controls="m1">Colunas</button>
+  <div id="m1" class="nfse-menu__panel" hidden>
+    <div class="nfse-menu__list"><label class="nfse-check"><input type="checkbox" /> <span>Rastreio</span></label></div>
+    <div class="nfse-menu__foot">…</div>
+  </div>
+</div>
+```
+
+## Outros utilitários
+
+`Ui::h()` (escape), `Ui::attrs()` (atributos a partir de array), `Ui::hidden()` (campos ocultos),
+`.nfse-sr-only` (texto só para leitor de tela), `.nfse-text-danger`.
