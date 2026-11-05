@@ -232,7 +232,7 @@ Ao escolher o gatilho `gerada`, ou com o custom field configurado, a tela mostra
 O WHMCS mostra o campo `tblinvoices.notes` ao cliente, como "Observações" na fatura e no PDF. Por isso o addon (`InvoiceHistoryService`) acrescenta nele só duas linhas:
 
 - emissão: "NFS-e emitida com sucesso. Número: … Chave: …", gravada pelo `emitir()` ou pela [consulta de status](#consulta-de-status) que leva a nota para `EMITIDA` (por exemplo, `PROCESSANDO` depois de um timeout);
-- cancelamento: "NFS-e cancelada com sucesso. Motivo: …" ou, no [cancelamento de XML órfão](#cancelamento-de-xml-órfão), "NFS-e órfã cancelada com sucesso. Chave: … Motivo: …".
+- cancelamento: "NFS-e cancelada com sucesso. Motivo: …" ou, no [cancelamento de XML órfão](#cancelamento-de-xml-órfão), "NFS-e cancelada com sucesso. Chave: … Motivo: …" (com a chave da nota cancelada, que o cliente pode conferir no Portal Nacional).
 
 Consultas de status, envios e falhas de e-mail, alertas e ações do admin (reemissão) ficam só no log do addon (`mod_opennfse_logs`). As linhas já gravadas nas observações por versões anteriores não são alteradas.
 
