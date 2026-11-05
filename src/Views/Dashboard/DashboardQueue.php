@@ -75,7 +75,7 @@ final class DashboardQueue
     }
 
     /**
-     * text é a frase completa ("Cron executado há 2 min (WHMCS)"); short, a versão do card ("cron há 2 min").
+     * text é a frase completa ("Cron executado há 2 min (WHMCS)"); short, a versão do rodapé do card ("Cron há 2 min").
      *
      * @return array{ran: bool, seconds: int, stale: bool, text: string, short: string}
      */
@@ -83,7 +83,7 @@ final class DashboardQueue
     {
         $seconds = self::secondsSince($lastRunAt, $now);
         if ($seconds === null) {
-            return ['ran' => false, 'seconds' => 0, 'stale' => true, 'text' => 'Cron nunca executado', 'short' => 'cron nunca executado'];
+            return ['ran' => false, 'seconds' => 0, 'stale' => true, 'text' => 'Cron nunca executado', 'short' => 'Cron nunca executado'];
         }
 
         $source = trim($source);
@@ -95,7 +95,7 @@ final class DashboardQueue
             'seconds' => $seconds,
             'stale' => $seconds > self::CRON_STALE_MINUTES * 60,
             'text' => $text,
-            'short' => 'cron há ' . self::age($seconds),
+            'short' => 'Cron há ' . self::age($seconds),
         ];
     }
 
@@ -149,7 +149,7 @@ final class DashboardQueue
     }
 
     /**
-     * "Mais antigo há 12 min" para o PENDING mais antigo; vazio quando não há pendentes.
+     * "mais antigo há 12 min" para o PENDING mais antigo; vazio quando não há pendentes.
      *
      * @param array<string, int> $counts
      */
@@ -160,6 +160,6 @@ final class DashboardQueue
         }
         $seconds = self::secondsSince($oldestPending, $now);
 
-        return $seconds === null ? '' : 'Mais antigo há ' . self::age($seconds);
+        return $seconds === null ? '' : 'mais antigo há ' . self::age($seconds);
     }
 }
