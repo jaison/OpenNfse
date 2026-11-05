@@ -260,22 +260,8 @@ final class NfseService
             ? (string) $dps->infDps->id
             : null;
 
-        $upsertData = [
-            'invoiceid' => $invoiceId,
-            'userid' => $userId,
-            'id_dps' => $idDps,
-            'protocolo' => $idDps,
-            'numero_nf' => null,
-            'competencia' => null,
-            'chave_acesso' => null,
-            'xml_path' => null,
-            'status' => 'PROCESSANDO',
-            'erro_api' => null,
-        ];
-        if (!$preserveE2404RetryCounter) {
-            $upsertData['e2404_reemit_attempts'] = 0;
-        }
-        $notaRepo->upsert($upsertData);
+        $this->preserveCancellationBeforeReemission($notaRepo->findByInvoiceId($invoiceId));
+        $notaRepo->upsert($this->buildProcessingUpsertData($invoiceId, $userId, $idDps, $preserveE2404RetryCounter));
 
         $nota = $notaRepo->findByInvoiceId($invoiceId);
         $notaId = $nota ? (int) $nota['id'] : null;
@@ -369,6 +355,51 @@ final class NfseService
             $historyMessage .= ' Chave: ' . trim((string) $result->chaveAcesso) . '.';
         }
         (new InvoiceHistoryService())->append($invoiceId, $historyMessage);
+    }
+
+    /**
+     * Dados do início da emissão. A linha é uma por fatura: a nova DPS zera o cancelamento da nota
+     * anterior, que fica preservado no histórico fiscal.
+     */
+    private function buildProcessingUpsertData(int $invoiceId, int $userId, ?string $idDps, bool $preserveE2404RetryCounter): array
+    {
+        $data = [
+            'invoiceid' => $invoiceId,
+            'userid' => $userId,
+            'id_dps' => $idDps,
+            'protocolo' => $idDps,
+            'numero_nf' => null,
+            'competencia' => null,
+            'chave_acesso' => null,
+            'xml_path' => null,
+            'status' => 'PROCESSANDO',
+            'erro_api' => null,
+            'cancelado_em' => null,
+            'cancel_xml_path' => null,
+            'cancel_codigo_motivo' => null,
+            'cancel_motivo' => null,
+            'cancel_descricao' => null,
+            'cancel_erro' => null,
+        ];
+        if (!$preserveE2404RetryCounter) {
+            $data['e2404_reemit_attempts'] = 0;
+        }
+
+        return $data;
+    }
+
+    /**
+     * Antes de a reemissão limpar a linha, garante a nota cancelada no histórico fiscal
+     * (instalações com histórico incompleto). Só vale para status CANCELADA: em outro status,
+     * os campos de cancelamento são de tentativa que falhou ou não pertencem à chave da linha.
+     */
+    private function preserveCancellationBeforeReemission(?array $notaAnterior): void
+    {
+        if ($notaAnterior === null || strtoupper(trim((string) ($notaAnterior['status'] ?? ''))) !== 'CANCELADA') {
+            return;
+        }
+
+        (new FiscalHistoryRepository())->ensureCancellationRecorded($notaAnterior, 'runtime');
     }
 
     public function consultarStatus(int $invoiceId, ?string $correlationId = null): void

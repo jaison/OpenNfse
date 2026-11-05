@@ -24,7 +24,7 @@ Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https:/
 
 ## Visão Geral
 
-- Compatível com WHMCS `8.13.x` ou `9.1`. A v0.1.25 foi validada no WHMCS `9.1`.
+- Compatível com WHMCS `8.13.x` ou `9.1`. A v0.1.26 foi validada no WHMCS `9.1`.
 - Requer PHP `8.1+`.
 - Usa a SDK `nfse-nacional/nfse-php`.
 - Usa `vendor-scoped` para reduzir risco de conflito com dependências de outros módulos do WHMCS.
@@ -142,7 +142,7 @@ Além das SDKs e bibliotecas de aplicação, o módulo também utiliza fontes ex
 ## Requisitos
 
 - PHP `^8.1`
-- WHMCS `8.13.x` ou `9.1` (a v0.1.25 foi validada no `9.1`)
+- WHMCS `8.13.x` ou `9.1` (a v0.1.26 foi validada no `9.1`)
 - MySQL `5.7.5+` ou MariaDB `10.0.2+` (recomendado; em versões anteriores o módulo funciona, com a fila protegida só pelo lock do cron, como explicado em [docs/INSTALACAO.md](docs/INSTALACAO.md))
 - Extensões PHP: `openssl`, `curl`, `dom`, `simplexml`, `mbstring`, `zlib` e `zip`
 - Pacote de certificados raiz (`ca-certificates`) atualizado no servidor
@@ -214,9 +214,10 @@ Emitidas para Estrangeiros/
 ```
 
 - A classificação dentro do ZIP segue estas regras:
-- `Emitidas/`: NFS-e emitidas para clientes no Brasil.
-- `Canceladas/`: XMLs de cancelamento das notas canceladas no período.
-- `Emitidas para Estrangeiros/`: NFS-e emitidas para tomadores com país diferente de `BR`.
+- Cada NFS-e (chave de acesso) emitida no período entra uma vez, a partir do histórico fiscal. Assim, uma nota cancelada e depois substituída por reemissão na mesma fatura continua no ZIP.
+- `Emitidas/`: XML das NFS-e emitidas para clientes no Brasil.
+- `Canceladas/`: XML da nota e XML do cancelamento de cada NFS-e cancelada.
+- `Emitidas para Estrangeiros/`: XML das NFS-e emitidas para tomadores com país diferente de `BR`.
 - O nome do arquivo gerado segue o padrão `nfse_xml_{mmyyyy}.zip`, facilitando o envio mensal para a contabilidade.
 
 ## Cron
