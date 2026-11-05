@@ -23,8 +23,6 @@ final class DashboardViewTest extends TestCase
 
         return $overrides + [
             'today' => '2026-11-05',
-            'logo_url' => 'https://whmcs.example/modules/addons/OpenNfse/assets/opennsfe_logo.png',
-            'version' => ['current' => '0.1.26', 'latest' => '0.1.27', 'update_available' => true, 'href' => 'addonmodules.php?module=OpenNfse&action=config&tab=processamento'],
             'period' => ['periodo' => 'personalizado', 'start' => '2026-10-01', 'end' => '2026-10-31'],
             'metrics' => [
                 'emitidas' => 119, 'canceladas' => 4, 'rejeitadas' => 0, 'pendentes' => 0, 'aguardando_status' => 0,
@@ -48,10 +46,17 @@ final class DashboardViewTest extends TestCase
     {
         $html = DashboardView::render(self::data());
 
-        $this->assertStringStartsWith('<div class="nfse-ui nfse-page">', $html);
-        $this->assertStringContainsString('class="nfse-logo"', $html);
-        $this->assertStringContainsString('v0.1.26 → 0.1.27 disponível', $html);
-        $this->assertStringContainsString('>Outubro 2026<', $html);
+        $this->assertStringStartsWith(
+            '<div class="nfse-ui nfse-page"><div class="nfse-header nfse-titlerow"><div><h1 class="nfse-title">Visão geral</h1>'
+            . '<div class="nfse-subtitle">Operação fiscal de Outubro 2026 · Certificado válido até 20/05/2027</div></div>'
+            . '<div class="nfse-header__tools"><a class="nfse-btn nfse-btn--icon"',
+            $html
+        );
+        // Logo, nome e versão ficam na barra de navegação (AdminNav), e não na Dashboard.
+        $this->assertStringNotContainsString('nfse-navbar', $html);
+        $this->assertStringNotContainsString('nfse-badge--version', $html);
+        $this->assertStringNotContainsString('opennsfe_logo', $html);
+        $this->assertStringContainsString('<span class="nfse-period">Outubro 2026</span>', $html);
         $this->assertStringContainsString('Operação em dia', $html);
         $this->assertStringContainsString('R$ 58.700,87', $html);
         $this->assertStringContainsString('nfse-kpi__value nfse-kpi__value--ok">100,0%', $html);
@@ -73,10 +78,9 @@ final class DashboardViewTest extends TestCase
         $this->assertStringContainsString('[Nome do cliente] &lt;script&gt;', $html);
     }
 
-    public function testNeutralVersionAndZeroKpis(): void
+    public function testZeroKpis(): void
     {
         $data = self::data([
-            'version' => ['current' => '0.1.27', 'latest' => '0.1.27', 'update_available' => false],
             'metrics' => ['emitidas' => 0],
             'series' => [],
             'feed_items' => [],
@@ -84,8 +88,6 @@ final class DashboardViewTest extends TestCase
         ]);
         $html = DashboardView::render($data);
 
-        $this->assertStringContainsString('<span class="nfse-badge nfse-badge--version">v0.1.27</span>', $html);
-        $this->assertStringNotContainsString('disponível', $html);
         $this->assertStringContainsString('nfse-kpi__value nfse-kpi__value--zero">0<', $html);
         $this->assertStringContainsString('nfse-kpi__value nfse-kpi__value--zero">—<', $html);
         $this->assertStringContainsString('Nenhuma atividade no período.', $html);
@@ -110,10 +112,10 @@ final class DashboardViewTest extends TestCase
     public function testCertificateInHeaderAndHealth(): void
     {
         $html = DashboardView::render(self::data());
-        $this->assertStringContainsString('<span class="nfse-header__cert">· Certificado válido até 20/05/2027</span>', $html);
+        $this->assertStringContainsString('<div class="nfse-subtitle">Operação fiscal de Outubro 2026 · Certificado válido até 20/05/2027</div>', $html);
 
         $html = DashboardView::render(self::data(['certificate' => ['status' => 'missing', 'days_left' => '', 'valid_to' => '']]));
-        $this->assertStringNotContainsString('nfse-header__cert', $html);
+        $this->assertStringContainsString('<div class="nfse-subtitle">Operação fiscal de Outubro 2026</div>', $html);
         $this->assertStringContainsString('Certificado não configurado', $html);
         $this->assertStringContainsString('href="addonmodules.php?module=OpenNfse&amp;action=config&amp;tab=ambiente">Abrir Configurações</a>', $html);
     }

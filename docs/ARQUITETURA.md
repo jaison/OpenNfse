@@ -45,7 +45,7 @@ Todos ficam em `modules/addons/OpenNfse/`:
 - `AlertasController`: lista de alertas de NFS-e (action `alertas`), ação "Marcar como resolvido" (`alertaResolver`) e contagem de alertas abertos para o dashboard.
 - `SequenciaisController`: consulta e ajuste manual dos sequenciais de DPS.
 - `ClientController`: área do cliente (lista de notas emitidas, download de XML/PDF e envio por e-mail).
-- `Support/AdminHelpersTrait`: utilitários compartilhados pelos controllers do admin.
+- `Support/AdminHelpersTrait`: utilitários compartilhados pelos controllers do admin, entre eles `renderTabs()`, que imprime a barra de navegação (`Views\AdminNav`) com o estado da fila e a versão.
 
 ### Hooks (`src/Hooks/`)
 
@@ -142,6 +142,10 @@ O uso dos campos do WHMCS está em [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_
 - `CorrelationIdGenerator`: gera o `correlation_id` que liga fila e logs de uma mesma operação.
 - `ActionFormRenderer`: formulários `POST` com token para as ações das telas.
 - `NameNormalizer` e `UfNormalizer`: normalização de nomes de município e UF.
+
+### Navegação do admin (`src/Views/AdminNav.php`)
+
+Classe pura, testada em `tests/Views/AdminNavTest.php`: barra de navegação das telas do addon (logo, abas, estado da fila e versão), linha de título de cada tela e o estilo que esconde o título "OpenNfse" do WHMCS só nas telas do addon (hook `AdminAreaHeadOutput`).
 
 ### Views da Dashboard (`src/Views/Dashboard/`)
 

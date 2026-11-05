@@ -24,7 +24,6 @@ use OpenNfse\Services\QueueErrorClassifierService;
 use OpenNfse\Services\QueueService;
 use OpenNfse\Services\StorageService;
 use OpenNfse\Services\TokenService;
-use OpenNfse\Services\UpdateCheckService;
 use OpenNfse\Views\Dashboard\DashboardFeed;
 use OpenNfse\Views\Dashboard\DashboardPeriod;
 use OpenNfse\Views\Dashboard\DashboardView;
@@ -380,23 +379,11 @@ final class AdminController
         );
 
         $config = (new ConfigRepository())->get();
-        $updateStatus = (new UpdateCheckService())->getStatus($config);
         $auditoriaSummary = $this->reportsController->getAuditoriaDashboardSummary(null, $period['start'], $period['end']);
-
-        $systemUrl = '';
-        if (isset($GLOBALS['CONFIG']['SystemURL']) && is_string($GLOBALS['CONFIG']['SystemURL'])) {
-            $systemUrl = rtrim((string) $GLOBALS['CONFIG']['SystemURL'], '/');
-        }
+        $queueSnapshot = (new QueueRepository())->currentSnapshot();
 
         $html = DashboardView::render([
             'today' => $today,
-            'logo_url' => $systemUrl !== '' ? $systemUrl . '/modules/addons/OpenNfse/assets/opennsfe_logo.png' : '',
-            'version' => [
-                'current' => (string) ($updateStatus['current_version'] ?? ''),
-                'latest' => (string) ($updateStatus['latest_version'] ?? ''),
-                'update_available' => !empty($updateStatus['update_available']),
-                'href' => 'addonmodules.php?module=OpenNfse&action=config&tab=processamento',
-            ],
             'period' => $period,
             'metrics' => $metrics,
             'series' => $dailySeries,
@@ -408,7 +395,7 @@ final class AdminController
             'certificate' => $this->configController->evaluateCertificateFromConfig($config),
             'customfield_missing' => EmissionPolicyContextLoader::configuredCustomFieldMissing($config),
             'now' => time(),
-            'queue' => (new QueueRepository())->currentSnapshot(),
+            'queue' => $queueSnapshot,
             'cron' => [
                 'last_run_at' => (string) ($config['cron_last_run_at'] ?? ''),
                 'source' => (string) ($config['cron_last_source'] ?? ''),
@@ -417,7 +404,8 @@ final class AdminController
         ]);
 
         Module::ui()->renderHeader('Dashboard - OpenNfse');
-        $this->renderTabs('dashboard');
+        // A barra reaproveita a configuração e o estado da fila já lidos aqui; a linha de título vem da DashboardView.
+        $this->renderTabs('dashboard', '', null, ['config' => $config, 'queue' => $queueSnapshot]);
         echo $html;
         Module::ui()->renderFooter();
     }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use OpenNfse\Module;
 use OpenNfse\Repositories\LogRepository;
+use OpenNfse\Views\AdminNav;
 
 if (!defined('WHMCS')) {
     exit('This file cannot be accessed directly');
@@ -22,10 +23,15 @@ add_hook('AdminAreaHeadOutput', 1, static function (array $vars) {
     } elseif (isset($GLOBALS['CONFIG']['SystemURL']) && is_string($GLOBALS['CONFIG']['SystemURL'])) {
         $base = rtrim((string) $GLOBALS['CONFIG']['SystemURL'], '/');
     }
+    // Nas telas do addon, esconde o título "OpenNfse" do WHMCS: a barra de navegação já mostra o nome.
+    $filename = isset($vars['filename']) && is_string($vars['filename'])
+        ? $vars['filename']
+        : (string) ($_SERVER['SCRIPT_NAME'] ?? '');
+    $titleStyle = AdminNav::moduleTitleStyle($filename, $_GET);
     if ($base === '') {
-        return '';
+        return $titleStyle;
     }
-    return '<link rel="stylesheet" type="text/css" href="' . htmlspecialchars($base . '/modules/addons/OpenNfse/assets/nfse-ui.css', ENT_QUOTES, 'UTF-8') . '?v=21" />';
+    return '<link rel="stylesheet" type="text/css" href="' . htmlspecialchars($base . '/modules/addons/OpenNfse/assets/nfse-ui.css', ENT_QUOTES, 'UTF-8') . '?v=22" />' . $titleStyle;
 });
 
 add_hook('InvoicePaid', 1, static function (array $vars) {
@@ -111,7 +117,7 @@ add_hook('ClientAreaHeadOutput', 1, static function (array $vars) {
     if ($base === '') {
         return '';
     }
-    return '<link rel="stylesheet" type="text/css" href="' . htmlspecialchars($base . '/modules/addons/OpenNfse/assets/nfse-ui.css', ENT_QUOTES, 'UTF-8') . '?v=21" />';
+    return '<link rel="stylesheet" type="text/css" href="' . htmlspecialchars($base . '/modules/addons/OpenNfse/assets/nfse-ui.css', ENT_QUOTES, 'UTF-8') . '?v=22" />';
 });
 
 add_hook('ClientAreaPrimaryNavbar', 1, static function ($primaryNavbar) {

@@ -1047,7 +1047,7 @@ final class ReportsController
         }
 
         Module::ui()->renderHeader('Cancelar NFS-e órfã');
-        $this->renderTabs('relatorios');
+        $this->renderTabs('relatorios', 'Cancelar NFS-e órfã', 'Cancelamento de um XML que não é a nota atual da fatura');
 
         $selectedMonth = trim((string) ($_REQUEST['mes'] ?? ''));
         $backUrl = 'addonmodules.php?module=OpenNfse&action=relatorios&tab=xml_auditoria';
@@ -3119,7 +3119,7 @@ final class ReportsController
         }
 
         Module::ui()->renderHeader('OpenNfse');
-        $this->renderTabs('relatorios');
+        $this->renderTabs('relatorios', 'Detalhe do log');
 
         $invoiceId = (int) ($row->invoiceid ?? 0);
         $back = 'addonmodules.php?module=OpenNfse&action=relatorios&tab=logs';
@@ -3167,7 +3167,7 @@ final class ReportsController
             ->get();
 
         Module::ui()->renderHeader('OpenNfse');
-        $this->renderTabs('relatorios');
+        $this->renderTabs('relatorios', 'Logs da nota');
 
         $back = 'invoices.php?action=edit&id=' . $invoiceId;
         echo '<div style="margin-bottom:10px;"><a href="' . htmlspecialchars($back, ENT_QUOTES, 'UTF-8') . '">Voltar</a></div>';

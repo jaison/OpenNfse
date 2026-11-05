@@ -328,7 +328,6 @@
 
 /* Complementos da Dashboard (partes que o protótipo C fazia com style inline) */
 
-.nfse-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .nfse-ui a.nfse-badge { text-decoration: none; }
 .nfse-badge--warn { background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--warn-border); }
 .nfse-ui a.nfse-badge--warn, .nfse-ui a.nfse-badge--warn:hover { color: var(--warn-ink); }
@@ -369,7 +368,6 @@
 .nfse-feed__meta a { color: inherit; text-decoration: underline; }
 .nfse-ui .nfse-health__item a:hover { color: inherit; }
 .nfse-health__title a { font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
-.nfse-header__cert { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .nfse-strip__bar--future { background: transparent; }
 .nfse-strip__axis .nfse-strip__day--future { opacity: 0.55; }
 .nfse-text-danger { color: var(--danger-ink); font-weight: 600; }
@@ -420,4 +418,24 @@
 @container nfse-page (max-width: 999px) {
   .nfse-bar { grid-template-columns: minmax(0, 1fr); }
   .nfse-bar__queue { border-left: 0; border-top: 1px solid var(--border); }
+}
+/* Barra de navegação do addon (Views\AdminNav), em todas as telas, e a linha de título abaixo dela. */
+.nfse-ui.nfse-shell { container: nfse-shell / inline-size; display: flex; flex-direction: column; gap: var(--space-4); padding-top: var(--space-4); margin-bottom: var(--space-4); }
+.nfse-shell + .nfse-page { padding-top: 0; }
+.nfse-navbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); padding: var(--space-2) var(--space-3); background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-xl); }
+.nfse-navbar__brand { display: flex; align-items: center; gap: 10px; padding-right: var(--space-4); border-right: 1px solid var(--border); }
+.nfse-navbar__logo { width: 28px; height: 28px; border-radius: var(--radius-md); display: block; }
+.nfse-navbar__name { font-size: 15px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.nfse-navbar__tabs { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.nfse-ui a.nfse-tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px var(--space-3); border-radius: var(--radius-lg); font-size: 13px; line-height: 20px; color: var(--ink-2); text-decoration: none; }
+.nfse-ui a.nfse-tab:hover { background: var(--surface-subtle); color: var(--ink); text-decoration: none; }
+.nfse-ui a.nfse-tab[aria-current="page"], .nfse-ui a.nfse-tab[aria-current="page"]:hover { background: var(--badge-emitida-bg); color: var(--badge-emitida-ink); font-weight: 600; }
+.nfse-tab svg { flex: none; }
+.nfse-navbar__status { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); font-size: 12px; color: var(--muted); }
+.nfse-ui a.nfse-navbar__queue { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.nfse-ui a.nfse-navbar__queue:hover { color: var(--ink); text-decoration: underline; }
+.nfse-titlerow { align-items: flex-end; }
+/* Barra estreita: marca e estado da fila na primeira linha, abas na linha de baixo. */
+@container nfse-shell (max-width: 899px) {
+  .nfse-navbar__tabs { order: 3; flex-basis: 100%; }
 }

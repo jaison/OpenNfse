@@ -627,11 +627,22 @@ Na lista de alertas, cada alerta aberto tem duas ações:
 - **Fatura**: o hook `ClientAreaPageViewInvoice` mostra o resumo só quando a nota da fatura está `EMITIDA`, a mesma regra da lista: número, data de emissão, chave e, com XML, os botões de XML, PDF e e-mail. Com qualquer outro status (`PROCESSANDO`, `ERRO`, `REJEITADA`, `CANCELADA`), a fatura não mostra nada da NFS-e.
 - **Ações** (`downloadXml`, `downloadPdf`, `sendEmail`): só por `POST`, com token CSRF e conferindo se a fatura pertence ao cliente logado. Download exige nota `EMITIDA`.
 
+## Navegação do admin
+
+Todas as telas do addon (Dashboard, Fila, Relatórios, Configurações e as telas internas, como alertas e cancelamento) começam com a mesma barra (`Views\AdminNav`, impressa por `AdminHelpersTrait::renderTabs()`):
+
+- à esquerda, o logo e "OpenNfse";
+- as abas **Dashboard**, **Fila**, **Relatórios** e **Configurações**, com ícone; a aba da tela aberta fica destacada;
+- à direita, o estado da fila, com link para a Fila: "Fila: vazia", "Fila: 1 pendente", "Fila: 3 pendentes" ou, com erro em aberto, "Fila: 2 com erro · 3 pendentes". O ponto fica vermelho com erro em aberto (`ERROR`) ou com o cron parado ou nunca executado (mesmas regras do card Fila agora) e verde nos demais casos. Vem de `QueueRepository::currentSnapshot()`, uma consulta por tela; se ela falhar, o estado não aparece e a tela segue normal;
+- a pílula da versão: com versão nova, "v0.1.26 → 0.1.27 disponível", com link para **Configurações > Processamento**.
+
+Em tela estreita, as abas descem para a linha de baixo. Abaixo da barra vem o título da tela ("Fila", "Relatórios", "Configurações", com uma linha de subtítulo; a Dashboard tem o próprio título, com o período). Nas telas do addon, o título "OpenNfse" que o WHMCS imprime acima do conteúdo fica escondido: o hook `AdminAreaHeadOutput` acrescenta `<style>#contentarea > div > h1:first-of-type{display:none}</style>` só em `addonmodules.php?module=OpenNfse` (`AdminNav::moduleTitleStyle`).
+
 ## Dashboard
 
 Em **Addons > OpenNfse > Dashboard** (`AdminController::showDashboard()`, HTML em `src/Views/Dashboard/`). De cima para baixo:
 
-- **Cabeçalho**: logo, título e versão. Com versão nova, a pílula mostra "v0.1.26 → 0.1.27 disponível" e leva a **Configurações > Processamento**, onde ficam os detalhes e os links de download. Com o certificado legível e mais de 30 dias de validade, o subtítulo mostra discretamente "Certificado válido até dd/mm/aaaa". À direita, o período:
+- **Título** (abaixo da barra de navegação): "Visão geral" e o subtítulo "Operação fiscal de Novembro 2026 · Certificado válido até dd/mm/aaaa" (a parte do certificado só com ele legível e mais de 30 dias de validade). À direita, o período:
   - setas de mês, com o nome do mês ("Outubro 2026") ou o intervalo quando o período não é um mês inteiro;
   - **Hoje**, **7 dias** e **Personalizado** (data inicial e final).
 - **Barra de saúde**: "Operação em dia" quando erros, pendentes, rejeitadas, aguardando status e faturas pagas sem nota estão em zero. Senão, um item lista só os contadores acima de zero (crítico quando há erro ou rejeitada), cada um com link próprio, sempre no período:
@@ -642,7 +653,7 @@ Em **Addons > OpenNfse > Dashboard** (`AdminController::showDashboard()`, HTML e
 
   Os contadores não repetem a mesma nota: erros = `com_erro_periodo` − `rejeitadas` e pendentes = `pendentes` − `aguardando_status` (as métricas de `dashboardOverview` já incluem umas nas outras). Faturas pagas sem nota têm item próprio, com link para a auditoria. Também aparecem o certificado vencido ou com 30 dias ou menos, o certificado não configurado ou ilegível (aviso com link para **Configurações > Ambiente**), o custom field apagado, os alertas abertos e o cron parado: item crítico "Cron parado há X min" quando a última execução tem mais de 10 minutos (`DashboardQueue::CRON_STALE_MINUTES`), ou "Cron nunca executado", com link para **Configurações > Processamento Automático**.
 - **Indicadores e Fila agora**, numa barra única: um card só, com os indicadores do período à esquerda (cerca de 3/4) e a **Fila agora** à direita (1/4, fundo cinza-claro), os dois com a mesma altura. As larguras contam a área da Dashboard, e não a janela (o menu lateral do WHMCS também conta).
-  - **No período · Novembro 2026** (o mesmo rótulo do cabeçalho) e os 6 indicadores: emitidas, valor emitido, canceladas, taxa de sucesso, processadas e XMLs armazenados. Com a área a partir de 1840px, ficam lado a lado a 24px; de 1640px a 1839px, lado a lado a 22px; abaixo de 1640px, em 2 linhas de 3, a 24px, para caber um valor como R$ 1.258.700,87.
+  - **No período · Novembro 2026** (o mesmo rótulo do título) e os 6 indicadores: emitidas, valor emitido, canceladas, taxa de sucesso, processadas e XMLs armazenados. Com a área a partir de 1840px, ficam lado a lado a 24px; de 1640px a 1839px, lado a lado a 22px; abaixo de 1640px, em 2 linhas de 3, a 24px, para caber um valor como R$ 1.258.700,87.
   - **Fila agora** (estado atual, fora do filtro de período; o título traz essa dica ao passar o mouse):
     - no cabeçalho, só um ponto verde (cron em dia) ou vermelho (cron parado ou nunca executado), o título e o botão **Processar agora**, que envia o mesmo POST da Fila (`filaProcessNow`, com o token) e volta para a Fila;
     - uma grade 2x2 com Pendentes (`PENDING`), Processando (`RUNNING`), Aguard. status (`WAIT_STATUS`) e Com erro (`ERROR`, o erro ainda não resolvido; o resolvido vira `RESOLVIDO`), com o número à direita. Cada linha abre a **Fila** filtrada pelo status, desde 01/01/2000, porque a Fila sem datas mostra só os últimos 7 dias. Zero aparece esmaecido; Com erro acima de zero aparece em vermelho;

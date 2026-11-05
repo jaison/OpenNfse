@@ -22,6 +22,9 @@ use OpenNfse\Services\QueueErrorClassifierService;
 use OpenNfse\Services\QueueService;
 use OpenNfse\Services\StorageService;
 use OpenNfse\Services\TokenService;
+use OpenNfse\Services\UpdateCheckService;
+use OpenNfse\Views\AdminNav;
+use OpenNfse\Views\Dashboard\DashboardQueue;
 use WHMCS\Database\Capsule;
 
 trait AdminHelpersTrait
@@ -126,28 +129,66 @@ trait AdminHelpersTrait
     }
 
 
-    public function renderTabs(string $active): void
+    /**
+     * Barra de navegação do addon (Views\AdminNav) e a linha de título da tela.
+     * $title null usa o título padrão da aba; '' não mostra a linha (a Dashboard monta a dela).
+     * $context aceita dados já lidos pela tela, para não repetir consultas: config e queue
+     * (QueueRepository::currentSnapshot()).
+     *
+     * @param array{config?: array<string, mixed>, queue?: array<string, mixed>} $context
+     */
+    public function renderTabs(string $active, ?string $title = null, ?string $subtitle = null, array $context = []): void
     {
-        $base = 'addonmodules.php?module=OpenNfse';
-        $tabs = [
-            'dashboard' => $base . '&action=dashboard',
-            'fila' => $base . '&action=fila',
-            'relatorios' => $base . '&action=relatorios&tab=emitidas',
-            'config' => $base . '&action=config',
+        echo AdminNav::shell($active, $this->navData($context), $title, $subtitle);
+    }
+
+    /**
+     * @param array{config?: array<string, mixed>, queue?: array<string, mixed>} $context
+     * @return array<string, mixed>
+     */
+    private function navData(array $context): array
+    {
+        $systemUrl = '';
+        if (isset($GLOBALS['CONFIG']['SystemURL']) && is_string($GLOBALS['CONFIG']['SystemURL'])) {
+            $systemUrl = rtrim((string) $GLOBALS['CONFIG']['SystemURL'], '/');
+        }
+        // Sem SystemURL, o caminho relativo parte da pasta do admin, que fica um nível abaixo da raiz.
+        $data = [
+            'logo_url' => ($systemUrl !== '' ? $systemUrl : '..') . '/modules/addons/OpenNfse/assets/opennsfe_logo.png',
+            'queue' => null,
+            'version' => [],
         ];
 
-        echo '<ul class="nav nav-tabs" style="margin:10px 0 15px 0;">';
-        foreach ($tabs as $key => $url) {
-            $label = match ($key) {
-                'dashboard' => 'Dashboard',
-                'fila' => 'Fila',
-                'relatorios' => 'Relatórios',
-                default => 'Configurações',
-            };
-            $liClass = $key === $active ? ' class="active"' : '';
-            echo '<li' . $liClass . '><a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</a></li>';
+        // A barra nunca derruba a tela: se a leitura falhar, o estado da fila (ou a versão) só não aparece.
+        try {
+            $config = $context['config'] ?? (new ConfigRepository())->get();
+        } catch (\Throwable $e) {
+            $config = null;
         }
-        echo '</ul>';
+
+        try {
+            $snapshot = $context['queue'] ?? (new QueueRepository())->currentSnapshot();
+            $cron = is_array($config)
+                ? DashboardQueue::cronState((string) ($config['cron_last_run_at'] ?? ''), (string) ($config['cron_last_source'] ?? ''), time())
+                : null;
+            $data['queue'] = AdminNav::queueStatus($snapshot, $cron);
+        } catch (\Throwable $e) {
+            $data['queue'] = null;
+        }
+
+        try {
+            $status = (new UpdateCheckService())->getStatus(is_array($config) ? $config : []);
+            $data['version'] = [
+                'current' => (string) ($status['current_version'] ?? ''),
+                'latest' => (string) ($status['latest_version'] ?? ''),
+                'update_available' => !empty($status['update_available']),
+                'href' => 'addonmodules.php?module=OpenNfse&action=config&tab=processamento',
+            ];
+        } catch (\Throwable $e) {
+            $data['version'] = [];
+        }
+
+        return $data;
     }
 
 
