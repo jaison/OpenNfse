@@ -348,28 +348,16 @@
 .nfse-field { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; font-size: 12px; line-height: 16px; font-weight: 400; color: var(--muted); }
 .nfse-input { font: inherit; font-size: 13px; min-height: 36px; padding: 6px var(--space-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-card); color: var(--ink); }
 
-.nfse-split { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: stretch; }
-.nfse-split__main { flex: 999 1 560px; min-width: 0; }
-.nfse-split__side { flex: 1 1 280px; min-width: 0; }
-.nfse-stack { display: flex; flex-direction: column; gap: 14px; }
-.nfse-chart-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-3); margin-bottom: 14px; }
-.nfse-chart-head .nfse-section-title { margin-bottom: var(--space-1); }
-.nfse-cal--head { margin-bottom: 6px; }
 .nfse-cal__month { font-weight: 600; }
 .nfse-cal__cell--future { opacity: 0.55; cursor: default; }
 .nfse-cal__cell:not(.nfse-cal__cell--empty):not(.nfse-cal__cell--future):hover { box-shadow: inset 0 0 0 2px var(--accent); }
-.nfse-legend--below { margin-top: var(--space-3); }
-.nfse-hbars { display: flex; flex-direction: column; gap: 10px; }
 .nfse-scroll-x { overflow-x: auto; }
-.nfse-strips--long { min-width: 1280px; }
 .nfse-card--clip { overflow: hidden; }
 .nfse-feed__empty { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--divider); color: var(--muted); }
 .nfse-feed__foot { padding: 10px var(--space-4); border-top: 1px solid var(--divider); font-weight: 600; }
 .nfse-feed__meta a { color: inherit; text-decoration: underline; }
 .nfse-ui .nfse-health__item a:hover { color: inherit; }
 .nfse-health__title a { font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
-.nfse-strip__bar--future { background: transparent; }
-.nfse-strip__axis .nfse-strip__day--future { opacity: 0.55; }
 .nfse-text-danger { color: var(--danger-ink); font-weight: 600; }
 /* Barra única: indicadores do período (3fr) e Fila agora (1fr) no mesmo card. As larguras vêm da área
    da Dashboard (container nfse-page), e não da janela: o menu lateral do WHMCS também conta. */
@@ -456,4 +444,74 @@
 @container nfse-shell (max-width: 899px) {
   .nfse-navbar__tabs { order: 3; flex-basis: 100%; justify-content: flex-end; }
   .nfse-navbar__status { padding-right: 0; border-right: 0; }
+}
+/* Linha de três cards compactos: Emissões por dia | Média por dia da semana | Linha do tempo. */
+.nfse-days { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.75fr) minmax(0, 1.5fr); gap: var(--space-4); align-items: stretch; }
+.nfse-dcard { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: var(--space-3) 14px; }
+.nfse-dcard__head { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--space-2); row-gap: 2px; }
+.nfse-ui h2.nfse-dcard__title { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.nfse-dcard__summary { font-size: 11px; line-height: 14px; color: var(--muted); }
+.nfse-days__legend { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) 14px; margin-top: calc(-1 * var(--space-2)); font-size: 11px; line-height: 14px; color: var(--muted); }
+.nfse-days__legend .nfse-heat-scale span[class^="nfse-heat-"] { width: 10px; height: 10px; }
+.nfse-days__legend .nfse-legend__item { gap: 5px; }
+/* Calendário compacto. */
+.nfse-dcard .nfse-cal { gap: 3px; }
+.nfse-dcard .nfse-cal__dow { font-size: 10px; line-height: 12px; text-align: center; }
+.nfse-dcard .nfse-cal__cell { position: relative; height: 26px; padding: 1px var(--space-1); border-radius: var(--radius-sm); justify-content: space-between; }
+.nfse-cal__day { font-size: 9px; line-height: 10px; opacity: 0.8; white-space: nowrap; overflow: hidden; }
+.nfse-dcard .nfse-cal__count { font-size: 12px; line-height: 13px; text-align: right; }
+.nfse-dcard .nfse-cal__marks { position: absolute; top: 3px; right: 3px; display: flex; gap: 2px; }
+.nfse-cal__dot { width: 6px; height: 6px; border-radius: var(--radius-pill); flex: none; box-shadow: 0 0 0 1px var(--surface-card); }
+.nfse-cal__dot--cancelada { background: var(--series-canceled); }
+.nfse-cal__dot--erro { background: var(--series-error); }
+/* Média por dia da semana em colunas. */
+.nfse-vbars { flex: 1; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; min-height: 140px; }
+.nfse-vbar { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+.nfse-vbar__value { font-size: 10px; line-height: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.nfse-vbar__track { flex: 1; width: 100%; max-width: 22px; display: flex; align-items: flex-end; }
+.nfse-vbar__fill { width: 100%; background: var(--accent); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+.nfse-vbar__fill--weekend { background: var(--accent-soft); }
+.nfse-vbar__name { font-size: 10px; line-height: 12px; color: var(--muted); }
+/* Linha do tempo: três séries na mesma escala. */
+.nfse-tl__legend { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-left: auto; font-size: 11px; line-height: 14px; color: var(--muted); }
+.nfse-tl__key { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.nfse-tl__key b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.nfse-tl__swatch { width: 10px; height: 10px; border-radius: 2px; }
+.nfse-tl__swatch--emitidas { background: var(--accent-soft); }
+.nfse-tl__swatch--cancelada { background: var(--series-canceled); }
+.nfse-tl__swatch--erro { background: var(--series-error); }
+.nfse-dcard--timeline .nfse-scroll-x { flex: 1; display: flex; }
+.nfse-tl { flex: 1; padding-top: 5px; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(140px, 1fr) auto; column-gap: 6px; row-gap: 3px; min-width: 0; }
+.nfse-tl--long { min-width: 1280px; }
+.nfse-tl__y { position: relative; min-width: 22px; font-size: 9px; line-height: 10px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.nfse-tl__tick { position: absolute; right: 0; }
+.nfse-tl__tick--max { top: -5px; }
+.nfse-tl__tick--half { top: calc(50% - 5px); }
+.nfse-tl__tick--zero { bottom: -5px; }
+.nfse-tl__plot { position: relative; }
+.nfse-tl__grid { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--border); }
+.nfse-tl__grid--max { top: 0; }
+.nfse-tl__grid--half { top: 50%; }
+.nfse-tl__grid--zero { bottom: 0; border-top-style: solid; }
+.nfse-tl__days { position: relative; height: 100%; display: flex; gap: 2px; }
+.nfse-tl__day { position: relative; flex: 1 1 0; min-width: 0; display: flex; align-items: flex-end; justify-content: center; }
+.nfse-tl__day--today { box-shadow: inset 0 0 0 1px var(--accent); border-radius: 3px; }
+.nfse-tl__bar { min-height: 5px; border-radius: 2px 2px 0 0; }
+.nfse-tl__bar--emitidas { position: absolute; left: 0; right: 0; bottom: 0; background: var(--heat-3); border-radius: 3px 3px 0 0; }
+.nfse-tl__day--weekend .nfse-tl__bar--emitidas { background: var(--heat-2); }
+.nfse-tl__minor { position: absolute; top: 0; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; align-items: flex-end; gap: 1px; }
+.nfse-tl__bar--cancelada, .nfse-tl__bar--erro { width: 4px; box-shadow: 0 0 0 1px var(--surface-card); }
+.nfse-tl__bar--cancelada { background: var(--series-canceled); }
+.nfse-tl__bar--erro { background: var(--series-error); }
+.nfse-tl__placeholder { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--border); border-radius: 1px; }
+.nfse-tl__axis { display: flex; gap: 2px; font-size: 9px; line-height: 10px; color: var(--muted); }
+.nfse-tl__axis span { flex: 1 1 0; min-width: 0; text-align: center; white-space: nowrap; }
+.nfse-tl__axis .nfse-tl__axis-future { opacity: 0.55; }
+/* Área abaixo de 1100px: calendário e média lado a lado, linha do tempo embaixo; abaixo de 700px, tudo empilhado. */
+@container nfse-page (max-width: 1099px) {
+  .nfse-days { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.75fr); }
+  .nfse-dcard--timeline { grid-column: 1 / -1; }
+}
+@container nfse-page (max-width: 699px) {
+  .nfse-days { grid-template-columns: minmax(0, 1fr); }
 }

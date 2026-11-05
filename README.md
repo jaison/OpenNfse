@@ -60,7 +60,7 @@ Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https:/
 - Barra de saúde: "Operação em dia" ou o que exige atenção (erros, pendentes, rejeitadas, aguardando status, faturas pagas sem nota, certificado perto do vencimento, não configurado ou ilegível, alertas abertos, cron parado), cada contador com link para a tela certa.
 - Fila agora, ao lado dos indicadores: itens pendentes, em processamento, aguardando status e com erro neste momento, a última execução do cron, o pendente mais antigo e o botão para processar a fila.
 - Indicadores de emitidas, valor emitido, canceladas, taxa de sucesso, processadas e XMLs armazenados.
-- Calendário de calor das emissões por dia, média por dia da semana e linha do tempo de emitidas, canceladas e erros.
+- Calendário de calor das emissões por dia, média por dia da semana e linha do tempo de emitidas, canceladas e erros na mesma escala, lado a lado em cards compactos.
 - Atividade recente numa lista só, com filtros por tipo e por dia.
 - Barra de navegação em todas as telas do addon, com o título da tela, o estado da fila e o aviso de versão nova.
 

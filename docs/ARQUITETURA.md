@@ -153,7 +153,7 @@ Classes puras, sem acesso ao banco, testadas em `tests/Views/Dashboard/`. O HTML
 
 - `DashboardPeriod`: lê `periodo`, `data_inicial` e `data_final`, limita o período personalizado (anos 2000–2100, até 366 dias), monta o rótulo ("Outubro 2026", "05/11/2026" ou o intervalo), as setas de mês e valida o dia escolhido (`dia`).
 - `DashboardCalendar`: grade do calendário de calor (semanas de domingo a sábado que cobrem o período), faixas fixas de calor, resumo (total, média por dia corrido e pico) e média por dia da semana.
-- `DashboardStrips`: linha do tempo em faixas (Emitidas, Canceladas, Erros incl. resolvidos), cada uma com escala própria, os rótulos do eixo de datas e a marca dos dias futuros.
+- `DashboardStrips`: linha do tempo num gráfico só, com emitidas, canceladas e erros (incl. resolvidos) na mesma escala (`sharedScale`), os rótulos do eixo de datas e a marca de hoje e dos dias futuros.
 - `DashboardHealth`: contadores sem dupla contagem e itens da barra de saúde (operação em dia, erros/rejeitadas/pendentes/aguardando status com link próprio, faturas pagas sem nota, certificado, custom field, alertas) e a linha "Certificado válido até".
 - `DashboardQueue`: card "Fila agora" (contagem por status, idade do pendente mais antigo, última execução do cron) e o item "Cron parado" da barra de saúde.
 - `DashboardFeed`: junta emissões, cancelamentos e erros recentes numa lista (um erro por fatura, o mais recente), com o filtro `feed` e o resumo das mensagens de erro da API.

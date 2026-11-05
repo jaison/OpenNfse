@@ -61,8 +61,9 @@ final class DashboardViewTest extends TestCase
         $this->assertStringContainsString('119 no período · média 3,8/dia · pico 29 em 23/10', $html);
         $this->assertSame(4, substr_count($html, 'nfse-cal__cell nfse-cal__cell--empty'));
         $this->assertSame(1, substr_count($html, 'aria-pressed="true" aria-label="23/10/2026'));
-        $this->assertStringContainsString('<span class="nfse-mark">4</span>', $html);
-        $this->assertSame(3, substr_count($html, 'class="nfse-strip__label"'));
+        $this->assertStringContainsString('<span class="nfse-cal__marks" aria-hidden="true"><span class="nfse-cal__dot nfse-cal__dot--cancelada"></span></span>', $html);
+        $this->assertStringContainsString('aria-label="08/10/2026: 3 emitidas, 4 canceladas" title="08/10: 3 emitidas, 4 canceladas"', $html);
+        $this->assertStringContainsString('<div class="nfse-tl__plot" role="img"', $html);
         $this->assertStringContainsString('Atividade recente <span class="nfse-card__summary">em 23/10/2026</span>', $html);
         $this->assertStringContainsString('name="dia" value="2026-10-23"', $html, 'o filtro de atividade mantém o dia');
         $this->assertStringContainsString('tab=emitidas&amp;data_inicial=2026-10-23&amp;data_final=2026-10-23', $html);
@@ -156,11 +157,38 @@ final class DashboardViewTest extends TestCase
         $this->assertStringContainsString('>Canceladas<span class="nfse-chip__count">4</span>', $html);
     }
 
-    public function testFutureDaysInStrips(): void
+    public function testDaysRowHasThreeCompactCards(): void
+    {
+        $html = DashboardView::render(self::data());
+
+        $row = strpos($html, '<div class="nfse-days"><section class="nfse-card nfse-dcard" aria-labelledby="nfse-emissoes-dia">');
+        $weekday = strpos($html, '<section class="nfse-card nfse-dcard" aria-labelledby="nfse-media-semana">');
+        $timeline = strpos($html, '<section class="nfse-card nfse-dcard nfse-dcard--timeline" aria-labelledby="nfse-linha-tempo">');
+        $legend = strpos($html, '<div class="nfse-days__legend">');
+        $feed = strpos($html, 'id="nfse-atividade"');
+        $this->assertNotFalse($row);
+        $this->assertTrue($row < $weekday && $weekday < $timeline && $timeline < $legend && $legend < $feed);
+        $this->assertStringNotContainsString('nfse-split', $html);
+        $this->assertStringNotContainsString('nfse-strip', $html, 'as faixas separadas deram lugar ao gráfico sobreposto');
+
+        // Calendário: iniciais no cabeçalho, com o nome no title.
+        $this->assertStringContainsString('<span class="nfse-cal__dow" title="Dom">D</span><span class="nfse-cal__dow" title="Seg">S</span>', $html);
+        $this->assertStringContainsString('<span class="nfse-dcard__summary">119 no período · média 3,8/dia · pico 29 em 23/10</span>', $html);
+
+        // Média por dia da semana em colunas (altura da barra vem do dado).
+        $this->assertSame(7, substr_count($html, '<div class="nfse-vbar" title='));
+        $this->assertStringContainsString('<span class="nfse-vbar__fill nfse-vbar__fill--weekend" style="height:36.6%"></span>', $html);
+        $this->assertStringContainsString('<span class="nfse-vbar__name">Sex</span>', $html);
+
+        // Legenda abaixo da linha.
+        $this->assertStringContainsString('<span class="nfse-legend__item"><span class="nfse-cal__dot nfse-cal__dot--erro"></span>Erros (incl. resolvidos)</span><span>Clique num dia para filtrar a atividade recente</span>', $html);
+    }
+
+    public function testOverlaidTimeline(): void
     {
         $series = [];
         for ($i = 1; $i <= 30; $i++) {
-            $series[] = ['date' => sprintf('2026-11-%02d', $i), 'emitidas' => $i <= 5 ? 2 : 0, 'canceladas' => 0, 'erros_resolvidos' => 0];
+            $series[] = ['date' => sprintf('2026-11-%02d', $i), 'emitidas' => $i <= 5 ? 12 : 0, 'canceladas' => $i === 5 ? 2 : 0, 'erros_resolvidos' => $i === 5 ? 1 : 0];
         }
         $html = DashboardView::render(self::data([
             'period' => ['periodo' => 'mes_atual', 'start' => '2026-11-01', 'end' => '2026-11-30'],
@@ -168,11 +196,58 @@ final class DashboardViewTest extends TestCase
             'dia' => '',
         ]));
 
-        // 25 dias futuros (06 a 30/11) em cada uma das 3 faixas, sem barra.
-        $this->assertSame(75, substr_count($html, 'nfse-strip__bar nfse-strip__bar--future"'));
-        $this->assertSame(25, substr_count($html, 'class="nfse-strip__day--future"'));
-        $this->assertStringContainsString('<span class="nfse-strip__label">Erros (incl. resolvidos)</span>', $html);
-        $this->assertStringContainsString('Erros (incl. resolvidos) no dia', $html);
+        // Uma escala só (12 → 15), com as marcas 0, metade e máximo.
+        $this->assertStringContainsString(
+            '<div class="nfse-tl__y" aria-hidden="true"><span class="nfse-tl__tick nfse-tl__tick--max">15</span>'
+            . '<span class="nfse-tl__tick nfse-tl__tick--half">7,5</span><span class="nfse-tl__tick nfse-tl__tick--zero">0</span></div>',
+            $html
+        );
+        $this->assertStringContainsString(
+            'role="img" aria-label="Linha do tempo, mesma escala até 15: 60 emitidas, 2 canceladas e 1 erro (incl. resolvidos) no período"',
+            $html
+        );
+        $this->assertStringContainsString(
+            'Emitidas <b>60</b></span><span class="nfse-tl__key"><span class="nfse-tl__swatch nfse-tl__swatch--cancelada"></span>Canceladas <b>2</b></span>'
+            . '<span class="nfse-tl__key"><span class="nfse-tl__swatch nfse-tl__swatch--erro"></span>Erros <b>1</b></span>',
+            $html
+        );
+
+        // Hoje (05/11): barra larga de emitidas e, na frente, as duas finas, na mesma escala.
+        $this->assertStringContainsString(
+            '<div class="nfse-tl__day nfse-tl__day--today" title="05/11: 12 emitidas · 2 canceladas · 1 erro (incl. resolvidos)">'
+            . '<span class="nfse-tl__bar nfse-tl__bar--emitidas" style="height:80%"></span>'
+            . '<span class="nfse-tl__minor"><span class="nfse-tl__bar nfse-tl__bar--cancelada" style="height:13.3%"></span>'
+            . '<span class="nfse-tl__bar nfse-tl__bar--erro" style="height:6.7%"></span></span></div>',
+            $html
+        );
+        // Fim de semana mais claro; dia sem canceladas nem erros não tem barras finas.
+        $this->assertStringContainsString(
+            '<div class="nfse-tl__day nfse-tl__day--weekend" title="01/11: 12 emitidas · 0 canceladas · 0 erros (incl. resolvidos)">'
+            . '<span class="nfse-tl__bar nfse-tl__bar--emitidas" style="height:80%"></span></div>',
+            $html
+        );
+        // 25 dias futuros (06 a 30/11): só o marcador plano, com a data esmaecida no eixo.
+        $this->assertSame(25, substr_count($html, '<span class="nfse-tl__placeholder"></span>'));
+        $this->assertSame(25, substr_count($html, 'class="nfse-tl__axis-future"'));
+        $this->assertStringNotContainsString('nfse-tl--long', $html);
+    }
+
+    public function testLongPeriodKeepsHorizontalScroll(): void
+    {
+        $series = [];
+        $d = new \DateTimeImmutable('2026-08-08');
+        for ($i = 0; $i < 90; $i++) {
+            $series[] = ['date' => $d->format('Y-m-d'), 'emitidas' => 3, 'canceladas' => 0, 'erros_resolvidos' => 0];
+            $d = $d->modify('+1 day');
+        }
+        $html = DashboardView::render(self::data([
+            'period' => ['periodo' => 'personalizado', 'start' => '2026-08-08', 'end' => '2026-11-05'],
+            'series' => $series,
+            'dia' => '',
+        ]));
+
+        $this->assertStringContainsString('<div class="nfse-scroll-x"><div class="nfse-tl nfse-tl--long">', $html);
+        $this->assertSame(90, preg_match_all('/<div class="nfse-tl__day[ "]/', $html));
     }
 
     /**
@@ -226,7 +301,7 @@ final class DashboardViewTest extends TestCase
         );
         $this->assertStringContainsString('</form></details></nav></div></div><div class="nfse-bar__kpis"><div class="nfse-kpi"><div class="nfse-kpi__label">Emitidas</div>', $html);
         $this->assertStringContainsString('<div class="nfse-kpi__value nfse-kpi__value--ok">100,0%</div></div><div class="nfse-kpi"><div class="nfse-kpi__label">Processadas', $html);
-        $this->assertStringContainsString('</section></div><div class="nfse-split">', $html, 'a barra fecha logo depois da fila');
+        $this->assertStringContainsString('</section></div><div class="nfse-days">', $html, 'a barra fecha logo depois da fila');
         $this->assertStringNotContainsString('<div class="nfse-kpis">', $html);
         $this->assertStringNotContainsString('Cron parado', $html);
     }
