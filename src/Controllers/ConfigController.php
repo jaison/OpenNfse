@@ -311,7 +311,7 @@ final class ConfigController
             $facts['Fingerprint'] = '<span class="nfse-mono">' . Ui::h($fingerprint) . '</span>';
         }
         $this->renderConfigBlock('<div class="nfse-cfg-status">' . $statusLine . '</div>' . self::factsHtml($facts));
-        $this->renderConfigBlock('Dica: use Revalidar certificado após trocar o arquivo no servidor. O teste de conexão usa uma consulta leve via SDK para validar mTLS e acesso à API, sem emitir NFS-e.', 'nfse-cfg-note');
+        $this->renderConfigBlock('Use Revalidar certificado após trocar o arquivo no servidor. O teste de conexão usa uma consulta leve via SDK para validar mTLS e acesso à API, sem emitir NFS-e.', 'nfse-cfg-note');
         $this->renderConfigSectionEnd();
         $paneEnd();
 
@@ -328,11 +328,13 @@ final class ConfigController
         $this->renderConfigBlock(Ui::callout(
             'info',
             'Indicador Municipal',
-            '',
-            '<p>Verifique no Portal do Contribuinte qual valor aparece no campo <strong>Indicador Municipal</strong> ao simular a emissão da NFS-e. O valor informado aqui deve ser exatamente igual ao exibido no portal, incluindo os zeros à esquerda.</p>'
+            'A Inscrição Municipal deve ser igual ao Indicador Municipal do Portal do Contribuinte, com os zeros à esquerda.',
+            '<details class="nfse-form__more"><summary>Onde conferir</summary><div class="nfse-form__more-body">'
+            . '<p>Simule a emissão no portal e veja o campo <strong>Indicador Municipal</strong>.</p>'
             . '<p>Homologação: <a href="https://www.producaorestrita.nfse.gov.br/EmissorNacional/" target="_blank" rel="noopener noreferrer">https://www.producaorestrita.nfse.gov.br/EmissorNacional/</a><br />'
             . 'Produção: <a href="https://www.nfse.gov.br/EmissorNacional/" target="_blank" rel="noopener noreferrer">https://www.nfse.gov.br/EmissorNacional/</a></p>'
             . '<p>Se ainda não houver Indicador Municipal no portal, altere o campo <strong>Informar IM do Prestador</strong> para <strong>Não</strong>.</p>'
+            . '</div></details>'
         ));
         $this->renderConfigFormTableStart();
         $this->renderTextRow('codigo_ibge', 'Código IBGE', $config['codigo_ibge'] ?? '');
@@ -412,11 +414,18 @@ final class ConfigController
             }
             echo '</tbody></table></div>';
             $this->renderConfigBlock(
-                '<div>Se desativado, o módulo não enfileira/gera NFS-e automaticamente quando a fatura é paga com esse gateway.</div>'
-                . '<div>"Emitir ao gerar a fatura" só vale quando o gatilho de emissão automática (aba Processamento Automático ou custom field do cliente) for "gerada": a NFS-e entra na fila assim que a fatura Unpaid é publicada, apenas para os gateways marcados aqui (ex.: só boleto). O gateway também precisa estar com a emissão de NFS-e ativada. O comportamento no pagamento não muda.</div>',
-                'nfse-cfg-note'
+                '<details class="nfse-form__more"><summary>Como funciona</summary><div class="nfse-form__more-body">'
+                . '<p>Gateway desativado: o módulo não enfileira a NFS-e quando a fatura é paga com ele.</p>'
+                . '<p>"Emitir ao gerar a fatura" só vale com o gatilho "gerada" (em Fila e processamento ou no custom field do cliente): '
+                . 'a NFS-e entra na fila assim que a fatura Unpaid é publicada, só nos gateways marcados aqui (ex.: só boleto) e com a emissão ativada. '
+                . 'O comportamento no pagamento não muda.</p></div></details>'
             );
-            $this->renderConfigBlock(Ui::callout('warn', 'Valor da NFS-e x valor pago', self::AUTO_EMIT_VALUE_WARNING));
+            $this->renderConfigBlock(Ui::callout(
+                'warn',
+                'Valor da NFS-e x valor pago',
+                'Na emissão ao gerar a fatura, taxas ou descontos aplicados depois deixam o valor pago diferente do valor da NFS-e.',
+                '<details class="nfse-form__more"><summary>Saiba mais</summary><div class="nfse-form__more-body">' . Ui::h(self::AUTO_EMIT_VALUE_WARNING) . '</div></details>'
+            ));
         }
         $this->renderConfigSectionEnd();
         $paneEnd();
@@ -741,12 +750,15 @@ final class ConfigController
         if ($customFieldId > 0 && !$fieldFound) {
             $fieldHtml .= Ui::callout('warn', EmissionPolicyService::MSG_CUSTOMFIELD_MISSING, 'Selecione outro campo ou "Não usar (desligado)".');
         }
+        $fieldHtml .= '<div class="nfse-form__help">Um campo do cliente pode sobrepor a regra do grupo e a global.</div>';
+        $fieldHtml .= '<details class="nfse-form__more"><summary>Como criar o campo personalizado</summary><div class="nfse-form__more-body">';
         $fieldHtml .= '<div class="nfse-form__help">Crie o campo em Configurações &gt; Campos personalizados do cliente (Setup &gt; Custom Client Fields) com <strong>Field Type: Drop Down</strong>, marque <strong>Admin Only</strong> (para o cliente não alterar) e use exatamente estas opções, separadas por vírgula:</div>';
         $fieldHtml .= '<div class="nfse-cfg-code">' . Ui::h(implode(',', array_keys(EmissionPolicyService::customFieldOptions()))) . '</div>';
         $fieldHtml .= '<div class="nfse-form__help">"' . Ui::h(EmissionPolicyService::CF_NAO_CONFIGURADO) . '" segue o grupo e a regra global. "'
             . Ui::h(EmissionPolicyService::CF_NAO_EMITIR) . '" e "' . Ui::h(EmissionPolicyService::CF_APENAS_MANUAL) . '" desligam a emissão automática do cliente; a emissão manual continua seguindo a opção de faturas não pagas acima. "'
             . Ui::h(EmissionPolicyService::CF_APENAS_PAGAS) . '" emite no pagamento e "' . Ui::h(EmissionPolicyService::CF_TODAS) . '" emite na geração (e no pagamento, se ainda não houver NFS-e). Valor vazio ou diferente dessas opções é tratado como "'
             . Ui::h(EmissionPolicyService::CF_NAO_CONFIGURADO) . '" e gera um aviso no log.</div>';
+        $fieldHtml .= '</div></details>';
         echo Ui::formRow('Enfileirar emissão de acordo com o custom field do cliente', $fieldHtml, '', ['id' => $fieldId]);
         $this->renderConfigFormTableEnd();
 
@@ -754,10 +766,12 @@ final class ConfigController
         echo Ui::callout(
             'warn',
             'Atenção fiscal (emissão na geração da fatura)',
-            'A NFS-e é emitida antes do pagamento. O ISS é devido mesmo que a fatura nunca seja paga; a competência é a data de emissão; e o prazo do município para cancelar a NFS-e é curto. '
+            'A NFS-e sai antes do pagamento e o ISS é devido mesmo se a fatura não for paga. Confirme com a contabilidade antes de ligar.',
+            '<details class="nfse-form__more"><summary>Saiba mais</summary><div class="nfse-form__more-body">'
+                . '<p>A competência é a data de emissão e o prazo do município para cancelar a NFS-e é curto. '
                 . 'Se a fatura for cancelada ou alterada depois, o cancelamento da NFS-e continua manual. '
-                . 'Na geração, a emissão só vale para os gateways marcados em "Emitir ao gerar a fatura" (aba Integração com WHMCS). Confirme com a contabilidade antes de ligar.',
-            '<p><strong>Valor da NFS-e x valor pago:</strong> ' . Ui::h(self::AUTO_EMIT_VALUE_WARNING) . '</p>'
+                . 'Na geração, a emissão só vale para os gateways marcados em "Emitir ao gerar a fatura" (WHMCS e gateways).</p>'
+                . '<p><strong>Valor da NFS-e x valor pago:</strong> ' . Ui::h(self::AUTO_EMIT_VALUE_WARNING) . '</p></div></details>'
         );
         echo '</div>';
 
@@ -1290,11 +1304,6 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
      */
     private function renderUpdateCheckContent(array $status): void
     {
-        $tone = match ((string) ($status['status'] ?? 'never_checked')) {
-            'ok' => !empty($status['update_available']) ? 'warn' : 'ok',
-            'error' => 'danger',
-            default => '',
-        };
         $lastCheckedAt = trim((string) ($status['last_checked_at'] ?? ''));
         $lastCheckedDisplay = $lastCheckedAt !== '' ? date('d/m/Y H:i', strtotime($lastCheckedAt) ?: time()) : 'Nunca';
         $downloadUrl = trim((string) ($status['download_url'] ?? ''));
@@ -1312,10 +1321,8 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         }
 
         $this->renderConfigSectionStart('Versão', 'O módulo consulta o GitHub pelo cron, no máximo uma vez por dia.', $actions);
-        $statusLine = Ui::badge((string) ($status['label'] ?? ''), $tone);
-        if ($summary !== '' && $summary !== $message) {
-            $statusLine .= '<span>' . Ui::h($summary) . '</span>';
-        }
+        // O status (Atualizado, Nova versão) já está no cabeçalho da seção; aqui só o resumo, quando acrescenta algo.
+        $statusLine = ($summary !== '' && $summary !== $message) ? '<span>' . Ui::h($summary) . '</span>' : '';
         $facts = [
             'Instalada' => Ui::h((string) ($status['current_version'] ?? '—')),
             'Mais recente' => Ui::h((string) ($status['latest_version'] ?? '—')),
@@ -1324,7 +1331,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         if ($error !== '' && $error !== $summary) {
             $facts['Erro'] = '<span class="nfse-text-danger">' . Ui::h($error) . '</span>';
         }
-        $this->renderConfigBlock('<div class="nfse-cfg-status">' . $statusLine . '</div>' . self::factsHtml($facts));
+        $this->renderConfigBlock(($statusLine !== '' ? '<div class="nfse-cfg-status">' . $statusLine . '</div>' : '') . self::factsHtml($facts));
         $this->renderConfigBlock(
             '<details class="nfse-form__more"><summary>Como funciona</summary><div class="nfse-form__more-body">'
             . 'O cron lê o manifesto <span class="nfse-mono">' . Ui::h((string) ($status['manifest_url'] ?? '')) . '</span> e guarda a última resposta. '

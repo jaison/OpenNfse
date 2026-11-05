@@ -753,6 +753,9 @@
 .nfse-form__more > summary::before { content: "▸"; display: inline-block; margin-right: 4px; transition: transform .15s; }
 .nfse-form__more[open] > summary::before { transform: rotate(90deg); }
 .nfse-form__more-body { margin-top: var(--space-1); color: var(--muted); }
+.nfse-form__more-body > p { margin: 0 0 var(--space-1); }
+.nfse-callout .nfse-form__more { margin-top: var(--space-1); }
+.nfse-callout .nfse-form__more-body { color: inherit; }
 .nfse-cfg-text { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2); max-width: 70ch; white-space: pre-line; }
 /* Submenu: com as pílulas de status, os nomes das seções quebram em duas linhas em vez de cortar
    (e, sem espaço nem assim, a pílula desce para a linha de baixo). */

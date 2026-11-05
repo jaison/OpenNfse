@@ -269,10 +269,11 @@ echo '<div class="nfse-card__body nfse-split2">'
     . '</div></section>';
 ```
 
-## Formulários (Configurações)
+## Formulários
 
-Cards por subseção, linhas com rótulo à esquerda (~240px, 13px 600) e campo à direita, ajuda
-embaixo (12px). Abaixo de 700px de área o rótulo fica em cima. A ação de salvar é um botão
+Fora das Configurações: cards por subseção, linhas com rótulo à esquerda (~240px, 13px 600) e campo
+à direita, ajuda embaixo (12px). Abaixo de 700px de área o rótulo fica em cima. Nas Configurações
+vale o padrão E3 (seção abaixo): rótulo sempre em cima, dentro do card do bloco. A ação de salvar é um botão
 primary no fim da seção, numa `savebar` (fixa no rodapé em formulários longos).
 
 ```php
@@ -296,6 +297,51 @@ echo '</section>';
 Campos: `.nfse-input` serve para input, select e textarea. Inválido: `aria-invalid="true"` no
 campo ou `nfse-form__row--invalid` na linha. Obrigatório: `required` no campo e
 `'required' => true` no `formRow` (asterisco). Checkbox com texto: `<label class="nfse-check">`.
+
+## Telas de texto e formulário (padrão E3)
+
+Vale para Configurações e para qualquer tela com muitos campos ou explicações. O objetivo é dar
+respiro: menos texto visível, blocos bem separados e um lugar fixo para cada coisa.
+
+**Submenu**: card com grupos (título 11px, 600) e itens de 36px. O estado vai num ponto à direita
+(verde = ok, cinza = neutro). Texto de status (pílula, sem maiúsculas) só no que pede atenção,
+ex.: "Expira em 27 dias". Use `['group' => 'Nome']` e `'dot' => 'ok'|'neutral'` no `Ui::subnav`.
+
+**Largura**: conteúdo até 900px; texto corrido até ~70 caracteres por linha (ajuda até 520px).
+
+**Hierarquia**: título da seção 20px, título do bloco 15px, rótulo do campo 13px peso 500 em cima do
+campo, ajuda 12px em cinza.
+
+**Espaços**: 24px entre blocos (com uma linha divisória), 32px entre a explicação e o card,
+20px de recuo no card, 14px acima e abaixo de cada campo.
+
+**Bloco**: título e uma frase de explicação à esquerda (240px), ações pequenas embaixo dela;
+o card com os campos à direita. Tabelas e grades de status usam o bloco largo: texto em cima,
+card na largura toda.
+
+```php
+$this->renderConfigSectionStart('Automação da fila', 'Liga a fila e define a regra da emissão manual.');
+$this->renderConfigFormTableStart();
+$this->renderSelectRow('queue_enabled', 'Habilitar fila/cron?', ['1' => 'Sim', '0' => 'Não'], $valor);
+$this->renderConfigFormTableEnd();
+$this->renderConfigSectionEnd();
+
+// Tabela: bloco largo (4º parâmetro).
+$this->renderConfigSectionStart('Gateways habilitados', 'Meios de pagamento que disparam a emissão.', $acoes, true);
+```
+
+**Ajuda**: uma linha. O detalhe vai em "Como funciona", recolhido:
+
+```php
+echo Ui::formRow('Leiaute da DPS', $select, 'Deixe em Automático.', ['id' => $id, 'more' => 'O modo Automático segue a NT 009…']);
+```
+
+Nas Configurações, a entrada da ajuda em `configFieldHelpMap()` pode ser `[curta, detalhe]`.
+
+**Sem repetição**: cada informação aparece uma vez (ex.: notas da versão). Faixa de indicadores
+só onde ajuda a decidir algo; o estado das seções já está no submenu.
+
+**Textos**: frases curtas, sem "Configure…", "Defina…" ou "Use esta opção para…".
 
 ## Chips de atalho
 
