@@ -48,7 +48,7 @@ final class NotasController
         }
 
         Module::ui()->renderHeader('Cancelar NFS-e');
-        $this->renderTabs('relatorios');
+        $this->renderTabs('relatorios', 'Cancelar NFS-e', 'Cancelamento na API nacional');
 
         $token = (new TokenService())->token();
         $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OpenNfse\Views\Dashboard;
 
+use OpenNfse\Views\AdminNav;
+
 /**
  * Monta o HTML da Dashboard com as classes nfse- de assets/nfse-ui.css.
  * Não acessa o banco: recebe os dados que o AdminController leu.
@@ -23,8 +25,6 @@ final class DashboardView
     /**
      * @param array{
      *     today: string,
-     *     logo_url?: string,
-     *     version?: array<string, mixed>,
      *     period: array{periodo: string, start: string, end: string},
      *     metrics: array<string, mixed>,
      *     series: array<int, array<string, mixed>>,
@@ -114,33 +114,12 @@ final class DashboardView
      */
     private static function header(array $d, array $period, string $today): string
     {
-        $version = $d['version'] ?? [];
-        $current = ltrim(trim((string) ($version['current'] ?? '')), 'vV ');
-        $latest = ltrim(trim((string) ($version['latest'] ?? '')), 'vV ');
-        $href = trim((string) ($version['href'] ?? ''));
-
-        $html = '<header class="nfse-header">';
-        $html .= '<div class="nfse-header__brand">';
-        $logo = trim((string) ($d['logo_url'] ?? ''));
-        if ($logo !== '') {
-            $html .= '<img class="nfse-logo" src="' . self::h($logo) . '" alt="OpenNfse" width="40" height="40">';
-        }
-        $html .= '<div><div class="nfse-title-row"><h1 class="nfse-title">OpenNfse</h1>';
-        if (!empty($version['update_available']) && $latest !== '') {
-            $label = 'v' . ($current !== '' ? $current : '—') . ' → ' . $latest . ' disponível';
-            $html .= $href !== ''
-                ? '<a class="nfse-badge nfse-badge--version nfse-badge--warn" href="' . self::h($href) . '">' . self::h($label) . '</a>'
-                : '<span class="nfse-badge nfse-badge--version nfse-badge--warn">' . self::h($label) . '</span>';
-        } elseif ($current !== '') {
-            $html .= '<span class="nfse-badge nfse-badge--version">v' . self::h($current) . '</span>';
-        }
-        $html .= '</div><div class="nfse-subtitle">Visão geral da operação fiscal';
+        // Linha de título abaixo da barra de navegação (Views\AdminNav): logo, nome e versão ficam na barra.
+        $subtitle = 'Operação fiscal de ' . DashboardPeriod::label($period['start'], $period['end']);
         $certificateLine = DashboardHealth::certificateValidLine($d['certificate'] ?? []);
         if ($certificateLine !== '') {
-            $html .= ' <span class="nfse-header__cert">· ' . self::h($certificateLine) . '</span>';
+            $subtitle .= ' · ' . $certificateLine;
         }
-        $html .= '</div></div>';
-        $html .= '</div>';
 
         $start = $period['start'];
         $end = $period['end'];
@@ -148,8 +127,7 @@ final class DashboardView
         $next = DashboardPeriod::nextMonth($start, $end);
         $monthParams = static fn (array $r): array => ['periodo' => 'personalizado', 'data_inicial' => $r['start'], 'data_final' => $r['end']];
 
-        $html .= '<div class="nfse-header__tools">';
-        $html .= '<a class="nfse-btn nfse-btn--icon" href="' . self::h(self::dashboardUrl($monthParams($prev))) . '" aria-label="Mês anterior">' . self::icon('prev') . '</a>';
+        $html = '<a class="nfse-btn nfse-btn--icon" href="' . self::h(self::dashboardUrl($monthParams($prev))) . '" aria-label="Mês anterior">' . self::icon('prev') . '</a>';
         $html .= '<span class="nfse-period">' . self::h(DashboardPeriod::label($start, $end)) . '</span>';
         if ($next['start'] <= $today) {
             $html .= '<a class="nfse-btn nfse-btn--icon" href="' . self::h(self::dashboardUrl($monthParams($next))) . '" aria-label="Próximo mês">' . self::icon('next') . '</a>';
@@ -172,10 +150,8 @@ final class DashboardView
         $html .= '<button class="nfse-btn nfse-btn--primary" type="submit">Aplicar</button>';
         $html .= '</form></details>';
         $html .= '</nav>';
-        $html .= '</div>';
-        $html .= '</header>';
 
-        return $html;
+        return AdminNav::titleRow('Visão geral', $subtitle, $html);
     }
 
     /**

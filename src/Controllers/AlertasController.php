@@ -68,7 +68,7 @@ final class AlertasController
         };
 
         Module::ui()->renderHeader('Alertas de NFS-e - OpenNfse');
-        $this->renderTabs('dashboard');
+        $this->renderTabs('dashboard', 'Alertas de NFS-e', 'Notas que pedem revisão manual');
 
         echo '<div style="margin-bottom:10px;"><a href="addonmodules.php?module=OpenNfse&action=dashboard">&larr; Voltar ao dashboard</a></div>';
         echo '<h3 style="margin-top:0;">Alertas de NFS-e</h3>';

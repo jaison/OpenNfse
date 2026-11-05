@@ -2341,7 +2341,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
     public function showCodigosProdutosServicos(): void
     {
         Module::ui()->renderHeader('Códigos Produtos/Serviços - OpenNfse');
-        $this->renderTabs('codigos');
+        $this->renderTabs('config', 'Códigos de produtos e serviços');
 
         if ((string) ($_GET['saved'] ?? '') === '1') {
             echo '<div class="successbox">Configuração salva.</div>';
