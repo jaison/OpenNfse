@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 use WHMCS\Database\Capsule;
 
 /**
- * Gera a DPS com a SDK real (vendor/ com os patches de patches/) e confere o XML.
+ * Gera a DPS com a SDK real (vendor/) e confere o XML.
  */
 final class DpsBuilderServiceTest extends TestCase
 {

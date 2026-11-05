@@ -81,10 +81,9 @@ composer run scope     # reconstrói vendor-scoped/ com php-scoper
 
 Fluxo das dependências:
 
-1. `composer install` (ou `composer update`) instala a SDK no commit fixado no `composer.json`.
-2. Na mesma etapa, o `cweagans/composer-patches` aplica os patches de [`patches/`](../patches/) na SDK em `vendor/`. Se algum patch não aplicar, o Composer para.
-3. `composer run scope` gera o `vendor-scoped/` a partir do `vendor/` já com os patches.
+1. `composer install` (ou `composer update`) instala a SDK na versão fixada no `composer.json`.
+2. `composer run scope` gera o `vendor-scoped/` a partir do `vendor/`.
 
-Depois de alterar dependências ou patches, rode `composer run scope` para que `vendor-scoped/` reflita o `composer.lock`. A versão da SDK e a lista de patches estão em [LEVANTAMENTO_SDK.md](LEVANTAMENTO_SDK.md#versão-e-patches).
+Depois de alterar dependências, rode `composer run scope` para que `vendor-scoped/` reflita o `composer.lock`. A versão da SDK está em [LEVANTAMENTO_SDK.md](LEVANTAMENTO_SDK.md#versão).
 
 O script `scripts/import_municipios.php` importa o catálogo de municípios pela CLI. Aceita como argumento opcional uma URL ou um arquivo JSON local.
