@@ -22,6 +22,7 @@ use OpenNfse\Services\QueueErrorClassifierService;
 use OpenNfse\Services\QueueService;
 use OpenNfse\Services\StorageService;
 use OpenNfse\Services\TokenService;
+use OpenNfse\Views\Ui;
 use WHMCS\Database\Capsule;
 use OpenNfse\Controllers\Support\AdminHelpersTrait;
 
@@ -40,20 +41,22 @@ final class SequenciaisController
     {
         $msg = (string) ($_REQUEST['msg'] ?? '');
         if ($msg === 'seq_ok') {
-            echo '<div class="successbox">Sequência atualizada.</div>';
+            echo Ui::callout('ok', 'Sequência atualizada.');
         } elseif ($msg === 'seq_created') {
-            echo '<div class="successbox">Sequência criada.</div>';
+            echo Ui::callout('ok', 'Sequência criada.');
         } elseif ($msg === 'seq_error') {
-            echo '<div class="errorbox">Erro ao salvar sequência.</div>';
+            echo Ui::callout('danger', 'Erro ao salvar sequência.');
         }
 
         $token = (new TokenService())->token();
         $rows = Capsule::table('mod_opennfse_sequences')->orderBy('environment', 'asc')->orderBy('cnpj_emissor', 'asc')->orderBy('serie_dps', 'asc')->get();
 
         $this->renderConfigSectionStart('Sequências cadastradas', 'Ajuste o último número manualmente apenas quando houver necessidade operacional ou correção de ambiente.');
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr><th>Ambiente</th><th>CNPJ</th><th>Série</th><th>Último</th><th>Ações</th></tr>';
+        echo '<div class="nfse-table-wrap"><table class="nfse-table nfse-cfg-table">';
+        echo '<thead><tr><th scope="col">Ambiente</th><th scope="col">CNPJ</th><th scope="col">Série</th><th scope="col" class="nfse-num">Último</th><th scope="col">Ações</th></tr></thead><tbody>';
+        $count = 0;
         foreach ($rows as $r) {
+            $count++;
             $id = (int) ($r->id ?? 0);
             $env = (string) ($r->environment ?? '');
             $cnpj = (string) ($r->cnpj_emissor ?? '');
@@ -61,30 +64,32 @@ final class SequenciaisController
             $last = (string) ($r->last_number ?? '');
 
             echo '<tr>';
-            echo '<td>' . htmlspecialchars($env, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($cnpj, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($serie, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($last, ENT_QUOTES, 'UTF-8') . '</td>';
+            echo '<td>' . Ui::h($env) . '</td>';
+            echo '<td class="nfse-nowrap"><span class="nfse-mono">' . Ui::h($cnpj) . '</span></td>';
+            echo '<td>' . Ui::h($serie) . '</td>';
+            echo '<td class="nfse-num">' . Ui::h($last) . '</td>';
             echo '<td>';
-            echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=sequenciaisSet" style="display:inline-block;margin-right:6px;">';
+            echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=sequenciaisSet" class="nfse-inline-form nfse-actions">';
             if ($token !== '') {
-                echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
+                echo '<input type="hidden" name="token" value="' . Ui::h($token) . '" />';
             }
             echo '<input type="hidden" name="id" value="' . (int) $id . '" />';
-            echo '<input type="number" name="last_number" value="' . htmlspecialchars($last, ENT_QUOTES, 'UTF-8') . '" style="width:120px;margin-right:6px;" min="0" />';
-            echo '<button type="submit" class="btn btn-xs btn-default" onclick="return confirm(\'Ajustar o último número altera a sequência de DPS. Continuar?\');">Salvar</button>';
+            echo Ui::input('last_number', $last, 'number', ['min' => '0', 'aria-label' => 'Último número (' . $env . ', série ' . $serie . ')'], 'nfse-input--sm nfse-input--w-sm');
+            echo Ui::button('Salvar', ['sm'], ['onclick' => 'return confirm(\'Ajustar o último número altera a sequência de DPS. Continuar?\');']);
             echo '</form>';
-
             echo '</td>';
             echo '</tr>';
         }
-        echo '</table>';
+        if ($count === 0) {
+            echo Ui::emptyRow(5, 'Nenhuma sequência cadastrada.');
+        }
+        echo '</tbody></table></div>';
         $this->renderConfigSectionEnd();
 
         $this->renderConfigSectionStart('Criar ou inicializar sequência', 'Use este formulário para cadastrar uma nova sequência de DPS ou reinicializar uma combinação ainda não criada.');
-        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=sequenciaisInit">';
+        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=sequenciaisInit" class="nfse-cfg-cardform">';
         if ($token !== '') {
-            echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
+            echo '<input type="hidden" name="token" value="' . Ui::h($token) . '" />';
         }
         $this->renderConfigFormTableStart();
         $this->renderSelectRow('environment', 'Ambiente', [
@@ -93,9 +98,15 @@ final class SequenciaisController
         ], 'homologacao');
         $this->renderTextRow('cnpj_emissor', 'CNPJ Emissor', '');
         $this->renderTextRow('serie_dps', 'Série DPS', '');
-        echo '<tr><td class="fieldlabel"><div class="nfse-config-label-title">Último Número</div></td><td class="fieldarea"><input type="number" name="last_number" value="0" class="form-control nfse-config-input" min="0" /><div class="nfse-config-help">Valor inicial da sequência. Use 0 para começar do primeiro número disponível.</div></td></tr>';
+        $lastId = $this->configFieldId('last_number');
+        echo Ui::formRow(
+            'Último Número',
+            Ui::input('last_number', '0', 'number', ['id' => $lastId, 'min' => '0'], 'nfse-input--w-sm'),
+            'Valor inicial da sequência. Use 0 para começar do primeiro número disponível.',
+            ['id' => $lastId]
+        );
         $this->renderConfigFormTableEnd();
-        echo '<div style="padding:6px 0 2px 0;"><button type="submit" class="btn btn-primary" onclick="return confirm(\'Inicializar uma sequência pode sobrescrever o último número se já existir. Continuar?\');">Salvar</button></div>';
+        echo Ui::saveBar(Ui::button('Salvar', ['primary'], ['onclick' => 'return confirm(\'Inicializar uma sequência pode sobrescrever o último número se já existir. Continuar?\');']));
         echo '</form>';
         $this->renderConfigSectionEnd();
     }
