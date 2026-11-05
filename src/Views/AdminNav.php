@@ -64,14 +64,6 @@ final class AdminNav
         $html .= '<span class="nfse-navbar__name">OpenNfse</span></div>';
         $html .= self::pageTitle((string) ($d['title'] ?? ''), (string) ($d['subtitle'] ?? ''), (string) ($d['detail'] ?? ''));
 
-        $html .= '<nav class="nfse-navbar__tabs" aria-label="Seções do OpenNfse">';
-        foreach (self::TABS as $key => $tab) {
-            $current = $key === $active ? ' aria-current="page"' : '';
-            $html .= '<a class="nfse-tab" href="' . self::h($tab['url']) . '"' . $current . '>'
-                . self::icon($tab['icon']) . self::h($tab['label']) . '</a>';
-        }
-        $html .= '</nav>';
-
         $html .= '<div class="nfse-navbar__status">';
         $queue = $d['queue'] ?? null;
         if (is_array($queue)) {
@@ -82,6 +74,15 @@ final class AdminNav
         }
         $html .= self::versionPill($d['version'] ?? []);
         $html .= '</div>';
+
+        // As abas vêm por último, presas à direita: a posição não muda de uma tela para outra.
+        $html .= '<nav class="nfse-navbar__tabs" aria-label="Seções do OpenNfse">';
+        foreach (self::TABS as $key => $tab) {
+            $current = $key === $active ? ' aria-current="page"' : '';
+            $html .= '<a class="nfse-tab" href="' . self::h($tab['url']) . '"' . $current . '>'
+                . self::icon($tab['icon']) . self::h($tab['label']) . '</a>';
+        }
+        $html .= '</nav>';
 
         return $html . '</div>';
     }

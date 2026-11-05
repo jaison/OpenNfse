@@ -138,20 +138,28 @@ final class AdminNavTest extends TestCase
         $this->assertNull(AdminNav::queueStatus(null, $fresh), 'sem os dados da fila, o estado some');
     }
 
-    public function testPageTitleSitsInTheBarBetweenBrandAndTabs(): void
+    public function testOrderBrandTitleStatusThenTabsLast(): void
     {
-        $html = AdminNav::shell('fila');
+        $html = AdminNav::shell('fila', ['version' => ['current' => '0.1.27']]);
 
         $this->assertStringStartsWith('<div class="nfse-ui nfse-shell"><div class="nfse-navbar">', $html);
         $this->assertStringContainsString(
             '<span class="nfse-navbar__name">OpenNfse</span></div>'
             . '<div class="nfse-navbar__page" title="Fila · Itens de emissão e consulta">'
             . '<h1 class="nfse-navbar__title">Fila</h1><span class="nfse-navbar__subtitle"> · Itens de emissão e consulta</span></div>'
+            . '<div class="nfse-navbar__status"><span class="nfse-badge nfse-badge--version">v0.1.27</span></div>'
             . '<nav class="nfse-navbar__tabs"',
             $html
         );
+        // As abas são o último grupo da barra, presas à direita.
+        $this->assertStringEndsWith('</svg>Configurações</a></nav></div></div>', $html);
+        $brand = strpos($html, 'nfse-navbar__brand');
+        $title = strpos($html, 'nfse-navbar__page');
+        $status = strpos($html, 'nfse-navbar__status');
+        $tabs = strpos($html, 'nfse-navbar__tabs');
+        $this->assertTrue($brand < $title && $title < $status && $status < $tabs);
         $this->assertSame(1, substr_count($html, '<h1'), 'um h1 só na página');
-        $this->assertStringEndsWith('</div></div></div>', $html, 'a barra é o último elemento: não há linha de título separada');
+        $this->assertStringEndsWith('</nav></div></div>', $html, 'a barra é o último elemento: não há linha de título separada');
         $this->assertStringNotContainsString('nfse-titlerow', $html);
         $this->assertStringNotContainsString('nfse-title"', $html);
     }
