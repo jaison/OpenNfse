@@ -36,6 +36,15 @@ final class EnderecoParserTest extends TestCase
             'complemento no fim' => ['RUA 10, QD 5, LT 3', ['RUA 10, QD 5, LT 3', null, '']],
             'km' => ['RODOVIA BR-101, KM 5', ['RODOVIA BR-101, KM 5', null, '']],
             'numero na frente' => ['500 Market Street', ['500 Market Street', null, '']],
+            'uma palavra antes do numero' => ['RUA 7', ['RUA 7', null, '']],
+            'travessa numerada' => ['TRAVESSA 3', ['TRAVESSA 3', null, '']],
+            'uma palavra com ponto' => ['Av. 10', ['Av. 10', null, '']],
+            'rodovia br' => ['RODOVIA BR 101', ['RODOVIA BR 101', null, '']],
+            'rodovia estadual' => ['ROD SP 280', ['ROD SP 280', null, '']],
+            'rodovia estadual minuscula' => ['rodovia mg 050', ['rodovia mg 050', null, '']],
+            'rodovia com numero marcado' => ['RODOVIA BR 101, 500', ['RODOVIA BR 101', '500', '']],
+            'rodovia estadual com nº' => ['ROD SP 280 Nº 1200', ['ROD SP 280', '1200', '']],
+            'uma palavra com numero marcado' => ['RUA 7, 120', ['RUA 7', '120', '']],
             'espacos extras' => ['  RUA   X ,  541  ', ['RUA X', '541', '']],
         ];
     }

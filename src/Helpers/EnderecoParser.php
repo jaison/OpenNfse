@@ -24,6 +24,12 @@ final class EnderecoParser
         'quadra', 'qd', 'andar', 'conj', 'conjunto', 'box', 'loja', 'galpao', 'galpão',
     ];
 
+    /** Prefixos de rodovia ("RODOVIA BR 101", "ROD SP 280"): o número que vem depois é da rodovia. */
+    private const PREFIXOS_RODOVIA = [
+        'br', 'ac', 'al', 'ap', 'am', 'ba', 'ce', 'df', 'es', 'go', 'ma', 'mt', 'ms', 'mg',
+        'pa', 'pb', 'pr', 'pe', 'pi', 'rj', 'rn', 'rs', 'ro', 'rr', 'sc', 'sp', 'se', 'to',
+    ];
+
     /**
      * @return array{0: string, 1: ?string, 2: string} [logradouro, numero|null, resto]
      */
@@ -50,7 +56,7 @@ final class EnderecoParser
         if ($escolhido === null) {
             $ultimo = $matches[count($matches) - 1];
             $fim = $ultimo[0][1] + strlen($ultimo[0][0]);
-            if ($fim === strlen($linha) && !self::precedidoPorComplemento(substr($linha, 0, $ultimo[0][1]))) {
+            if ($fim === strlen($linha) && self::aceitaNumeroNoFim(substr($linha, 0, $ultimo[0][1]))) {
                 $escolhido = $ultimo;
             }
         }
@@ -74,13 +80,21 @@ final class EnderecoParser
         return [$logradouro, $numero, $resto];
     }
 
-    private static function precedidoPorComplemento(string $antes): bool
+    /**
+     * Número no fim da linha, sem marcação, só vale se o que vem antes for um nome de rua
+     * com mais de uma palavra e não terminar em complemento ou prefixo de rodovia.
+     */
+    private static function aceitaNumeroNoFim(string $antes): bool
     {
-        if (!preg_match('/(\p{L}+)\.?\s*$/u', $antes, $m)) {
+        $palavras = preg_split('/\s+/u', self::limparSeparadores($antes), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if (count($palavras) < 2) {
             return false;
         }
 
-        return in_array(mb_strtolower($m[1]), self::PALAVRAS_COMPLEMENTO, true);
+        $ultima = mb_strtolower(rtrim($palavras[count($palavras) - 1], '.'));
+
+        return !in_array($ultima, self::PALAVRAS_COMPLEMENTO, true)
+            && !in_array($ultima, self::PREFIXOS_RODOVIA, true);
     }
 
     private static function limparSeparadores(string $valor): string
