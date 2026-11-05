@@ -9,6 +9,8 @@ use PHPUnit\Framework\TestCase;
 
 final class ClientErrorMessageTest extends TestCase
 {
+    private const SUPORTE = '. Entre em contato com o suporte.';
+
     public function testEmptyErrorShowsNothing(): void
     {
         $this->assertSame('', ClientErrorMessage::forClient(''));
@@ -33,19 +35,47 @@ final class ClientErrorMessageTest extends TestCase
         }
     }
 
-    public function testSefinRejectionKeepsOnlyCodeAndDescription(): void
+    public function testDescriptionWithComparisonSignsIsKept(): void
+    {
+        $erro = 'Erro na emissão: [{"Codigo":"E0712","Descricao":"Valor do serviço deve ser > 0"}]';
+
+        $this->assertSame(
+            'Retorno da SEFIN: E0712 - Valor do serviço deve ser > 0' . self::SUPORTE,
+            ClientErrorMessage::forClient($erro)
+        );
+    }
+
+    public function testXpathInDescriptionIsKept(): void
+    {
+        $erro = 'Erro na emissão: [{"Codigo":"E0160","Descricao":"CNPJ inválido em /DPS/infDPS/toma/CNPJ"}]';
+
+        $this->assertSame(
+            'Retorno da SEFIN: E0160 - CNPJ inválido em /DPS/infDPS/toma/CNPJ' . self::SUPORTE,
+            ClientErrorMessage::forClient($erro)
+        );
+    }
+
+    public function testLineBreakInDescriptionBecomesSpace(): void
+    {
+        $erro = 'Erro na emissão: [{"Codigo":"E0300","Descricao":"Tomador não informado.\r\nVerifique o cadastro."}]';
+
+        $this->assertSame(
+            'Retorno da SEFIN: E0300 - Tomador não informado. Verifique o cadastro' . self::SUPORTE,
+            ClientErrorMessage::forClient($erro)
+        );
+    }
+
+    public function testSchemaRejectionWithNestedComplementKeepsOnlyCodeAndDescription(): void
     {
         $erro = 'Rejeição de leiaute da DPS (E1235): ajuste em Configurações. Detalhe: Erro na emissão: '
-            . '[{"Codigo":"E1235","Descricao":"Falha Schema Xml",'
-            . '"Complemento":"The element \'infDPS\' has invalid child element \'cLocEmi\'."}]';
+            . '[{"Codigo":"E1235","Descricao":"Falha Schema Xml","Complemento":"The element '
+            . '\'{http://www.sped.fazenda.gov.br/nfse}cServ\' has invalid child element '
+            . '\'{http://www.sped.fazenda.gov.br/nfse}xDescServ\'."}]';
 
         $msg = ClientErrorMessage::forClient($erro);
 
-        $this->assertSame(
-            'NFS-e rejeitada pela SEFIN: E1235 - Falha Schema Xml. Entre em contato com o suporte.',
-            $msg
-        );
-        $this->assertStringNotContainsString('infDPS', $msg);
+        $this->assertSame('Retorno da SEFIN: E1235 - Falha Schema Xml' . self::SUPORTE, $msg);
+        $this->assertStringNotContainsString('xDescServ', $msg);
         $this->assertStringNotContainsString('Configurações', $msg);
     }
 
@@ -55,17 +85,32 @@ final class ClientErrorMessageTest extends TestCase
             . '"descricao":"Não foi gerada uma NFS-e com o identificador de DPS informado"}}';
 
         $this->assertSame(
-            'NFS-e rejeitada pela SEFIN: E2404 - Não foi gerada uma NFS-e com o identificador de DPS informado. '
-            . 'Entre em contato com o suporte.',
+            'Retorno da SEFIN: E2404 - Não foi gerada uma NFS-e com o identificador de DPS informado' . self::SUPORTE,
             ClientErrorMessage::forClient($erro)
         );
     }
 
-    public function testRejectionWithPathInDescriptionBecomesGeneric(): void
+    public function testUnsafeItemIsDroppedAndSafeItemIsKept(): void
     {
-        $erro = 'Erro na emissão: [{"Codigo":"E0001","Descricao":"Arquivo /etc/certs/empresa.pfx inválido"}]';
+        $erro = 'Erro na emissão: [{"Codigo":"E0001","Descricao":"Arquivo /etc/certs/empresa.pfx inválido"},'
+            . '{"Codigo":"E0712","Descricao":"Valor do serviço deve ser > 0"}]';
 
-        $this->assertSame(ClientErrorMessage::GENERIC, ClientErrorMessage::forClient($erro));
+        $msg = ClientErrorMessage::forClient($erro);
+
+        $this->assertSame('Retorno da SEFIN: E0712 - Valor do serviço deve ser > 0' . self::SUPORTE, $msg);
+        $this->assertStringNotContainsString('pfx', $msg);
+    }
+
+    public function testRejectionWithOnlyUnsafeItemsBecomesGeneric(): void
+    {
+        $erros = [
+            'Erro na emissão: [{"Codigo":"E0001","Descricao":"Arquivo /etc/certs/empresa.pfx inválido"}]',
+            'Erro na emissão: [{"Codigo":"E0002","Descricao":"Falha ao ler C:\\\\certs\\\\a"}]',
+        ];
+
+        foreach ($erros as $erro) {
+            $this->assertSame(ClientErrorMessage::GENERIC, ClientErrorMessage::forClient($erro), $erro);
+        }
     }
 
     public function testJsonWithoutSefinCodeBecomesGeneric(): void
