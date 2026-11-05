@@ -502,6 +502,11 @@ final class NfseService
                 if ($statusAfter !== $statusBefore) {
                     $this->logConsultaStatus($logRepo, $notaId, $invoiceId, $statusBefore, $statusAfter, 'status_atualizado', $correlationId);
                 }
+                // A emissão confirmada pela consulta (ex.: PROCESSANDO após timeout) também vai para as
+                // observações da fatura. Nota que já estava EMITIDA recebeu a linha em emitir().
+                if ($statusAfter === 'EMITIDA' && $statusBefore !== 'EMITIDA') {
+                    (new InvoiceHistoryService())->appendEmission($invoiceId, $numeroNf, (string) $chave);
+                }
             } elseif ($resp->errorMessage) {
                 if ($this->shouldRetryConsultaAfterServiceUnavailable($resp->errorMessage)) {
                     $this->preserveStatusForPendingConsulta($notaRepo, $nota, $invoiceId);

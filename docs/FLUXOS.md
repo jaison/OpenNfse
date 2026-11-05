@@ -231,7 +231,7 @@ Ao escolher o gatilho `gerada`, ou com o custom field configurado, a tela mostra
 
 O WHMCS mostra o campo `tblinvoices.notes` ao cliente, como "Observações" na fatura e no PDF. Por isso o addon (`InvoiceHistoryService`) acrescenta nele só duas linhas:
 
-- emissão: "NFS-e emitida com sucesso. Número: … Chave: …";
+- emissão: "NFS-e emitida com sucesso. Número: … Chave: …", gravada pelo `emitir()` ou pela [consulta de status](#consulta-de-status) que leva a nota para `EMITIDA` (por exemplo, `PROCESSANDO` depois de um timeout);
 - cancelamento: "NFS-e cancelada com sucesso. Motivo: …" ou, no [cancelamento de XML órfão](#cancelamento-de-xml-órfão), "NFS-e órfã cancelada com sucesso. Chave: … Motivo: …".
 
 Consultas de status, envios e falhas de e-mail, alertas e ações do admin (reemissão) ficam só no log do addon (`mod_opennfse_logs`). As linhas já gravadas nas observações por versões anteriores não são alteradas.
@@ -424,7 +424,7 @@ flowchart TD
 - **Erro transitório na consulta**: o status é preservado e o erro é limpo. Uma nota em `ERRO` volta para `PROCESSANDO`, para ser consultada de novo.
 - **Outro erro**: `ERRO`. Se a nota já estava em `ERRO` com o mesmo código de erro da API, a mensagem anterior é mantida.
 - As consultas que alteram a nota atualizam `last_status_checked_at`, usado pelo cron para priorizar as notas consultadas há mais tempo.
-- A consulta grava `CONSULTA_NFSE` ou `CONSULTA_DPS`. Quando muda o status ou localiza a chave, grava também `CONSULTA_STATUS_ATUALIZADO`, com o status antes e depois. Nada disso vai para as observações da fatura.
+- A consulta grava `CONSULTA_NFSE` ou `CONSULTA_DPS`. Quando muda o status ou localiza a chave, grava também `CONSULTA_STATUS_ATUALIZADO`, com o status antes e depois. Isso não vai para as observações da fatura; a única exceção é a consulta que leva a nota para `EMITIDA`, que acrescenta lá a linha de emissão com o número e a chave salvos. Uma nota que já estava `EMITIDA` não ganha outra linha.
 
 ### Indisponibilidade da API (503 e timeout)
 

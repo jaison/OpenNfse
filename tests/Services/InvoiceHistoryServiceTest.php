@@ -111,14 +111,42 @@ final class InvoiceHistoryServiceTest extends TestCase
         $this->assertSame(['Services/NfseService.php'], $writers);
     }
 
-    public function testStatusCheckDoesNotWriteInvoiceNotes(): void
+    /**
+     * A consulta só escreve nas observações quando confirma a emissão (transição para EMITIDA).
+     * Mudanças de status e chave localizada ficam no log.
+     */
+    public function testStatusCheckWritesOnlyTheEmissionTransition(): void
     {
-        $method = new \ReflectionMethod(NfseService::class, 'consultarStatusSemEmail');
-        $lines = file((string) $method->getFileName());
-        $body = implode('', array_slice($lines, $method->getStartLine() - 1, $method->getEndLine() - $method->getStartLine() + 1));
+        $body = $this->methodBody(NfseService::class, 'consultarStatusSemEmail');
 
-        $this->assertStringNotContainsString('InvoiceHistoryService', $body);
+        $this->assertSame(1, substr_count($body, 'InvoiceHistoryService'));
+        $this->assertStringContainsString(
+            "if (\$statusAfter === 'EMITIDA' && \$statusBefore !== 'EMITIDA') {\n"
+            . "                    (new InvoiceHistoryService())->appendEmission(\$invoiceId, \$numeroNf, (string) \$chave);",
+            $body
+        );
+        $this->assertStringNotContainsString('appendCancellation', $body);
         $this->assertStringContainsString('logConsultaStatus', $body);
+    }
+
+    /**
+     * Uma linha de emissão por caminho: a do emitir() e a da consulta que confirma a emissão.
+     * Nenhum outro método do NfseService escreve emissão nas observações.
+     */
+    public function testEmissionLineHasOnlyTwoCallSites(): void
+    {
+        $source = (string) file_get_contents((string) (new \ReflectionClass(NfseService::class))->getFileName());
+
+        $this->assertSame(2, substr_count($source, '->appendEmission('));
+        $this->assertSame(1, substr_count($this->methodBody(NfseService::class, 'consultarStatusSemEmail'), '->appendEmission('));
+    }
+
+    private function methodBody(string $class, string $name): string
+    {
+        $method = new \ReflectionMethod($class, $name);
+        $lines = file((string) $method->getFileName());
+
+        return implode('', array_slice($lines, $method->getStartLine() - 1, $method->getEndLine() - $method->getStartLine() + 1));
     }
 
     private function lastNotes(): string
