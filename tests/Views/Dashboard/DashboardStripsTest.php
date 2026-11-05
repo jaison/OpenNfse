@@ -22,6 +22,19 @@ final class DashboardStripsTest extends TestCase
         $this->assertSame(150, DashboardStrips::niceScale(105));
     }
 
+    public function testSharedScale(): void
+    {
+        $this->assertSame(5, DashboardStrips::sharedScale(0));
+        $this->assertSame(5, DashboardStrips::sharedScale(-2));
+        $this->assertSame(5, DashboardStrips::sharedScale(1));
+        $this->assertSame(5, DashboardStrips::sharedScale(5));
+        $this->assertSame(10, DashboardStrips::sharedScale(6));
+        $this->assertSame(20, DashboardStrips::sharedScale(16));
+        $this->assertSame(30, DashboardStrips::sharedScale(29));
+        $this->assertSame(100, DashboardStrips::sharedScale(100));
+        $this->assertSame(150, DashboardStrips::sharedScale(105));
+    }
+
     public function testAllZerosHasNoDivisionByZero(): void
     {
         $series = [];
@@ -30,35 +43,34 @@ final class DashboardStripsTest extends TestCase
         }
         $data = DashboardStrips::build($series);
 
-        $this->assertCount(3, $data['strips']);
-        foreach ($data['strips'] as $strip) {
-            $this->assertSame(0, $strip['total']);
-            $this->assertSame(1, $strip['scale']);
-            $this->assertCount(7, $strip['bars']);
-            foreach ($strip['bars'] as $bar) {
-                $this->assertSame(0.0, $bar['percent']);
-            }
+        $this->assertSame(5, $data['scale']);
+        $this->assertSame(['emitidas' => 0, 'canceladas' => 0, 'erros' => 0], $data['totals']);
+        $this->assertCount(7, $data['days']);
+        foreach ($data['days'] as $day) {
+            $this->assertSame([0.0, 0.0, 0.0], [$day['pct_emitidas'], $day['pct_canceladas'], $day['pct_erros']]);
         }
         $this->assertSame(0.0, DashboardStrips::percent(5, 0));
     }
 
-    public function testEachStripHasItsOwnScaleAndWeekends(): void
+    public function testThreeSeriesShareOneScale(): void
     {
         $series = [
-            ['date' => '2026-10-02', 'emitidas' => 29, 'canceladas' => 4, 'erros_resolvidos' => 1],
-            ['date' => '2026-10-03', 'emitidas' => 15, 'canceladas' => 2, 'erros_resolvidos' => 0],
+            ['date' => '2026-10-02', 'emitidas' => 16, 'canceladas' => 4, 'erros_resolvidos' => 1],
+            ['date' => '2026-10-03', 'emitidas' => 5, 'canceladas' => 2, 'erros_resolvidos' => 0],
         ];
-        $data = DashboardStrips::build($series);
+        $data = DashboardStrips::build($series, '2026-10-03');
 
-        [$em, $ca, $er] = $data['strips'];
-        $this->assertSame(['Emitidas', 30, 44], [$em['label'], $em['scale'], $em['total']]);
-        $this->assertSame(96.7, $em['bars'][0]['percent']);
-        $this->assertSame(50.0, $em['bars'][1]['percent']);
-        $this->assertSame(['Canceladas', 4, 100.0], [$ca['label'], $ca['scale'], $ca['bars'][0]['percent']]);
-        $this->assertSame(['Erros (incl. resolvidos)', 1, 100.0], [$er['label'], $er['scale'], $er['bars'][0]['percent']]);
-        $this->assertFalse($data['days'][0]['weekend']);
-        $this->assertTrue($data['days'][1]['weekend'], '03/10/2026 é sábado');
-        $this->assertSame(['02', '03'], [$data['days'][0]['axis'], $data['days'][1]['axis']]);
+        $this->assertSame(20, $data['scale'], 'maior valor das três séries (16), em múltiplo de 5');
+        $this->assertSame(['emitidas' => 21, 'canceladas' => 6, 'erros' => 1], $data['totals']);
+        [$fri, $sat] = $data['days'];
+        $this->assertSame([16, 4, 1], [$fri['emitidas'], $fri['canceladas'], $fri['erros']]);
+        $this->assertSame([80.0, 20.0, 5.0], [$fri['pct_emitidas'], $fri['pct_canceladas'], $fri['pct_erros']], 'canceladas e erros na mesma escala das emitidas');
+        $this->assertSame([25.0, 10.0, 0.0], [$sat['pct_emitidas'], $sat['pct_canceladas'], $sat['pct_erros']]);
+        $this->assertFalse($fri['weekend']);
+        $this->assertTrue($sat['weekend'], '03/10/2026 é sábado');
+        $this->assertSame([false, true], [$fri['today'], $sat['today']]);
+        $this->assertSame(['02', '03'], [$fri['axis'], $sat['axis']]);
+        $this->assertSame('02/10', $fri['label']);
     }
 
     public function testFutureDays(): void

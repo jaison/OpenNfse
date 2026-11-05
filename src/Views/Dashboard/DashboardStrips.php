@@ -5,19 +5,14 @@ declare(strict_types=1);
 namespace OpenNfse\Views\Dashboard;
 
 /**
- * Linha do tempo em faixas (Emitidas, Canceladas, Erros), cada uma com escala própria
- * e o mesmo eixo de datas.
+ * Linha do tempo: um gráfico só, com as três séries (Emitidas, Canceladas, Erros incl. resolvidos)
+ * na mesma escala e o mesmo eixo de datas. Por dia, a barra larga de emitidas e, na frente dela,
+ * duas barras finas de canceladas e erros.
  */
 final class DashboardStrips
 {
-    /** Acima disso, as barras ficam finas e o eixo mostra só o dia 1 de cada mês. */
+    /** Acima disso, o gráfico ganha largura mínima (rolagem horizontal) e o eixo mostra só o dia 1 de cada mês. */
     public const LONG_RANGE_DAYS = 62;
-
-    private const SERIES = [
-        'emitidas' => 'Emitidas',
-        'canceladas' => 'Canceladas',
-        'erros_resolvidos' => 'Erros (incl. resolvidos)',
-    ];
 
     /**
      * Topo redondo da escala: até 5 fica o próprio máximo; acima, arredonda para cima
@@ -39,6 +34,22 @@ final class DashboardStrips
         return (int) (ceil($max / $step) * $step);
     }
 
+    /**
+     * Escala comum às três séries: o maior valor arredondado para cima em múltiplo de 5 (mínimo 5);
+     * acima de 100, a meia potência de 10 de niceScale (105 → 150).
+     */
+    public static function sharedScale(int $max): int
+    {
+        if ($max <= 0) {
+            return 5;
+        }
+        if ($max > 100) {
+            return self::niceScale($max);
+        }
+
+        return (int) (ceil($max / 5) * 5);
+    }
+
     public static function percent(int $value, int $scale): float
     {
         if ($value <= 0 || $scale <= 0) {
@@ -49,13 +60,15 @@ final class DashboardStrips
     }
 
     /**
-     * Dias depois de $today (Y-m-d) saem com future = true: a view os mostra esmaecidos, como no calendário.
+     * Dias depois de $today (Y-m-d) saem com future = true e o próprio dia com today = true.
      *
      * @param array<int, array<string, mixed>> $series
      * @return array{
      *     long: bool,
-     *     days: array<int, array{date: string, label: string, axis: string, weekend: bool, future: bool}>,
-     *     strips: array<int, array{key: string, label: string, total: int, scale: int, bars: array<int, array{percent: float, value: int}>}>
+     *     scale: int,
+     *     totals: array{emitidas: int, canceladas: int, erros: int},
+     *     days: array<int, array{date: string, label: string, axis: string, weekend: bool, future: bool, today: bool,
+     *         emitidas: int, canceladas: int, erros: int, pct_emitidas: float, pct_canceladas: float, pct_erros: float}>
      * }
      */
     public static function build(array $series, string $today = ''): array
@@ -66,34 +79,45 @@ final class DashboardStrips
         $multiMonth = $count > 0
             && substr((string) ($series[0]['date'] ?? ''), 0, 7) !== substr((string) ($series[$count - 1]['date'] ?? ''), 0, 7);
 
+        $max = 0;
+        $totals = ['emitidas' => 0, 'canceladas' => 0, 'erros' => 0];
+        $rows = [];
+        foreach ($series as $row) {
+            $values = [
+                'emitidas' => max(0, (int) ($row['emitidas'] ?? 0)),
+                'canceladas' => max(0, (int) ($row['canceladas'] ?? 0)),
+                'erros' => max(0, (int) ($row['erros_resolvidos'] ?? 0)),
+            ];
+            foreach ($values as $key => $value) {
+                $totals[$key] += $value;
+                $max = max($max, $value);
+            }
+            $rows[] = $values;
+        }
+        $scale = self::sharedScale($max);
+
         $days = [];
         foreach ($series as $i => $row) {
             $date = (string) ($row['date'] ?? '');
-            $valid = DashboardPeriod::isDate($date);
-            $dt = $valid ? new \DateTimeImmutable($date) : null;
+            $dt = DashboardPeriod::isDate($date) ? new \DateTimeImmutable($date) : null;
+            $values = $rows[$i];
             $days[] = [
                 'date' => $date,
                 'label' => $dt ? $dt->format('d/m') : '',
                 'axis' => $dt ? self::axisLabel($dt, $i, $count, $long, $multiMonth) : '',
                 'weekend' => $dt !== null && in_array((int) $dt->format('w'), [0, 6], true),
                 'future' => $today !== '' && $date > $today,
+                'today' => $today !== '' && $date === $today,
+                'emitidas' => $values['emitidas'],
+                'canceladas' => $values['canceladas'],
+                'erros' => $values['erros'],
+                'pct_emitidas' => self::percent($values['emitidas'], $scale),
+                'pct_canceladas' => self::percent($values['canceladas'], $scale),
+                'pct_erros' => self::percent($values['erros'], $scale),
             ];
         }
 
-        $strips = [];
-        foreach (self::SERIES as $key => $label) {
-            $values = array_map(static fn (array $row): int => (int) ($row[$key] ?? 0), $series);
-            $scale = self::niceScale($values === [] ? 0 : max($values));
-            $strips[] = [
-                'key' => $key,
-                'label' => $label,
-                'total' => array_sum($values),
-                'scale' => $scale,
-                'bars' => array_map(static fn (int $v): array => ['percent' => self::percent($v, $scale), 'value' => $v], $values),
-            ];
-        }
-
-        return ['long' => $long, 'days' => $days, 'strips' => $strips];
+        return ['long' => $long, 'scale' => $scale, 'totals' => $totals, 'days' => $days];
     }
 
     /**

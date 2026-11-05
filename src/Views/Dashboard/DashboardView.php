@@ -93,11 +93,13 @@ final class DashboardView
             $html .= self::queue($d['queue'], $cron, $now, $today, (string) ($d['token'] ?? ''));
         }
         $html .= '</div>';
-        $html .= '<div class="nfse-split">';
+        // Uma linha com três cards compactos: calendário, média por dia da semana e linha do tempo.
+        $html .= '<div class="nfse-days">';
         $html .= self::calendar($series, $start, $end, $today, $dia, $feedFilter, $periodParams);
-        $html .= self::weekdays($series, $today, $start, $end);
+        $html .= self::weekdays($series, $today);
+        $html .= self::timeline($series, $today);
         $html .= '</div>';
-        $html .= self::strips($series, $today);
+        $html .= self::daysLegend();
         $html .= self::feed($d['feed_items'] ?? [], $metrics, $series, $start, $end, $dia, $feedFilter, $periodParams, $today);
         $html .= '</div>';
 
@@ -302,15 +304,13 @@ final class DashboardView
                 . self::number($summary['peak']) . ' em ' . substr($summary['peak_date'], 8, 2) . '/' . substr($summary['peak_date'], 5, 2);
         }
 
-        $html = '<section class="nfse-card nfse-card--pad nfse-split__main">';
-        $html .= '<div class="nfse-chart-head"><div><h2 class="nfse-section-title">Emissões por dia</h2>';
-        $html .= '<div class="nfse-card__summary">' . self::h($summaryText) . '</div></div>';
-        $html .= '<div class="nfse-heat-scale" aria-hidden="true">menos <span class="nfse-heat-1"></span><span class="nfse-heat-2"></span><span class="nfse-heat-3"></span><span class="nfse-heat-4"></span><span class="nfse-heat-5"></span> mais</div>';
-        $html .= '</div>';
+        $html = '<section class="nfse-card nfse-dcard" aria-labelledby="nfse-emissoes-dia">';
+        $html .= '<div class="nfse-dcard__head"><h2 class="nfse-dcard__title" id="nfse-emissoes-dia">Emissões por dia</h2>';
+        $html .= '<span class="nfse-dcard__summary">' . self::h($summaryText) . '</span></div>';
 
         $html .= '<div class="nfse-cal nfse-cal--head" aria-hidden="true">';
-        foreach (DashboardCalendar::WEEKDAYS as $name) {
-            $html .= '<span class="nfse-cal__dow">' . self::h($name) . '</span>';
+        foreach (DashboardCalendar::WEEKDAY_LETTERS as $i => $letter) {
+            $html .= '<span class="nfse-cal__dow" title="' . self::h(DashboardCalendar::WEEKDAYS[$i]) . '">' . self::h($letter) . '</span>';
         }
         $html .= '</div>';
 
@@ -323,112 +323,146 @@ final class DashboardView
             }
             $marks = '';
             if ($cell['canceladas'] > 0) {
-                $marks .= '<span class="nfse-mark">' . self::h((string) $cell['canceladas']) . '</span>';
+                $marks .= '<span class="nfse-cal__dot nfse-cal__dot--cancelada"></span>';
             }
             if ($cell['erros'] > 0) {
-                $marks .= '<span class="nfse-mark nfse-mark--erro">' . self::h((string) $cell['erros']) . '</span>';
+                $marks .= '<span class="nfse-cal__dot nfse-cal__dot--erro"></span>';
             }
-            $dayLabel = $cell['day'] . ($cell['month'] !== '' ? ' ' . $cell['month'] : '');
-            $aria = self::dateLabel($cell['date']) . ': ' . self::plural($cell['count'], 'emitida', 'emitidas');
+            $dayLabel = (string) (int) $cell['day'] . ($cell['month'] !== '' ? ' ' . $cell['month'] : '');
+            $counts = self::plural($cell['count'], 'emitida', 'emitidas');
             if ($cell['canceladas'] > 0) {
-                $aria .= ', ' . self::plural($cell['canceladas'], 'cancelada', 'canceladas');
+                $counts .= ', ' . self::plural($cell['canceladas'], 'cancelada', 'canceladas');
             }
             if ($cell['erros'] > 0) {
-                $aria .= ', ' . self::plural($cell['erros'], 'erro', 'erros');
+                $counts .= ', ' . self::plural($cell['erros'], 'erro', 'erros');
             }
-            $inner = '<span class="nfse-cal__top"><span' . ($cell['month'] !== '' ? ' class="nfse-cal__month"' : '') . '>' . self::h($dayLabel) . '</span>'
-                . '<span class="nfse-cal__marks">' . $marks . '</span></span>'
+            $short = substr($cell['date'], 8, 2) . '/' . substr($cell['date'], 5, 2);
+            $inner = '<span class="nfse-cal__day' . ($cell['month'] !== '' ? ' nfse-cal__month' : '') . '">' . self::h($dayLabel) . '</span>'
+                . ($marks !== '' ? '<span class="nfse-cal__marks" aria-hidden="true">' . $marks . '</span>' : '')
                 . '<span class="nfse-cal__count">' . ($cell['future'] ? '' : self::h((string) $cell['count'])) . '</span>';
             $class = 'nfse-cal__cell nfse-heat-' . ($cell['future'] ? 1 : $cell['band']);
             if ($cell['future']) {
-                $html .= '<span class="' . $class . ' nfse-cal__cell--future" aria-label="' . self::h(self::dateLabel($cell['date'])) . '">' . $inner . '</span>';
+                $html .= '<span class="' . $class . ' nfse-cal__cell--future" aria-label="' . self::h(self::dateLabel($cell['date'])) . '"'
+                    . ' title="' . self::h($short . ': dia ainda não chegou') . '">' . $inner . '</span>';
                 continue;
             }
             $html .= '<button type="submit" class="' . $class . '" name="dia" value="' . self::h($cell['selected'] ? '' : $cell['date']) . '"'
-                . ' aria-pressed="' . ($cell['selected'] ? 'true' : 'false') . '" aria-label="' . self::h($aria) . '">' . $inner . '</button>';
+                . ' aria-pressed="' . ($cell['selected'] ? 'true' : 'false') . '" aria-label="' . self::h(self::dateLabel($cell['date']) . ': ' . $counts) . '"'
+                . ' title="' . self::h($short . ': ' . $counts) . '">' . $inner . '</button>';
         }
         $html .= '</form>';
-
-        $html .= '<div class="nfse-legend nfse-legend--below">';
-        $html .= '<span class="nfse-legend__item"><span class="nfse-swatch nfse-swatch--cancelada"></span>Canceladas no dia</span>';
-        $html .= '<span class="nfse-legend__item"><span class="nfse-swatch nfse-swatch--erro"></span>Erros (incl. resolvidos) no dia</span>';
-        $html .= '<span>Clique num dia para filtrar a atividade recente</span>';
-        $html .= '</div>';
 
         return $html . '</section>';
     }
 
     /**
+     * Média por dia da semana em colunas verticais (valor, barra e nome).
+     *
      * @param array<int, array<string, mixed>> $series
      */
-    private static function weekdays(array $series, string $today, string $start, string $end): string
+    private static function weekdays(array $series, string $today): string
     {
-        $html = '<section class="nfse-card nfse-card--pad nfse-split__side nfse-stack">';
-        $html .= '<div><h2 class="nfse-section-title">Média por dia da semana</h2>';
-        $html .= '<div class="nfse-card__summary">' . self::h(DashboardPeriod::label($start, $end)) . ' · ajuda a prever a carga da fila</div></div>';
-        $html .= '<div class="nfse-hbars">';
+        $html = '<section class="nfse-card nfse-dcard" aria-labelledby="nfse-media-semana">';
+        $html .= '<div class="nfse-dcard__head"><h2 class="nfse-dcard__title" id="nfse-media-semana">Média por dia da semana</h2>';
+        $html .= '<span class="nfse-dcard__summary">prevê a carga da fila</span></div>';
+        $html .= '<div class="nfse-vbars">';
         foreach (DashboardCalendar::weekdayAverages($series, $today) as $row) {
             $value = $row['average'] === null ? '—' : number_format($row['average'], 1, ',', '.');
-            $html .= '<div class="nfse-hbar"><span>' . self::h($row['name']) . '</span>';
-            $html .= '<div class="nfse-hbar__track"><div class="nfse-hbar__fill' . ($row['weekend'] ? ' nfse-hbar__fill--weekend' : '') . '"'
-                . ' style="width:' . self::h(self::pct($row['percent'])) . '"></div></div>';
-            $html .= '<span class="nfse-hbar__value">' . self::h($value) . '</span></div>';
+            $html .= '<div class="nfse-vbar" title="' . self::h($row['name'] . ': ' . ($row['average'] === null ? 'sem dias no período' : $value . ' por dia')) . '">';
+            $html .= '<span class="nfse-vbar__value">' . self::h($value) . '</span>';
+            $html .= '<span class="nfse-vbar__track"><span class="nfse-vbar__fill' . ($row['weekend'] ? ' nfse-vbar__fill--weekend' : '') . '"'
+                . ' style="height:' . self::h(self::pct($row['percent'])) . '"></span></span>';
+            $html .= '<span class="nfse-vbar__name">' . self::h($row['name']) . '</span></div>';
         }
 
         return $html . '</div></section>';
     }
 
     /**
+     * Linha do tempo: as três séries num gráfico só, na mesma escala (DashboardStrips::build).
+     *
      * @param array<int, array<string, mixed>> $series
      */
-    private static function strips(array $series, string $today): string
+    private static function timeline(array $series, string $today): string
     {
         $data = DashboardStrips::build($series, $today);
+        $totals = $data['totals'];
 
-        $html = '<section class="nfse-card nfse-card--pad">';
-        $html .= '<div class="nfse-chart-head"><h2 class="nfse-section-title">Linha do tempo</h2>';
-        $html .= '<span class="nfse-card__summary">cada faixa tem escala própria · mesmo eixo de datas</span></div>';
+        $html = '<section class="nfse-card nfse-dcard nfse-dcard--timeline" aria-labelledby="nfse-linha-tempo">';
+        $html .= '<div class="nfse-dcard__head"><h2 class="nfse-dcard__title" id="nfse-linha-tempo">Linha do tempo</h2>';
+        $html .= '<span class="nfse-dcard__summary">mesma escala</span>';
+        $html .= '<span class="nfse-tl__legend">'
+            . '<span class="nfse-tl__key"><span class="nfse-tl__swatch nfse-tl__swatch--emitidas"></span>Emitidas <b>' . self::h(self::number($totals['emitidas'])) . '</b></span>'
+            . '<span class="nfse-tl__key"><span class="nfse-tl__swatch nfse-tl__swatch--cancelada"></span>Canceladas <b>' . self::h(self::number($totals['canceladas'])) . '</b></span>'
+            . '<span class="nfse-tl__key"><span class="nfse-tl__swatch nfse-tl__swatch--erro"></span>Erros <b>' . self::h(self::number($totals['erros'])) . '</b></span>'
+            . '</span></div>';
 
         if ($data['days'] === []) {
-            return $html . '<div class="nfse-card__summary">Sem dias no período.</div></section>';
+            return $html . '<div class="nfse-dcard__summary">Sem dias no período.</div></section>';
         }
 
-        $html .= '<div class="nfse-scroll-x"><div class="nfse-strips' . ($data['long'] ? ' nfse-strips--long' : '') . '">';
-        foreach ($data['strips'] as $strip) {
-            $main = $strip['key'] === 'emitidas';
-            $barClass = match ($strip['key']) {
-                'canceladas' => ' nfse-strip__bar--cancelada',
-                'erros_resolvidos' => ' nfse-strip__bar--erro',
-                default => '',
-            };
-            $noun = match ($strip['key']) {
-                'canceladas' => 'canceladas',
-                'erros_resolvidos' => 'erros (incl. resolvidos)',
-                default => 'emitidas',
-            };
-            $html .= '<span class="nfse-strip__label">' . self::h($strip['label']) . '</span>';
-            $html .= '<div class="nfse-strip ' . ($main ? 'nfse-strip--main' : 'nfse-strip--minor') . '" role="img" aria-label="'
-                . self::h($strip['label'] . ': ' . self::number($strip['total']) . ' no período, escala até ' . $strip['scale']) . '">';
-            foreach ($strip['bars'] as $i => $bar) {
-                $day = $data['days'][$i];
-                if ($day['future']) {
-                    $html .= '<div class="nfse-strip__bar nfse-strip__bar--future" title="' . self::h($day['label'] . ': dia ainda não chegou') . '"></div>';
-                    continue;
+        $scale = $data['scale'];
+        $half = $scale / 2;
+        $halfLabel = fmod((float) $scale, 2.0) === 0.0 ? self::number((int) $half) : number_format($half, 1, ',', '.');
+        $aria = 'Linha do tempo, mesma escala até ' . self::number($scale) . ': '
+            . self::plural($totals['emitidas'], 'emitida', 'emitidas') . ', '
+            . self::plural($totals['canceladas'], 'cancelada', 'canceladas') . ' e '
+            . self::plural($totals['erros'], 'erro', 'erros') . ' (incl. resolvidos) no período';
+
+        $html .= '<div class="nfse-scroll-x"><div class="nfse-tl' . ($data['long'] ? ' nfse-tl--long' : '') . '">';
+        $html .= '<div class="nfse-tl__y" aria-hidden="true"><span class="nfse-tl__tick nfse-tl__tick--max">' . self::h(self::number($scale)) . '</span>'
+            . '<span class="nfse-tl__tick nfse-tl__tick--half">' . self::h($halfLabel) . '</span>'
+            . '<span class="nfse-tl__tick nfse-tl__tick--zero">0</span></div>';
+        $html .= '<div class="nfse-tl__plot" role="img" aria-label="' . self::h($aria) . '">';
+        $html .= '<span class="nfse-tl__grid nfse-tl__grid--max"></span><span class="nfse-tl__grid nfse-tl__grid--half"></span><span class="nfse-tl__grid nfse-tl__grid--zero"></span>';
+        $html .= '<div class="nfse-tl__days">';
+        foreach ($data['days'] as $day) {
+            $class = 'nfse-tl__day' . ($day['weekend'] ? ' nfse-tl__day--weekend' : '') . ($day['future'] ? ' nfse-tl__day--future' : '')
+                . ($day['today'] ? ' nfse-tl__day--today' : '');
+            if ($day['future']) {
+                $html .= '<div class="' . $class . '" title="' . self::h($day['label'] . ': dia ainda não chegou') . '"><span class="nfse-tl__placeholder"></span></div>';
+                continue;
+            }
+            $title = $day['label'] . ': ' . self::plural($day['emitidas'], 'emitida', 'emitidas') . ' · '
+                . self::plural($day['canceladas'], 'cancelada', 'canceladas') . ' · '
+                . self::plural($day['erros'], 'erro', 'erros') . ' (incl. resolvidos)';
+            $html .= '<div class="' . $class . '" title="' . self::h($title) . '">';
+            if ($day['emitidas'] > 0) {
+                $html .= '<span class="nfse-tl__bar nfse-tl__bar--emitidas" style="height:' . self::h(self::pct($day['pct_emitidas'])) . '"></span>';
+            }
+            if ($day['canceladas'] > 0 || $day['erros'] > 0) {
+                $html .= '<span class="nfse-tl__minor">';
+                if ($day['canceladas'] > 0) {
+                    $html .= '<span class="nfse-tl__bar nfse-tl__bar--cancelada" style="height:' . self::h(self::pct($day['pct_canceladas'])) . '"></span>';
                 }
-                $class = 'nfse-strip__bar' . $barClass . ($main && $day['weekend'] ? ' nfse-strip__bar--weekend' : '');
-                $html .= '<div class="' . $class . '" style="height:' . self::h(self::pct($bar['percent'])) . '"'
-                    . ' title="' . self::h($day['label'] . ': ' . $bar['value'] . ' ' . $noun) . '"></div>';
+                if ($day['erros'] > 0) {
+                    $html .= '<span class="nfse-tl__bar nfse-tl__bar--erro" style="height:' . self::h(self::pct($day['pct_erros'])) . '"></span>';
+                }
+                $html .= '</span>';
             }
             $html .= '</div>';
-            $html .= '<span class="nfse-strip__total">' . self::h(self::number($strip['total'])) . '</span>';
         }
-        $html .= '<span></span><div class="nfse-strip__axis" aria-hidden="true">';
+        $html .= '</div></div>';
+        $html .= '<span></span><div class="nfse-tl__axis" aria-hidden="true">';
         foreach ($data['days'] as $day) {
-            $html .= '<span' . ($day['future'] ? ' class="nfse-strip__day--future"' : '') . '>' . self::h($day['axis']) . '</span>';
+            $html .= '<span' . ($day['future'] ? ' class="nfse-tl__axis-future"' : '') . '>' . self::h($day['axis']) . '</span>';
         }
-        $html .= '</div><span></span>';
+        $html .= '</div>';
 
         return $html . '</div></div></section>';
+    }
+
+    /**
+     * Legenda abaixo da linha de cards: faixas de calor, marcas do calendário e a dica do clique.
+     */
+    private static function daysLegend(): string
+    {
+        return '<div class="nfse-days__legend">'
+            . '<span class="nfse-heat-scale" aria-hidden="true">menos <span class="nfse-heat-1"></span><span class="nfse-heat-2"></span><span class="nfse-heat-3"></span><span class="nfse-heat-4"></span><span class="nfse-heat-5"></span> mais</span>'
+            . '<span class="nfse-legend__item"><span class="nfse-cal__dot nfse-cal__dot--cancelada"></span>Canceladas</span>'
+            . '<span class="nfse-legend__item"><span class="nfse-cal__dot nfse-cal__dot--erro"></span>Erros (incl. resolvidos)</span>'
+            . '<span>Clique num dia para filtrar a atividade recente</span>'
+            . '</div>';
     }
 
     /**
