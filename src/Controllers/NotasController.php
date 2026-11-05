@@ -20,6 +20,7 @@ use OpenNfse\Services\QueueService;
 use OpenNfse\Services\StorageService;
 use OpenNfse\Services\TokenService;
 use OpenNfse\Controllers\Support\AdminHelpersTrait;
+use OpenNfse\Views\Ui;
 
 final class NotasController
 {
@@ -53,33 +54,52 @@ final class NotasController
         $token = (new TokenService())->token();
         $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
 
-        echo '<div style="margin-bottom:10px;"><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '">Voltar para a fatura</a></div>';
+        echo '<div class="nfse-ui nfse-page">';
+        echo Ui::sectionHeader(
+            'Fatura #' . $invoiceId,
+            trim(((string) ($nota['numero_nf'] ?? '')) !== '' ? 'NFS-e ' . (string) $nota['numero_nf'] . ' · ' : '') . 'Chave ' . $chave,
+            Ui::button('Voltar para a fatura', ['ghost'], ['href' => $invoiceUrl]),
+            'nfse-cancel-titulo'
+        );
+        echo Ui::callout('warn', 'Operação fiscal', 'O cancelamento é enviado à API nacional e não pode ser desfeito.');
 
-        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=cancel">';
+        echo '<form method="post" action="addonmodules.php?module=OpenNfse&amp;action=cancel">';
         if ($token !== '') {
-            echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
+            echo Ui::hidden(['token' => $token]);
         }
-        echo '<input type="hidden" name="invoiceid" value="' . (int) $invoiceId . '" />';
+        echo Ui::hidden(['invoiceid' => (int) $invoiceId]);
         $return = (string) ($_REQUEST['return'] ?? '');
         if ($return !== '') {
-            echo '<input type="hidden" name="return" value="' . htmlspecialchars($return, ENT_QUOTES, 'UTF-8') . '" />';
+            echo Ui::hidden(['return' => $return]);
         }
         foreach (['return_invoiceid', 'return_status', 'return_data_inicial', 'return_data_final', 'return_updated_from', 'return_updated_to'] as $k) {
             $v = (string) ($_REQUEST[$k] ?? '');
             if ($v !== '') {
-                echo '<input type="hidden" name="' . htmlspecialchars($k, ENT_QUOTES, 'UTF-8') . '" value="' . htmlspecialchars($v, ENT_QUOTES, 'UTF-8') . '" />';
+                echo Ui::hidden([$k => $v]);
             }
         }
 
-        echo '<table class="form" width="100%" border="0" cellspacing="2" cellpadding="3">';
-        echo '<tr><td class="fieldlabel" width="25%">Código do motivo</td><td class="fieldarea"><select id="codigo_motivo" name="codigo_motivo" class="form-control">';
-        echo '<option value="1">1 - Erro na emissão da NFS-e (será emitida outra nota correta)</option>';
-        echo '<option value="2">2 - Serviço não prestado / cancelamento da prestação</option>';
-        echo '<option value="9">9 - NFS-e emitida indevidamente</option>';
-        echo '</select></td></tr>';
-        echo '<tr><td class="fieldlabel" width="25%">Motivo</td><td class="fieldarea"><input id="motivo" type="text" name="motivo" class="form-control" value="Erro na emissão" /></td></tr>';
-        echo '<tr><td class="fieldlabel" width="25%">Descrição</td><td class="fieldarea"><input id="descricao" type="text" name="descricao" class="form-control" value="NFS-e cancelada em razão de erro identificado na emissão. Será emitida nova nota fiscal com os dados corretos." /></td></tr>';
-        echo '</table>';
+        echo '<section class="nfse-card" aria-labelledby="nfse-cancel-motivo">';
+        echo '<div class="nfse-card__head"><h3 class="nfse-card__title" id="nfse-cancel-motivo">Motivo do cancelamento</h3></div>';
+        echo '<div class="nfse-form">';
+        echo Ui::formRow(
+            'Código do motivo',
+            Ui::select('codigo_motivo', [
+                '1' => '1 - Erro na emissão da NFS-e (será emitida outra nota correta)',
+                '2' => '2 - Serviço não prestado / cancelamento da prestação',
+                '9' => '9 - NFS-e emitida indevidamente',
+            ], '1', ['id' => 'codigo_motivo'], 'nfse-input--full'),
+            '',
+            ['id' => 'codigo_motivo']
+        );
+        echo Ui::formRow('Motivo', Ui::input('motivo', 'Erro na emissão', 'text', ['id' => 'motivo'], 'nfse-input--full'), '', ['id' => 'motivo']);
+        echo Ui::formRow('Descrição', Ui::input('descricao', 'NFS-e cancelada em razão de erro identificado na emissão. Será emitida nova nota fiscal com os dados corretos.', 'text', ['id' => 'descricao'], 'nfse-input--full'), '', ['id' => 'descricao']);
+        echo '</div>';
+        echo Ui::saveBar(
+            Ui::button('Voltar', ['ghost'], ['href' => $invoiceUrl])
+            . '<button type="submit" class="nfse-btn nfse-btn--danger" onclick="return confirm(\'Cancelar NFS-e é uma operação fiscal. Continuar?\');">Cancelar NFS-e</button>'
+        );
+        echo '</section>';
 
         echo '<script>';
         echo '(function(){';
@@ -96,9 +116,8 @@ final class NotasController
         echo 'sel.addEventListener("change", apply);';
         echo '})();';
         echo '</script>';
-
-        echo '<p><button type="submit" class="btn btn-danger" onclick="return confirm(\'Cancelar NFS-e é uma operação fiscal. Continuar?\');">Cancelar NFS-e</button></p>';
         echo '</form>';
+        echo '</div>';
 
         Module::ui()->renderFooter();
     }
