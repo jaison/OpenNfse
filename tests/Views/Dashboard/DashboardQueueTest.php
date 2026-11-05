@@ -89,6 +89,7 @@ final class DashboardQueueTest extends TestCase
         $cells = DashboardQueue::cells([], ['PENDING' => 'p', 'RUNNING' => 'r', 'WAIT_STATUS' => 'w', 'ERROR' => 'e']);
 
         $this->assertSame(['Pendentes', 'Processando', 'Aguardando status', 'Com erro'], array_column($cells, 'label'));
+        $this->assertSame(['pendentes', 'processando', 'aguardando status', 'com erro'], array_column($cells, 'noun'));
         $this->assertSame(['0', '0', '0', '0'], array_column($cells, 'value'));
         $this->assertSame(['zero', 'zero', 'zero', 'zero'], array_column($cells, 'tone'));
         $this->assertSame(['p', 'r', 'w', 'e'], array_column($cells, 'href'));
@@ -99,6 +100,8 @@ final class DashboardQueueTest extends TestCase
         $cells = DashboardQueue::cells(['PENDING' => 3, 'RUNNING' => 1, 'WAIT_STATUS' => 0, 'ERROR' => 1200], []);
 
         $this->assertSame(['3', '1', '0', '1.200'], array_column($cells, 'value'));
+        $this->assertSame(['pendentes', 'processando', 'aguardando status', 'com erro'], array_column($cells, 'noun'));
+        $this->assertSame('pendente', DashboardQueue::cells(['PENDING' => 1], [])[0]['noun']);
         $this->assertSame(['', '', 'zero', 'danger'], array_column($cells, 'tone'), 'só "Com erro" acima de zero usa o destaque de perigo');
     }
 

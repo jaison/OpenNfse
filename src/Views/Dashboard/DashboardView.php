@@ -237,14 +237,18 @@ final class DashboardView
         $html .= '<a href="' . self::h(self::url(['action' => 'fila'])) . '">Abrir fila</a>';
         $html .= '</div></div>';
 
-        $html .= '<div class="nfse-queue__counts">';
+        // Lista compacta em duas linhas: pendentes · processando / aguardando status · com erro.
+        $items = [];
         foreach (DashboardQueue::cells($counts, $urls) as $cell) {
-            $class = 'nfse-queue__value' . ($cell['tone'] !== '' ? ' nfse-queue__value--' . $cell['tone'] : '');
-            $inner = '<span class="nfse-queue__label">' . self::h($cell['label']) . '</span>'
-                . '<span class="' . $class . '">' . self::h($cell['value']) . '</span>';
-            $html .= $cell['href'] !== ''
-                ? '<a class="nfse-queue__cell" href="' . self::h($cell['href']) . '">' . $inner . '</a>'
-                : '<span class="nfse-queue__cell">' . $inner . '</span>';
+            $class = 'nfse-queue__item' . ($cell['tone'] !== '' ? ' nfse-queue__item--' . $cell['tone'] : '');
+            $inner = '<b class="nfse-queue__n">' . self::h($cell['value']) . '</b> ' . self::h($cell['noun']);
+            $items[] = $cell['href'] !== ''
+                ? '<a class="' . $class . '" href="' . self::h($cell['href']) . '">' . $inner . '</a>'
+                : '<span class="' . $class . '">' . $inner . '</span>';
+        }
+        $html .= '<div class="nfse-queue__counts">';
+        foreach (array_chunk($items, 2) as $line) {
+            $html .= '<div class="nfse-queue__line">' . implode('<span class="nfse-queue__sep" aria-hidden="true"> · </span>', $line) . '</div>';
         }
         $html .= '</div>';
 

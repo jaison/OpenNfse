@@ -26,6 +26,14 @@ final class DashboardQueue
         'ERROR' => 'Com erro',
     ];
 
+    /** Rótulo na lista compacta do card: singular e plural. */
+    private const NOUNS = [
+        'PENDING' => ['pendente', 'pendentes'],
+        'RUNNING' => ['processando', 'processando'],
+        'WAIT_STATUS' => ['aguardando status', 'aguardando status'],
+        'ERROR' => ['com erro', 'com erro'],
+    ];
+
     private const CRON_SOURCES = [
         'whmcs_cron' => 'WHMCS',
         'standalone' => 'CLI',
@@ -119,11 +127,12 @@ final class DashboardQueue
     }
 
     /**
-     * Células do card: uma por status, com link para a Fila filtrada.
+     * Itens do card, um por status, com link para a Fila filtrada. noun é o texto da lista
+     * compacta ("3 pendentes", "1 com erro"); label, o nome do status.
      *
      * @param array<string, int> $counts contagem por status (PENDING, RUNNING, WAIT_STATUS, ERROR)
      * @param array<string, string> $urls link por status
-     * @return array<int, array{label: string, value: string, tone: string, href: string}>
+     * @return array<int, array{label: string, noun: string, value: string, tone: string, href: string}>
      */
     public static function cells(array $counts, array $urls): array
     {
@@ -132,6 +141,7 @@ final class DashboardQueue
             $n = max(0, (int) ($counts[$status] ?? 0));
             $cells[] = [
                 'label' => $label,
+                'noun' => self::NOUNS[$status][$n === 1 ? 0 : 1],
                 'value' => number_format($n, 0, ',', '.'),
                 'tone' => $n === 0 ? 'zero' : ($status === 'ERROR' ? 'danger' : ''),
                 'href' => (string) ($urls[$status] ?? ''),

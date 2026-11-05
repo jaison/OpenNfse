@@ -201,29 +201,38 @@ final class DashboardViewTest extends TestCase
     public function testQueueCardValuesAndLinks(): void
     {
         $html = DashboardView::render(self::withQueue(['PENDING' => 3, 'ERROR' => 1], '2026-11-05 09:58:00'));
+        $fila = 'addonmodules.php?module=OpenNfse&amp;action=fila&amp;status=';
         $all = '&amp;updated_from=2000-01-01&amp;updated_to=2026-11-05';
+        $sep = '<span class="nfse-queue__sep" aria-hidden="true"> · </span>';
 
+        // Duas linhas: pendentes · processando / aguardando status · com erro.
         $this->assertStringContainsString(
-            '<a class="nfse-queue__cell" href="addonmodules.php?module=OpenNfse&amp;action=fila&amp;status=PENDING' . $all . '">'
-            . '<span class="nfse-queue__label">Pendentes</span><span class="nfse-queue__value">3</span></a>',
+            '<div class="nfse-queue__counts">'
+            . '<div class="nfse-queue__line">'
+            . '<a class="nfse-queue__item" href="' . $fila . 'PENDING' . $all . '"><b class="nfse-queue__n">3</b> pendentes</a>' . $sep
+            . '<a class="nfse-queue__item nfse-queue__item--zero" href="' . $fila . 'RUNNING' . $all . '"><b class="nfse-queue__n">0</b> processando</a>'
+            . '</div><div class="nfse-queue__line">'
+            . '<a class="nfse-queue__item nfse-queue__item--zero" href="' . $fila . 'WAIT_STATUS' . $all . '"><b class="nfse-queue__n">0</b> aguardando status</a>' . $sep
+            . '<a class="nfse-queue__item nfse-queue__item--danger" href="' . $fila . 'ERROR' . $all . '"><b class="nfse-queue__n">1</b> com erro</a>'
+            . '</div></div>',
             $html
         );
-        $this->assertStringContainsString('status=RUNNING' . $all . '"><span class="nfse-queue__label">Processando</span><span class="nfse-queue__value nfse-queue__value--zero">0</span>', $html);
-        $this->assertStringContainsString('status=WAIT_STATUS' . $all . '"><span class="nfse-queue__label">Aguardando status</span><span class="nfse-queue__value nfse-queue__value--zero">0</span>', $html);
-        $this->assertStringContainsString('status=ERROR' . $all . '"><span class="nfse-queue__label">Com erro</span><span class="nfse-queue__value nfse-queue__value--danger">1</span>', $html);
         $this->assertStringContainsString('<a href="addonmodules.php?module=OpenNfse&amp;action=fila">Abrir fila</a>', $html);
         $this->assertStringContainsString(
             '<div class="nfse-queue__foot"><span title="Cron executado há 2 min (WHMCS)">Cron há 2 min</span> · mais antigo há 12 min</div>',
             $html
         );
+
+        $html = DashboardView::render(self::withQueue(['PENDING' => 1], '2026-11-05 09:58:00'));
+        $this->assertStringContainsString('<b class="nfse-queue__n">1</b> pendente</a>', $html, 'singular');
     }
 
     public function testQueueCardZero(): void
     {
         $html = DashboardView::render(self::withQueue([], '2026-11-05 09:58:00'));
 
-        $this->assertSame(4, substr_count($html, 'nfse-queue__value nfse-queue__value--zero">0<'));
-        $this->assertStringNotContainsString('nfse-queue__value--danger', $html);
+        $this->assertSame(4, substr_count($html, 'class="nfse-queue__item nfse-queue__item--zero"'));
+        $this->assertStringNotContainsString('nfse-queue__item--danger', $html);
         $this->assertStringContainsString('<div class="nfse-queue__foot"><span title="Cron executado há 2 min (WHMCS)">Cron há 2 min</span></div>', $html, 'sem pendentes, o rodapé mostra só o cron');
     }
 
