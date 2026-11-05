@@ -495,7 +495,8 @@
 .nfse-tl__grid--zero { bottom: 0; border-top-style: solid; }
 .nfse-tl__days { position: relative; height: 100%; display: flex; gap: 2px; }
 .nfse-tl__day { position: relative; flex: 1 1 0; min-width: 0; display: flex; align-items: flex-end; justify-content: center; }
-.nfse-tl__day--today { box-shadow: inset 0 0 0 1px var(--accent); border-radius: 3px; }
+/* Hoje: fundo bem leve na coluna inteira (translúcido, a grade continua visível) e a data do eixo em negrito. */
+.nfse-tl__day--today { background: rgba(31, 95, 191, 0.07); border-radius: 3px; }
 .nfse-tl__bar { min-height: 5px; border-radius: 2px 2px 0 0; }
 .nfse-tl__bar--emitidas { position: absolute; left: 0; right: 0; bottom: 0; background: var(--heat-3); border-radius: 3px 3px 0 0; }
 .nfse-tl__day--weekend .nfse-tl__bar--emitidas { background: var(--heat-2); }
@@ -507,6 +508,7 @@
 .nfse-tl__axis { display: flex; gap: 2px; font-size: 9px; line-height: 10px; color: var(--muted); }
 .nfse-tl__axis span { flex: 1 1 0; min-width: 0; text-align: center; white-space: nowrap; }
 .nfse-tl__axis .nfse-tl__axis-future { opacity: 0.55; }
+.nfse-tl__axis .nfse-tl__axis-today { color: var(--ink); font-weight: 700; }
 /* Área abaixo de 1100px: calendário e média lado a lado, linha do tempo embaixo; abaixo de 700px, tudo empilhado. */
 @container nfse-page (max-width: 1099px) {
   .nfse-days { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.75fr); }

@@ -229,6 +229,19 @@ final class DashboardViewTest extends TestCase
         // 25 dias futuros (06 a 30/11): só o marcador plano, com a data esmaecida no eixo.
         $this->assertSame(25, substr_count($html, '<span class="nfse-tl__placeholder"></span>'));
         $this->assertSame(25, substr_count($html, 'class="nfse-tl__axis-future"'));
+        // Hoje: só a classe da coluna (fundo leve no CSS) e a data em negrito no eixo, uma vez.
+        $this->assertSame(1, substr_count($html, 'nfse-tl__day--today'));
+        $this->assertSame(1, substr_count($html, 'class="nfse-tl__axis-today"'));
+        $this->assertStringContainsString('<span class="nfse-tl__axis-today">05</span>', $html);
+
+        // Hoje fora da sequência de rótulos do eixo (06/11 num mês de 30 dias): a data aparece mesmo assim.
+        $html = DashboardView::render(self::data([
+            'today' => '2026-11-06',
+            'period' => ['periodo' => 'mes_atual', 'start' => '2026-11-01', 'end' => '2026-11-30'],
+            'series' => $series,
+            'dia' => '',
+        ]));
+        $this->assertStringContainsString('<span class="nfse-tl__axis-today">06</span>', $html);
         $this->assertStringNotContainsString('nfse-tl--long', $html);
     }
 
