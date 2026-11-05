@@ -31,8 +31,18 @@ Código: [`WhmcsCustomerRepository`](../src/Repositories/WhmcsCustomerRepository
 Tomador no Brasil:
 
 - Com CEP (`postcode`), monta `toma/end/endNac` com o `cMun` resolvido pelo catálogo IBGE (cidade/UF, com ViaCEP como apoio). Se não encontrar, usa `tomador_codigo_ibge_padrao` da configuração.
-- `xLgr` = `address1`, `xCpl` = `address2`. O número é extraído do logradouro quando possível, senão usa `tomador_numero_padrao` (ou `S/N`). O bairro vem de `tomador_bairro_padrao`.
 - Sem CEP, o endereço não é enviado.
+
+Endereço do tomador (Brasil e exterior), código em `DpsBuilderService` e [`EnderecoParser`](../src/Helpers/EnderecoParser.php):
+
+- `address1` é separado em logradouro, número e resto. O número só é tirado da linha quando vem depois do nome da rua: depois de vírgula, de ` - ` ou de `nº`/`n°`/`no`/`número` (`RUA X, 541`, `RUA X Nº 541`), ou no fim da linha (`AV PAULISTA 1000`). Aceita sufixo de letra (`12A`) e `S/N`. Número que faz parte do nome não é usado (`RUA 7 DE SETEMBRO, 100` dá `100`).
+- No fim da linha sem vírgula, hífen ou `nº`, o número não é usado quando o logradouro teria uma palavra só (`RUA 7`), quando vem depois de complemento (`QD 5, LT 3`, `KM 5`) ou de prefixo de rodovia (`RODOVIA BR 101`, `ROD SP 280`).
+- `xLgr` = logradouro sem o número; `nro` = número ou `tomador_numero_padrao` (ou `S/N`); o texto depois do número (`AV. BRASIL, 1500, SALA 3` dá `SALA 3`) vai para `xCpl`.
+- Bairro, conforme `tomador_bairro_origem`:
+  - `address2` (padrão, "Endereço 2 é o Bairro"): `xBairro` = `address2`; `xCpl` recebe só o resto do `address1`.
+  - `customfield` ("Campo personalizado"): `xBairro` = valor do custom field `tomador_bairro_customfield_id` (lido de `tblcustomfieldsvalues` em `TomadorBairroService`, antes de montar a DPS); `xCpl` = resto do `address1` + ` - ` + `address2`.
+  - Com a origem vazia, usa `tomador_bairro_padrao`.
+- Tamanhos máximos do leiaute: `xLgr` 255, `nro` 60, `xCpl` 156, `xBairro` 60 (o excesso é cortado).
 
 Tomador no exterior:
 

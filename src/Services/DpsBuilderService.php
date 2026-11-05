@@ -154,8 +154,7 @@ final class DpsBuilderService
 
             $cep = preg_replace('/\D/', '', (string) ($client['postcode'] ?? ''));
             if ($cep) {
-                [$logradouro, $numero, $complemento] = $this->montarEnderecoTomador($client, $config);
-                $bairro = (string) ($config['tomador_bairro_padrao'] ?? '');
+                [$logradouro, $numero, $complemento, $bairro] = $this->montarEnderecoTomador($client, $config);
                 $tomadorCodigoIbge = null;
                 $cidade = (string) ($client['city'] ?? '');
                 $uf = (string) ($client['state'] ?? '');
@@ -178,11 +177,10 @@ final class DpsBuilderService
         } else {
             $toma['cNaoNIF'] = '2';
 
-            [$logradouro, $numero, $complemento] = $this->montarEnderecoTomador($client, $config);
+            [$logradouro, $numero, $complemento, $bairro] = $this->montarEnderecoTomador($client, $config);
             $cidade = trim((string) ($client['city'] ?? ''));
             $estado = trim((string) ($client['state'] ?? ''));
             $endPost = trim((string) ($client['postcode'] ?? ''));
-            $bairro = (string) ($config['tomador_bairro_padrao'] ?? '');
 
             if ($logradouro === '') {
                 throw new NfseValidationException('Logradouro do tomador não informado.');
@@ -533,23 +531,35 @@ final class DpsBuilderService
     }
 
     /**
-     * @return array{0: string, 1: string, 2: string} [xLgr, nro, xCpl]
+     * Endereço 2 é o bairro (padrão) ou o complemento, quando o bairro vem de um custom field;
+     * o texto depois do número no address1 vai sempre para o complemento.
+     *
+     * @return array{0: string, 1: string, 2: string, 3: string} [xLgr, nro, xCpl, xBairro]
      */
     private function montarEnderecoTomador(array $client, array $config): array
     {
         [$logradouro, $numero, $resto] = EnderecoParser::separarNumero((string) ($client['address1'] ?? ''));
         $numero ??= (string) ($config['tomador_numero_padrao'] ?? 'S/N');
+        $address2 = trim((string) ($client['address2'] ?? ''));
 
-        $partesComplemento = array_filter(
-            [$resto, trim((string) ($client['address2'] ?? ''))],
-            static fn (string $parte): bool => $parte !== ''
-        );
-        $complemento = implode(' - ', $partesComplemento);
+        if (TomadorBairroService::origem($config) === TomadorBairroService::ORIGEM_CUSTOMFIELD) {
+            $bairro = trim((string) ($client[TomadorBairroService::CLIENT_KEY] ?? ''));
+            $partesComplemento = [$resto, $address2];
+        } else {
+            $bairro = $address2;
+            $partesComplemento = [$resto];
+        }
+        if ($bairro === '') {
+            $bairro = trim((string) ($config['tomador_bairro_padrao'] ?? ''));
+        }
+
+        $complemento = implode(' - ', array_filter($partesComplemento, static fn (string $parte): bool => $parte !== ''));
 
         return [
             mb_substr($logradouro, 0, 255),
             mb_substr($numero, 0, 60),
             trim(mb_substr($complemento, 0, 156)),
+            trim(mb_substr($bairro, 0, 60)),
         ];
     }
 
