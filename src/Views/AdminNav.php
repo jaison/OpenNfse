@@ -6,7 +6,7 @@ namespace OpenNfse\Views;
 
 /**
  * Barra de navegação das telas do addon no admin (Dashboard, Fila, Relatórios, Configurações),
- * a linha de título de cada tela e o estilo que esconde o título "OpenNfse" impresso pelo WHMCS.
+ * com o título de cada tela, e o estilo que esconde o título "OpenNfse" impresso pelo WHMCS.
  * Não acessa o banco: recebe os dados prontos (AdminHelpersTrait::renderTabs).
  */
 final class AdminNav
@@ -18,8 +18,9 @@ final class AdminNav
         'config' => ['label' => 'Configurações', 'url' => 'addonmodules.php?module=OpenNfse&action=config', 'icon' => 'gear'],
     ];
 
-    /** Título e subtítulo padrão de cada aba. A Dashboard monta a própria linha de título, com o período. */
+    /** Título e subtítulo padrão de cada aba, mostrados na barra. A Dashboard passa o subtítulo com o período. */
     public const TITLES = [
+        'dashboard' => ['Visão geral', ''],
         'fila' => ['Fila', 'Itens de emissão e consulta'],
         'relatorios' => ['Relatórios', 'Notas, cancelamentos e exportações'],
         'config' => ['Configurações', 'Certificado, prestador e processamento'],
@@ -46,8 +47,11 @@ final class AdminNav
      * @param array{
      *     logo_url?: string,
      *     queue?: array{tone: string, text: string, title: string}|null,
-     *     version?: array{current?: string, latest?: string, update_available?: bool, href?: string}
-     * } $d
+     *     version?: array{current?: string, latest?: string, update_available?: bool, href?: string},
+     *     title?: string,
+     *     subtitle?: string,
+     *     detail?: string
+     * } $d title, subtitle e detail: título da tela, subtítulo e um complemento que só vai no title (dica)
      */
     public static function bar(string $active, array $d = []): string
     {
@@ -58,6 +62,7 @@ final class AdminNav
             $html .= '<img class="nfse-navbar__logo" src="' . self::h($logo) . '" alt="" width="28" height="28">';
         }
         $html .= '<span class="nfse-navbar__name">OpenNfse</span></div>';
+        $html .= self::pageTitle((string) ($d['title'] ?? ''), (string) ($d['subtitle'] ?? ''), (string) ($d['detail'] ?? ''));
 
         $html .= '<nav class="nfse-navbar__tabs" aria-label="Seções do OpenNfse">';
         foreach (self::TABS as $key => $tab) {
@@ -116,42 +121,44 @@ final class AdminNav
     }
 
     /**
-     * Linha de título da tela: h1, subtítulo opcional e, à direita, ferramentas já montadas em HTML.
+     * Título da tela dentro da barra, entre a marca e as abas: o h1 da página (o do WHMCS fica escondido)
+     * e o subtítulo na mesma linha. Em espaço curto, o texto termina em reticências; o title guarda o texto
+     * inteiro, mais o complemento $detail, que não aparece na barra.
      */
-    public static function titleRow(string $title, string $subtitle = '', string $toolsHtml = ''): string
+    public static function pageTitle(string $title, string $subtitle = '', string $detail = ''): string
     {
-        $html = '<div class="nfse-header nfse-titlerow"><div>';
-        $html .= '<h1 class="nfse-title">' . self::h($title) . '</h1>';
-        if ($subtitle !== '') {
-            $html .= '<div class="nfse-subtitle">' . self::h($subtitle) . '</div>';
+        if ($title === '') {
+            return '';
         }
-        $html .= '</div>';
-        if ($toolsHtml !== '') {
-            $html .= '<div class="nfse-header__tools">' . $toolsHtml . '</div>';
+
+        $full = implode(' · ', array_filter([$title, $subtitle, $detail], static fn (string $part): bool => $part !== ''));
+        $html = '<div class="nfse-navbar__page" title="' . self::h($full) . '">';
+        $html .= '<h1 class="nfse-navbar__title">' . self::h($title) . '</h1>';
+        if ($subtitle !== '') {
+            $html .= '<span class="nfse-navbar__subtitle"> · ' . self::h($subtitle) . '</span>';
         }
 
         return $html . '</div>';
     }
 
     /**
-     * Barra e, quando houver, a linha de título, dentro de .nfse-ui para os tokens valerem.
-     * Título null usa o padrão da aba (TITLES); string vazia não mostra a linha de título.
+     * Barra de navegação dentro de .nfse-ui, para os tokens valerem. Título null usa o padrão da aba
+     * (TITLES); string vazia não mostra o título.
      *
      * @param array<string, mixed> $d dados de bar()
      */
-    public static function shell(string $active, array $d = [], ?string $title = null, ?string $subtitle = null): string
+    public static function shell(string $active, array $d = [], ?string $title = null, ?string $subtitle = null, string $detail = ''): string
     {
         if ($title === null) {
             [$title, $defaultSubtitle] = self::TITLES[$active] ?? ['', ''];
             $subtitle ??= $defaultSubtitle;
         }
 
-        $html = '<div class="nfse-ui nfse-shell">' . self::bar($active, $d);
-        if ($title !== '') {
-            $html .= self::titleRow($title, (string) $subtitle);
-        }
+        $d['title'] = $title;
+        $d['subtitle'] = (string) $subtitle;
+        $d['detail'] = $detail;
 
-        return $html . '</div>';
+        return '<div class="nfse-ui nfse-shell">' . self::bar($active, $d) . '</div>';
     }
 
     /**

@@ -62,7 +62,7 @@ Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https:/
 - Indicadores de emitidas, valor emitido, canceladas, taxa de sucesso, processadas e XMLs armazenados.
 - Calendário de calor das emissões por dia, média por dia da semana e linha do tempo de emitidas, canceladas e erros.
 - Atividade recente numa lista só, com filtros por tipo e por dia.
-- Barra de navegação em todas as telas do addon, com o estado da fila e o aviso de versão nova.
+- Barra de navegação em todas as telas do addon, com o título da tela, o estado da fila e o aviso de versão nova.
 
 ### Relatórios e Exportações
 - Relatórios de NFS-e emitidas.

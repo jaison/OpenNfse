@@ -46,13 +46,14 @@ final class DashboardViewTest extends TestCase
     {
         $html = DashboardView::render(self::data());
 
+        // Abre com as ferramentas do período, à direita; o título fica na barra de navegação (AdminNav).
         $this->assertStringStartsWith(
-            '<div class="nfse-ui nfse-page"><div class="nfse-header nfse-titlerow"><div><h1 class="nfse-title">Visão geral</h1>'
-            . '<div class="nfse-subtitle">Operação fiscal de Outubro 2026 · Certificado válido até 20/05/2027</div></div>'
-            . '<div class="nfse-header__tools"><a class="nfse-btn nfse-btn--icon"',
+            '<div class="nfse-ui nfse-page"><div class="nfse-toolbar" role="group" aria-label="Período da Dashboard">'
+            . '<a class="nfse-btn nfse-btn--icon"',
             $html
         );
-        // Logo, nome e versão ficam na barra de navegação (AdminNav), e não na Dashboard.
+        $this->assertStringNotContainsString('<h1', $html, 'o h1 da página fica na barra');
+        $this->assertStringNotContainsString('nfse-titlerow', $html);
         $this->assertStringNotContainsString('nfse-navbar', $html);
         $this->assertStringNotContainsString('nfse-badge--version', $html);
         $this->assertStringNotContainsString('opennsfe_logo', $html);
@@ -109,13 +110,20 @@ final class DashboardViewTest extends TestCase
         $this->assertStringNotContainsString('Operação em dia', $html);
     }
 
-    public function testCertificateInHeaderAndHealth(): void
+    public function testTitlePartsAndCertificateHealth(): void
     {
-        $html = DashboardView::render(self::data());
-        $this->assertStringContainsString('<div class="nfse-subtitle">Operação fiscal de Outubro 2026 · Certificado válido até 20/05/2027</div>', $html);
+        $period = ['start' => '2026-10-01', 'end' => '2026-10-31'];
+        $this->assertSame(
+            ['subtitle' => 'Operação fiscal de Outubro 2026', 'detail' => 'Certificado válido até 20/05/2027'],
+            DashboardView::titleParts($period, ['status' => 'ok', 'days_left' => 200, 'valid_to' => '20/05/2027 10:00'])
+        );
+        $this->assertSame(
+            ['subtitle' => 'Operação fiscal de 30/10 – 05/11/2026', 'detail' => ''],
+            DashboardView::titleParts(['start' => '2026-10-30', 'end' => '2026-11-05'], ['status' => 'missing', 'days_left' => ''])
+        );
+        $this->assertStringNotContainsString('Certificado válido até', DashboardView::render(self::data()), 'a validade vai só na dica do título, na barra');
 
         $html = DashboardView::render(self::data(['certificate' => ['status' => 'missing', 'days_left' => '', 'valid_to' => '']]));
-        $this->assertStringContainsString('<div class="nfse-subtitle">Operação fiscal de Outubro 2026</div>', $html);
         $this->assertStringContainsString('Certificado não configurado', $html);
         $this->assertStringContainsString('href="addonmodules.php?module=OpenNfse&amp;action=config&amp;tab=ambiente">Abrir Configurações</a>', $html);
     }

@@ -138,33 +138,73 @@ final class AdminNavTest extends TestCase
         $this->assertNull(AdminNav::queueStatus(null, $fresh), 'sem os dados da fila, o estado some');
     }
 
-    public function testTitleRowAndShell(): void
+    public function testPageTitleSitsInTheBarBetweenBrandAndTabs(): void
     {
-        $this->assertSame(
-            '<div class="nfse-header nfse-titlerow"><div><h1 class="nfse-title">Fila</h1><div class="nfse-subtitle">Itens de emissão e consulta</div></div></div>',
-            AdminNav::titleRow('Fila', 'Itens de emissão e consulta')
-        );
-        $this->assertSame('<div class="nfse-header nfse-titlerow"><div><h1 class="nfse-title">A &amp; &lt;b&gt;</h1></div></div>', AdminNav::titleRow('A & <b>'));
-        $this->assertStringEndsWith('<div class="nfse-header__tools"><button>x</button></div></div>', AdminNav::titleRow('T', '', '<button>x</button>'));
+        $html = AdminNav::shell('fila');
 
+        $this->assertStringStartsWith('<div class="nfse-ui nfse-shell"><div class="nfse-navbar">', $html);
+        $this->assertStringContainsString(
+            '<span class="nfse-navbar__name">OpenNfse</span></div>'
+            . '<div class="nfse-navbar__page" title="Fila · Itens de emissão e consulta">'
+            . '<h1 class="nfse-navbar__title">Fila</h1><span class="nfse-navbar__subtitle"> · Itens de emissão e consulta</span></div>'
+            . '<nav class="nfse-navbar__tabs"',
+            $html
+        );
+        $this->assertSame(1, substr_count($html, '<h1'), 'um h1 só na página');
+        $this->assertStringEndsWith('</div></div></div>', $html, 'a barra é o último elemento: não há linha de título separada');
+        $this->assertStringNotContainsString('nfse-titlerow', $html);
+        $this->assertStringNotContainsString('nfse-title"', $html);
+    }
+
+    public function testPageTitlePerScreen(): void
+    {
         $defaults = [
+            'dashboard' => ['Visão geral', ''],
             'fila' => ['Fila', 'Itens de emissão e consulta'],
             'relatorios' => ['Relatórios', 'Notas, cancelamentos e exportações'],
             'config' => ['Configurações', 'Certificado, prestador e processamento'],
         ];
         foreach ($defaults as $tab => [$title, $subtitle]) {
-            $html = AdminNav::shell($tab);
-            $this->assertStringStartsWith('<div class="nfse-ui nfse-shell"><div class="nfse-navbar">', $html);
-            $this->assertStringEndsWith(AdminNav::titleRow($title, $subtitle) . '</div>', $html);
+            $this->assertStringContainsString(AdminNav::pageTitle($title, $subtitle), AdminNav::shell($tab), $tab);
         }
 
-        $this->assertStringNotContainsString('nfse-titlerow', AdminNav::shell('dashboard'), 'a Dashboard monta a própria linha de título');
-        $this->assertStringNotContainsString('nfse-titlerow', AdminNav::shell('fila', [], ''));
+        $this->assertSame(
+            '<div class="nfse-navbar__page" title="Visão geral"><h1 class="nfse-navbar__title">Visão geral</h1></div>',
+            AdminNav::pageTitle('Visão geral')
+        );
         $this->assertStringContainsString(
-            '<h1 class="nfse-title">Alertas de NFS-e</h1><div class="nfse-subtitle">Notas que pedem revisão manual</div>',
+            '<div class="nfse-navbar__page" title="Alertas de NFS-e · Notas que pedem revisão manual"><h1 class="nfse-navbar__title">Alertas de NFS-e</h1>',
             AdminNav::shell('dashboard', [], 'Alertas de NFS-e', 'Notas que pedem revisão manual')
         );
-        $this->assertStringContainsString('<h1 class="nfse-title">Detalhe do log</h1></div>', AdminNav::shell('relatorios', [], 'Detalhe do log'));
+        $this->assertStringContainsString(
+            '<h1 class="nfse-navbar__title">Detalhe do log</h1></div>',
+            AdminNav::shell('relatorios', [], 'Detalhe do log'),
+            'título sem subtítulo'
+        );
+        $this->assertStringNotContainsString('<h1', AdminNav::shell('fila', [], ''), 'título vazio não mostra o bloco');
+    }
+
+    public function testDetailGoesOnlyToTheTooltip(): void
+    {
+        $html = AdminNav::shell('dashboard', [], 'Visão geral', 'Operação fiscal de Novembro 2026', 'Certificado válido até 03/12/2026');
+
+        $this->assertStringContainsString(
+            '<div class="nfse-navbar__page" title="Visão geral · Operação fiscal de Novembro 2026 · Certificado válido até 03/12/2026">'
+            . '<h1 class="nfse-navbar__title">Visão geral</h1><span class="nfse-navbar__subtitle"> · Operação fiscal de Novembro 2026</span></div>',
+            $html
+        );
+        $this->assertSame(1, substr_count($html, 'Certificado válido até'));
+    }
+
+    public function testPageTitleIsEscaped(): void
+    {
+        $html = AdminNav::pageTitle('A & <b>', '"><i>x', '<script>');
+
+        $this->assertStringNotContainsString('<b>', $html);
+        $this->assertStringNotContainsString('<i>', $html);
+        $this->assertStringNotContainsString('<script>', $html);
+        $this->assertStringContainsString('<h1 class="nfse-navbar__title">A &amp; &lt;b&gt;</h1>', $html);
+        $this->assertStringContainsString('title="A &amp; &lt;b&gt; · &quot;&gt;&lt;i&gt;x · &lt;script&gt;"', $html);
     }
 
     public function testModuleTitleStyleOnlyOnAddonPage(): void
@@ -194,7 +234,7 @@ final class AdminNavTest extends TestCase
         $this->assertStringStartsWith('<div class="nfse-ui nfse-shell"><div class="nfse-navbar">', $html);
         $this->assertStringContainsString('aria-current="page"><svg', $html);
         $this->assertStringNotContainsString('nfse-navbar__queue', $html);
-        $this->assertStringContainsString('<h1 class="nfse-title">Fila</h1>', $html);
+        $this->assertStringContainsString('<h1 class="nfse-navbar__title">Fila</h1>', $html);
         $this->assertStringContainsString('/modules/addons/OpenNfse/assets/opennsfe_logo.png', $html);
     }
 
@@ -205,13 +245,13 @@ final class AdminNavTest extends TestCase
         };
 
         ob_start();
-        $controller->renderTabs('dashboard', '', null, [
+        $controller->renderTabs('dashboard', null, null, [
             'config' => ['cron_last_run_at' => date('Y-m-d H:i:s'), 'cron_last_source' => 'whmcs_cron'],
             'queue' => self::snapshot(['PENDING' => 2]),
         ]);
         $html = (string) ob_get_clean();
 
         $this->assertStringContainsString('<span class="nfse-dot nfse-dot--ok" aria-hidden="true"></span>Fila: 2 pendentes</a>', $html);
-        $this->assertStringNotContainsString('nfse-titlerow', $html);
+        $this->assertStringContainsString('<h1 class="nfse-navbar__title">Visão geral</h1>', $html, 'sem título informado, o padrão da aba');
     }
 }

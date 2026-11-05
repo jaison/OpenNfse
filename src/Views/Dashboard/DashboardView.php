@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace OpenNfse\Views\Dashboard;
 
-use OpenNfse\Views\AdminNav;
-
 /**
  * Monta o HTML da Dashboard com as classes nfse- de assets/nfse-ui.css.
  * Não acessa o banco: recebe os dados que o AdminController leu.
@@ -83,7 +81,7 @@ final class DashboardView
         }
 
         $html = '<div class="nfse-ui nfse-page">';
-        $html .= self::header($d, $period, $today);
+        $html .= self::periodToolbar($period, $today);
         $html .= self::health($health);
         if (isset($d['queue'])) {
             // Barra única: indicadores do período à esquerda e o estado atual da fila à direita, no mesmo card.
@@ -109,17 +107,11 @@ final class DashboardView
     }
 
     /**
-     * @param array<string, mixed> $d
      * @param array{periodo: string, start: string, end: string} $period
      */
-    private static function header(array $d, array $period, string $today): string
+    private static function periodToolbar(array $period, string $today): string
     {
-        // Linha de título abaixo da barra de navegação (Views\AdminNav): logo, nome e versão ficam na barra.
-        $subtitle = 'Operação fiscal de ' . DashboardPeriod::label($period['start'], $period['end']);
-        $certificateLine = DashboardHealth::certificateValidLine($d['certificate'] ?? []);
-        if ($certificateLine !== '') {
-            $subtitle .= ' · ' . $certificateLine;
-        }
+        // Só as ferramentas do período, alinhadas à direita: o título da tela fica na barra de navegação (Views\AdminNav).
 
         $start = $period['start'];
         $end = $period['end'];
@@ -151,7 +143,23 @@ final class DashboardView
         $html .= '</form></details>';
         $html .= '</nav>';
 
-        return AdminNav::titleRow('Visão geral', $subtitle, $html);
+        return '<div class="nfse-toolbar" role="group" aria-label="Período da Dashboard">' . $html . '</div>';
+    }
+
+    /**
+     * Subtítulo da tela na barra de navegação ("Operação fiscal de Novembro 2026") e o complemento que vai
+     * só na dica do título ("Certificado válido até 03/12/2026"), para não alongar a barra.
+     *
+     * @param array{start: string, end: string} $period
+     * @param array<string, mixed> $certificate
+     * @return array{subtitle: string, detail: string}
+     */
+    public static function titleParts(array $period, array $certificate): array
+    {
+        return [
+            'subtitle' => 'Operação fiscal de ' . DashboardPeriod::label($period['start'], $period['end']),
+            'detail' => DashboardHealth::certificateValidLine($certificate),
+        ];
     }
 
     /**
