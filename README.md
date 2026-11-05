@@ -77,7 +77,7 @@ Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https:/
 
 ### Área do Cliente
 - Listagem das NFS-e emitidas vinculadas ao cliente.
-- Resumo da NFS-e diretamente na tela da fatura do cliente, com status, número, chave e ações rápidas.
+- Resumo da NFS-e emitida diretamente na tela da fatura do cliente, com número, data de emissão, chave e ações rápidas. Sem nota emitida, a fatura não mostra nada da NFS-e.
 - Download de XML e PDF pelo cliente.
 - Reenvio de XML/PDF por e-mail pelo cliente.
 - Aviso configurável na área do cliente.

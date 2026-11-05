@@ -614,7 +614,7 @@ Na lista de alertas, cada alerta aberto tem duas ações:
 ## Área do cliente
 
 - **Menu**: item **Notas Fiscais** no menu Billing (`index.php?m=OpenNfse`). Lista até 50 notas `EMITIDA` com XML das faturas do cliente logado, com aviso configurável no topo (`client_area_notice_*`).
-- **Fatura**: o hook `ClientAreaPageViewInvoice` mostra status, número, data de emissão ou cancelamento e chave da NFS-e. Com a nota `EMITIDA`, mostra os botões de XML, PDF e e-mail. Com `ERRO` ou `REJEITADA`, mostra o detalhe do erro.
+- **Fatura**: o hook `ClientAreaPageViewInvoice` mostra o resumo só quando a nota da fatura está `EMITIDA`, a mesma regra da lista: número, data de emissão, chave e, com XML, os botões de XML, PDF e e-mail. Com qualquer outro status (`PROCESSANDO`, `ERRO`, `REJEITADA`, `CANCELADA`), a fatura não mostra nada da NFS-e.
 - **Ações** (`downloadXml`, `downloadPdf`, `sendEmail`): só por `POST`, com token CSRF e conferindo se a fatura pertence ao cliente logado. Download exige nota `EMITIDA`.
 
 ## Relatórios
