@@ -2236,10 +2236,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         echo '<td class="fieldarea">';
         echo '<select name="codigo_servico" id="nfse-tributacao-servico" class="form-control nfse-config-select">';
         echo '<option value="">Selecione</option>';
-        foreach ($servicoOptions as $value => $label) {
-            $selected = $value === $selectedServico ? ' selected' : '';
-            echo '<option value="' . htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8') . '"' . $selected . '>' . htmlspecialchars((string) $label, ENT_QUOTES, 'UTF-8') . '</option>';
-        }
+        echo self::renderServiceCodeOptions($servicoOptions, $selectedServico);
         echo '</select>';
         echo '<div class="nfse-config-help">As opções são carregadas do catálogo mantido na subaba Código de Serviços e NBS.</div>';
         echo '</td>';
@@ -2254,6 +2251,23 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         echo '</tr>';
 
         echo '<script>(function(){var selectedNbs=' . json_encode($selectedNbs, JSON_UNESCAPED_UNICODE) . ';var nbsOptions=' . $jsNbsOptions . ';var servicoEl=document.getElementById("nfse-tributacao-servico");var nbsEl=document.getElementById("nfse-tributacao-nbs");var helpEl=document.getElementById("nfse-tributacao-nbs-help");if(!servicoEl||!nbsEl){return;}function fill(){var servico=servicoEl.value||"";nbsEl.innerHTML="";if(servico===""){var placeholder=document.createElement("option");placeholder.value="";placeholder.textContent="Selecione um código de serviço primeiro";nbsEl.appendChild(placeholder);nbsEl.disabled=true;if(helpEl){helpEl.textContent="Cadastre novas combinações na subaba Código de Serviços e NBS sempre que necessário.";}return;}var opts=nbsOptions[servico]||{};var first="";for(var key in opts){if(!opts.hasOwnProperty(key)){continue;}if(first===""){first=key;}var option=document.createElement("option");option.value=key;option.textContent=opts[key];if(selectedNbs!==""&&selectedNbs===key){option.selected=true;}nbsEl.appendChild(option);}if(nbsEl.options.length===0){var empty=document.createElement("option");empty.value="";empty.textContent="(Sem NBS cadastrada para este código)";nbsEl.appendChild(empty);nbsEl.disabled=true;if(helpEl){helpEl.textContent="Adicione uma NBS relacionada a este código na subaba Código de Serviços e NBS.";}return;}nbsEl.disabled=false;if(selectedNbs===""||!opts.hasOwnProperty(selectedNbs)){nbsEl.value=first;}if(helpEl){helpEl.textContent="A NBS selecionada será usada como padrão quando não houver regra específica por grupo.";}selectedNbs=nbsEl.value||"";}fill();servicoEl.addEventListener("change",function(){selectedNbs="";fill();});})();</script>';
+    }
+
+
+    /**
+     * Opções do select de código de serviço. Códigos sem zero à esquerda (ex.: "140101") viram chave
+     * int no array do PHP, por isso a comparação com o valor salvo é feita como string.
+     */
+    public static function renderServiceCodeOptions(array $options, string $selected): string
+    {
+        $html = '';
+        foreach ($options as $value => $label) {
+            $value = (string) $value;
+            $html .= '<option value="' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '"' . ($value === $selected ? ' selected' : '') . '>'
+                . htmlspecialchars((string) $label, ENT_QUOTES, 'UTF-8') . '</option>';
+        }
+
+        return $html;
     }
 
 
@@ -2314,10 +2328,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
 
             echo '<td>';
             echo '<select class="form-control nfse-servico" name="codigo_servico[' . (int) $gid . ']" data-gid="' . (int) $gid . '" style="width:100%;max-width:240px;">';
-            foreach ($rowServicoOptions as $val => $label) {
-                $sel = $val === $curServico ? ' selected' : '';
-                echo '<option value="' . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . '"' . $sel . '>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
-            }
+            echo self::renderServiceCodeOptions($rowServicoOptions, $curServico);
             echo '</select>';
             echo '</td>';
 
@@ -2421,10 +2432,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
 
             echo '<td>';
             echo '<select class="form-control nfse-servico" name="codigo_servico[' . (int) $gid . ']" data-gid="' . (int) $gid . '" style="max-width:240px;">';
-            foreach ($rowServicoOptions as $val => $label) {
-                $sel = $val === $curServico ? ' selected' : '';
-                echo '<option value="' . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . '"' . $sel . '>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
-            }
+            echo self::renderServiceCodeOptions($rowServicoOptions, $curServico);
             echo '</select>';
             echo '</td>';
 
