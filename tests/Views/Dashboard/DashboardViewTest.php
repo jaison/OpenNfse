@@ -46,18 +46,15 @@ final class DashboardViewTest extends TestCase
     {
         $html = DashboardView::render(self::data());
 
-        // Abre com as ferramentas do período, à direita; o título fica na barra de navegação (AdminNav).
-        $this->assertStringStartsWith(
-            '<div class="nfse-ui nfse-page"><div class="nfse-toolbar" role="group" aria-label="Período da Dashboard">'
-            . '<a class="nfse-btn nfse-btn--icon"',
-            $html
-        );
+        // Sem linha só com o período: a página abre com a barra de saúde, e o título fica na barra de navegação.
+        $this->assertStringStartsWith('<div class="nfse-ui nfse-page"><div class="nfse-health"', $html);
+        $this->assertStringNotContainsString('nfse-toolbar', $html);
         $this->assertStringNotContainsString('<h1', $html, 'o h1 da página fica na barra');
         $this->assertStringNotContainsString('nfse-titlerow', $html);
         $this->assertStringNotContainsString('nfse-navbar', $html);
         $this->assertStringNotContainsString('nfse-badge--version', $html);
         $this->assertStringNotContainsString('opennsfe_logo', $html);
-        $this->assertStringContainsString('<span class="nfse-period">Outubro 2026</span>', $html);
+        $this->assertStringContainsString('<span class="nfse-periodnav__label">Outubro 2026</span>', $html);
         $this->assertStringContainsString('Operação em dia', $html);
         $this->assertStringContainsString('R$ 58.700,87', $html);
         $this->assertStringContainsString('nfse-kpi__value nfse-kpi__value--ok">100,0%', $html);
@@ -197,16 +194,37 @@ final class DashboardViewTest extends TestCase
 
         $health = strpos($html, 'class="nfse-health"');
         $bar = strpos($html, '<div class="nfse-bar"><section class="nfse-bar__period" aria-labelledby="nfse-no-periodo">');
+        $controls = strpos($html, '<div class="nfse-periodnav" role="group" aria-label="Período da Dashboard">');
         $queue = strpos($html, '<section class="nfse-bar__queue" aria-labelledby="nfse-fila-agora">');
         $calendar = strpos($html, 'Emissões por dia');
         $this->assertNotFalse($bar, 'um card só, com o período primeiro');
         $this->assertNotFalse($queue);
-        $this->assertTrue($health < $bar && $bar < $queue && $queue < $calendar);
+        $this->assertTrue($health < $bar && $bar < $controls && $controls < $queue && $queue < $calendar);
+        $this->assertSame(1, substr_count($html, 'class="nfse-periodnav"'), 'as ferramentas do período ficam só no cabeçalho da barra');
+
+        // Cabeçalho do lado do período: "No período", setas, rótulo e os chips, depois os indicadores.
+        $prev = 'addonmodules.php?module=OpenNfse&amp;action=dashboard&amp;periodo=personalizado&amp;data_inicial=2026-09-01&amp;data_final=2026-09-30';
+        $next = 'addonmodules.php?module=OpenNfse&amp;action=dashboard&amp;periodo=personalizado&amp;data_inicial=2026-11-01&amp;data_final=2026-11-30';
         $this->assertStringContainsString(
-            '<div class="nfse-bar__head" id="nfse-no-periodo"><span class="nfse-bar__head-title">No período</span><span aria-hidden="true">·</span><span>Outubro 2026</span></div>'
-            . '<div class="nfse-bar__kpis"><div class="nfse-kpi"><div class="nfse-kpi__label">Emitidas</div>',
+            '<div class="nfse-bar__head"><span class="nfse-bar__head-title" id="nfse-no-periodo">No período</span>'
+            . '<div class="nfse-periodnav" role="group" aria-label="Período da Dashboard">'
+            . '<a class="nfse-btn nfse-btn--icon nfse-btn--xs" href="' . $prev . '" aria-label="Mês anterior">',
             $html
         );
+        $this->assertStringContainsString(
+            '<span class="nfse-periodnav__label">Outubro 2026</span>'
+            . '<a class="nfse-btn nfse-btn--icon nfse-btn--xs" href="' . $next . '" aria-label="Próximo mês">',
+            $html
+        );
+        $this->assertStringContainsString(
+            '<nav class="nfse-chips nfse-chips--sm" aria-label="Período">'
+            . '<a class="nfse-chip" href="addonmodules.php?module=OpenNfse&amp;action=dashboard&amp;periodo=hoje">Hoje</a>'
+            . '<a class="nfse-chip" href="addonmodules.php?module=OpenNfse&amp;action=dashboard&amp;periodo=7_dias">7 dias</a>'
+            . '<details class="nfse-custom"><summary class="nfse-chip">Personalizado</summary>'
+            . '<form class="nfse-custom__panel" method="get" action="addonmodules.php">',
+            $html
+        );
+        $this->assertStringContainsString('</form></details></nav></div></div><div class="nfse-bar__kpis"><div class="nfse-kpi"><div class="nfse-kpi__label">Emitidas</div>', $html);
         $this->assertStringContainsString('<div class="nfse-kpi__value nfse-kpi__value--ok">100,0%</div></div><div class="nfse-kpi"><div class="nfse-kpi__label">Processadas', $html);
         $this->assertStringContainsString('</section></div><div class="nfse-split">', $html, 'a barra fecha logo depois da fila');
         $this->assertStringNotContainsString('<div class="nfse-kpis">', $html);
@@ -312,14 +330,19 @@ final class DashboardViewTest extends TestCase
         $this->assertStringNotContainsString('<b>x</b>', $html);
     }
 
-    public function testWithoutQueueDataThereIsNoCard(): void
+    public function testWithoutQueueDataThereIsNoQueuePanel(): void
     {
         $html = DashboardView::render(self::data());
 
         $this->assertStringNotContainsString('Fila agora', $html);
         $this->assertStringNotContainsString('Cron', $html);
-        $this->assertStringNotContainsString('nfse-bar', $html, 'sem a fila, a KpiBar ocupa a linha inteira');
-        $this->assertStringContainsString('<div class="nfse-kpis">', $html);
+        $this->assertStringNotContainsString('nfse-bar__queue', $html);
+        $this->assertStringContainsString(
+            '<div class="nfse-bar nfse-bar--solo"><section class="nfse-bar__period" aria-labelledby="nfse-no-periodo">',
+            $html,
+            'sem a fila, o lado do período ocupa a barra inteira, com as ferramentas do período'
+        );
+        $this->assertStringContainsString('<div class="nfse-periodnav"', $html);
     }
 
     public function testNextArrowDisabledForFutureMonth(): void

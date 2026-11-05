@@ -374,15 +374,24 @@
 /* Barra única: indicadores do período (3fr) e Fila agora (1fr) no mesmo card. As larguras vêm da área
    da Dashboard (container nfse-page), e não da janela: o menu lateral do WHMCS também conta. */
 .nfse-ui.nfse-page { container: nfse-page / inline-size; }
-.nfse-bar { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); align-items: stretch; background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-xl); overflow: hidden; }
+.nfse-bar { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); align-items: stretch; background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-xl); }
+.nfse-bar--solo { grid-template-columns: minmax(0, 1fr); }
 .nfse-bar__period { display: flex; flex-direction: column; min-width: 0; padding: 14px 0 16px; }
-.nfse-bar__head { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4) 10px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.nfse-bar__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px var(--space-3); padding: 0 var(--space-4) 10px; font-size: 12px; line-height: 16px; color: var(--muted); }
+/* Ferramentas do período no cabeçalho da barra: setas, rótulo e Hoje / 7 dias / Personalizado, compactos. */
+.nfse-periodnav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.nfse-btn--xs, .nfse-btn--xs.nfse-btn--icon { min-height: 26px; height: 26px; width: 26px; border-radius: var(--radius-md); }
+.nfse-btn--xs svg { width: 14px; height: 14px; }
+.nfse-periodnav__label { padding: 0 2px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.nfse-chips--sm { margin-left: 6px; gap: 4px; }
+.nfse-chips--sm .nfse-chip { min-height: 26px; padding: 4px 10px; font-size: 12px; line-height: 16px; }
+.nfse-bar__head .nfse-custom__panel { left: 0; right: auto; z-index: 30; }
 .nfse-bar__head-title { font-weight: 600; color: var(--ink-2); }
 .nfse-bar__kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); row-gap: 14px; }
 .nfse-bar__kpis .nfse-kpi { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 var(--space-4); border-right: 1px solid var(--divider); }
 .nfse-bar__kpis .nfse-kpi:last-child { border-right: 0; }
 .nfse-bar__kpis .nfse-kpi__value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nfse-bar__queue { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: var(--space-3) var(--space-4); background: var(--surface-subtle); border-left: 1px solid var(--border); }
+.nfse-bar__queue { border-radius: 0 calc(var(--radius-xl) - 1px) calc(var(--radius-xl) - 1px) 0; display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: var(--space-3) var(--space-4); background: var(--surface-subtle); border-left: 1px solid var(--border); }
 .nfse-queue__head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .nfse-dot { width: 8px; height: 8px; border-radius: var(--radius-pill); flex: none; }
 .nfse-dot--ok { background: var(--ok-ink); }
@@ -417,7 +426,7 @@
 /* Área abaixo de 1000px: a Fila agora desce para baixo dos indicadores, no mesmo card. */
 @container nfse-page (max-width: 999px) {
   .nfse-bar { grid-template-columns: minmax(0, 1fr); }
-  .nfse-bar__queue { border-left: 0; border-top: 1px solid var(--border); }
+  .nfse-bar__queue { border-left: 0; border-top: 1px solid var(--border); border-radius: 0 0 calc(var(--radius-xl) - 1px) calc(var(--radius-xl) - 1px); }
 }
 /* Barra de navegação do addon (Views\AdminNav), em todas as telas, e a linha de título abaixo dela. */
 .nfse-ui.nfse-shell { container: nfse-shell / inline-size; display: flex; flex-direction: column; gap: var(--space-4); padding-top: var(--space-4); margin-bottom: var(--space-4); }
@@ -431,21 +440,20 @@
 .nfse-ui a.nfse-tab:hover { background: var(--surface-subtle); color: var(--ink); text-decoration: none; }
 .nfse-ui a.nfse-tab[aria-current="page"], .nfse-ui a.nfse-tab[aria-current="page"]:hover { background: var(--badge-emitida-bg); color: var(--badge-emitida-ink); font-weight: 600; }
 .nfse-tab svg { flex: none; }
-.nfse-navbar__status { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); font-size: 12px; color: var(--muted); }
+.nfse-navbar__status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding-right: var(--space-4); border-right: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+.nfse-navbar__status:empty { display: none; }
 .nfse-ui a.nfse-navbar__queue { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
 .nfse-ui a.nfse-navbar__queue:hover { color: var(--ink); text-decoration: underline; }
-.nfse-navbar__page { flex: 1 1 0; max-width: max-content; min-width: 0; padding-right: var(--space-4); border-right: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 20px; }
+.nfse-navbar__page { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 20px; }
 .nfse-ui h1.nfse-navbar__title { display: inline; margin: 0; padding: 0; font-size: 15px; line-height: 20px; font-weight: 600; color: var(--ink); letter-spacing: 0; }
 .nfse-navbar__subtitle { font-size: 12px; color: var(--muted); }
 .nfse-navbar__tabs, .nfse-navbar__brand, .nfse-navbar__status { flex: none; }
-/* Ferramentas do período da Dashboard, alinhadas à direita logo abaixo da barra. */
-.nfse-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); }
 /* Barra sem espaço para o subtítulo: ele some primeiro (o texto inteiro segue no title). */
 @container nfse-shell (max-width: 1099px) {
   .nfse-navbar__subtitle { display: none; }
 }
 /* Barra estreita: marca e estado da fila na primeira linha, abas na linha de baixo. */
 @container nfse-shell (max-width: 899px) {
-  .nfse-navbar__tabs { order: 3; flex-basis: 100%; }
-  .nfse-navbar__page { border-right: 0; padding-right: 0; }
+  .nfse-navbar__tabs { order: 3; flex-basis: 100%; justify-content: flex-end; }
+  .nfse-navbar__status { padding-right: 0; border-right: 0; }
 }

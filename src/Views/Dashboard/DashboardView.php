@@ -81,20 +81,18 @@ final class DashboardView
         }
 
         $html = '<div class="nfse-ui nfse-page">';
-        $html .= self::periodToolbar($period, $today);
         $html .= self::health($health);
+        // Barra única: indicadores do período à esquerda, com as ferramentas do período no cabeçalho,
+        // e o estado atual da fila à direita, no mesmo card. Sem os dados da fila, só o período.
+        $html .= '<div class="nfse-bar' . (isset($d['queue']) ? '' : ' nfse-bar--solo') . '">';
+        $html .= '<section class="nfse-bar__period" aria-labelledby="nfse-no-periodo">';
+        $html .= '<div class="nfse-bar__head"><span class="nfse-bar__head-title" id="nfse-no-periodo">No período</span>'
+            . self::periodControls($period, $today) . '</div>';
+        $html .= self::kpis($metrics, 'nfse-bar__kpis') . '</section>';
         if (isset($d['queue'])) {
-            // Barra única: indicadores do período à esquerda e o estado atual da fila à direita, no mesmo card.
-            $html .= '<div class="nfse-bar">';
-            $html .= '<section class="nfse-bar__period" aria-labelledby="nfse-no-periodo">';
-            $html .= '<div class="nfse-bar__head" id="nfse-no-periodo"><span class="nfse-bar__head-title">No período</span>'
-                . '<span aria-hidden="true">·</span><span>' . self::h(DashboardPeriod::label($start, $end)) . '</span></div>';
-            $html .= self::kpis($metrics, 'nfse-bar__kpis') . '</section>';
             $html .= self::queue($d['queue'], $cron, $now, $today, (string) ($d['token'] ?? ''));
-            $html .= '</div>';
-        } else {
-            $html .= self::kpis($metrics);
         }
+        $html .= '</div>';
         $html .= '<div class="nfse-split">';
         $html .= self::calendar($series, $start, $end, $today, $dia, $feedFilter, $periodParams);
         $html .= self::weekdays($series, $today, $start, $end);
@@ -109,9 +107,9 @@ final class DashboardView
     /**
      * @param array{periodo: string, start: string, end: string} $period
      */
-    private static function periodToolbar(array $period, string $today): string
+    private static function periodControls(array $period, string $today): string
     {
-        // Só as ferramentas do período, alinhadas à direita: o título da tela fica na barra de navegação (Views\AdminNav).
+        // Ferramentas do período, compactas, no cabeçalho do lado do período da barra única.
 
         $start = $period['start'];
         $end = $period['end'];
@@ -119,15 +117,15 @@ final class DashboardView
         $next = DashboardPeriod::nextMonth($start, $end);
         $monthParams = static fn (array $r): array => ['periodo' => 'personalizado', 'data_inicial' => $r['start'], 'data_final' => $r['end']];
 
-        $html = '<a class="nfse-btn nfse-btn--icon" href="' . self::h(self::dashboardUrl($monthParams($prev))) . '" aria-label="Mês anterior">' . self::icon('prev') . '</a>';
-        $html .= '<span class="nfse-period">' . self::h(DashboardPeriod::label($start, $end)) . '</span>';
+        $html = '<a class="nfse-btn nfse-btn--icon nfse-btn--xs" href="' . self::h(self::dashboardUrl($monthParams($prev))) . '" aria-label="Mês anterior">' . self::icon('prev') . '</a>';
+        $html .= '<span class="nfse-periodnav__label">' . self::h(DashboardPeriod::label($start, $end)) . '</span>';
         if ($next['start'] <= $today) {
-            $html .= '<a class="nfse-btn nfse-btn--icon" href="' . self::h(self::dashboardUrl($monthParams($next))) . '" aria-label="Próximo mês">' . self::icon('next') . '</a>';
+            $html .= '<a class="nfse-btn nfse-btn--icon nfse-btn--xs" href="' . self::h(self::dashboardUrl($monthParams($next))) . '" aria-label="Próximo mês">' . self::icon('next') . '</a>';
         } else {
-            $html .= '<span class="nfse-btn nfse-btn--icon" aria-disabled="true" aria-label="Próximo mês">' . self::icon('next') . '</span>';
+            $html .= '<span class="nfse-btn nfse-btn--icon nfse-btn--xs" aria-disabled="true" aria-label="Próximo mês">' . self::icon('next') . '</span>';
         }
 
-        $html .= '<nav class="nfse-chips" aria-label="Período">';
+        $html .= '<nav class="nfse-chips nfse-chips--sm" aria-label="Período">';
         foreach (['hoje' => 'Hoje', '7_dias' => '7 dias'] as $key => $label) {
             $ariaCurrent = $period['periodo'] === $key ? ' aria-current="true"' : '';
             $html .= '<a class="nfse-chip" href="' . self::h(self::dashboardUrl(['periodo' => $key])) . '"' . $ariaCurrent . '>' . self::h($label) . '</a>';
@@ -143,7 +141,7 @@ final class DashboardView
         $html .= '</form></details>';
         $html .= '</nav>';
 
-        return '<div class="nfse-toolbar" role="group" aria-label="Período da Dashboard">' . $html . '</div>';
+        return '<div class="nfse-periodnav" role="group" aria-label="Período da Dashboard">' . $html . '</div>';
     }
 
     /**
