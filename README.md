@@ -58,7 +58,7 @@ Caso encontre algum problema ou tenha alguma sugestão, [abra uma issue](https:/
 ### Dashboard e Monitoramento
 - Dashboard operacional do período, com navegação por mês, Hoje, 7 dias e período personalizado.
 - Barra de saúde: "Operação em dia" ou o que exige atenção (erros, pendentes, rejeitadas, aguardando status, faturas pagas sem nota, certificado perto do vencimento, não configurado ou ilegível, alertas abertos, cron parado), cada contador com link para a tela certa.
-- Fila agora: itens pendentes, em processamento, aguardando status e com erro neste momento, o pendente mais antigo, a última execução do cron e o botão para processar a fila.
+- Fila agora, ao lado dos indicadores: itens pendentes, em processamento, aguardando status e com erro neste momento, a última execução do cron, o pendente mais antigo e o botão para processar a fila.
 - Indicadores de emitidas, valor emitido, canceladas, taxa de sucesso, processadas e XMLs armazenados.
 - Calendário de calor das emissões por dia, média por dia da semana e linha do tempo de emitidas, canceladas e erros.
 - Atividade recente numa lista só, com filtros por tipo e por dia.

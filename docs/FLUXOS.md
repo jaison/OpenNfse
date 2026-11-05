@@ -641,14 +641,14 @@ Em **Addons > OpenNfse > Dashboard** (`AdminController::showDashboard()`, HTML e
   - aguardando status → **Fila** com `status=WAIT_STATUS`.
 
   Os contadores não repetem a mesma nota: erros = `com_erro_periodo` − `rejeitadas` e pendentes = `pendentes` − `aguardando_status` (as métricas de `dashboardOverview` já incluem umas nas outras). Faturas pagas sem nota têm item próprio, com link para a auditoria. Também aparecem o certificado vencido ou com 30 dias ou menos, o certificado não configurado ou ilegível (aviso com link para **Configurações > Ambiente**), o custom field apagado, os alertas abertos e o cron parado: item crítico "Cron parado há X min" quando a última execução tem mais de 10 minutos (`DashboardQueue::CRON_STALE_MINUTES`), ou "Cron nunca executado", com link para **Configurações > Processamento Automático**.
-- **Fila agora**: o que está acontecendo agora, fora do filtro de período. Mostra:
-  - quantos itens da fila estão em Pendentes (`PENDING`), Processando (`RUNNING`), Aguardando status (`WAIT_STATUS`) e Com erro (`ERROR`, o erro ainda não resolvido; o resolvido vira `RESOLVIDO`). Cada número abre a **Fila** filtrada pelo status, desde 01/01/2000, porque a Fila sem datas mostra só os últimos 7 dias;
-  - há quanto tempo está esperando o item pendente mais antigo ("há 12 min", "há 3 h", "há 2 dias"; "—" sem pendentes);
-  - quando o cron rodou pela última vez (`cron_last_run_at` e `cron_last_source`, gravados pelo `CronService`): "Cron executado há 2 min (WHMCS)" ou "(CLI)" para o `cron.php`;
-  - **Abrir fila** e **Processar fila agora**, que envia o mesmo POST da Fila (`filaProcessNow`, com o token) e volta para a Fila.
+- **Indicadores e Fila agora**, na mesma linha: os indicadores do período ocupam cerca de 75% e o card compacto **Fila agora**, os outros 25%, com a mesma altura. Abaixo de 1100px de largura, a Fila agora desce para baixo dos indicadores, em largura total.
+  - **Indicadores** (período): emitidas, valor emitido, canceladas, taxa de sucesso, processadas e XMLs armazenados.
+  - **Fila agora** (estado atual, fora do filtro de período; o título traz essa dica ao passar o mouse):
+    - no cabeçalho, o botão de ícone **Processar fila agora**, que envia o mesmo POST da Fila (`filaProcessNow`, com o token) e volta para a Fila, e o link **Abrir fila**;
+    - quantos itens da fila estão em Pendentes (`PENDING`), Processando (`RUNNING`), Aguardando status (`WAIT_STATUS`) e Com erro (`ERROR`, o erro ainda não resolvido; o resolvido vira `RESOLVIDO`). Cada número abre a **Fila** filtrada pelo status, desde 01/01/2000, porque a Fila sem datas mostra só os últimos 7 dias. Zero aparece esmaecido; Com erro acima de zero aparece em vermelho;
+    - no rodapé, "Cron há 2 min · mais antigo há 12 min": a última execução do cron (`cron_last_run_at` e `cron_last_source`, gravados pelo `CronService`; a frase completa, com a origem WHMCS ou CLI, aparece ao passar o mouse) e a espera do item pendente mais antigo, que some quando não há pendentes. O texto do cron fica vermelho quando ele está parado.
 
-  Zero aparece esmaecido; Com erro acima de zero aparece em vermelho. Os dados vêm de uma consulta só (`QueueRepository::currentSnapshot`: `status`, `COUNT(*)` e `MIN(created_at)` agrupados por status).
-- **Indicadores**: emitidas, valor emitido, canceladas, taxa de sucesso, processadas e XMLs armazenados.
+    Os dados vêm de uma consulta só (`QueueRepository::currentSnapshot`: `status`, `COUNT(*)` e `MIN(created_at)` agrupados por status).
 - **Emissões por dia**: calendário de calor do período, em semanas de domingo a sábado, com marcadores de canceladas e erros por dia. Faixas fixas: 0–7, 8–13, 14–18, 19–23 e 24 ou mais. Ao lado, a média por dia da semana. Média e médias por dia da semana contam só os dias até hoje.
 - **Linha do tempo**: uma faixa por série (Emitidas, Canceladas, Erros (incl. resolvidos)), cada uma com escala própria e o mesmo eixo de datas. Os dias que ainda não chegaram ficam sem barra e com a data esmaecida, como no calendário.
 - **Atividade recente**: até 10 eventos (emissões, cancelamentos e erros), do mais novo para o mais antigo, com filtros Tudo, Emitidas, Canceladas e Erros e link para o relatório completo. Cada fatura aparece com um erro só, o mais recente (a mesma fatura pode vir da nota e da fila).
