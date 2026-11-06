@@ -26,7 +26,7 @@ Código: [`WhmcsCustomerRepository`](../src/Repositories/WhmcsCustomerRepository
 | `country` | Obrigatório. `BR` exige CPF/CNPJ. Outro país é tratado como exterior: `toma/cNaoNIF = 2` e `toma/end/endExt`. |
 | `address1`, `address2`, `city`, `state`, `postcode` | Endereço do tomador (ver regras abaixo). |
 | `groupid` | Escopo por grupo da emissão automática (`auto_emit_scope = grupos`): o cliente precisa estar num dos grupos de `auto_emit_group_ids` (IDs de `tblclientgroups`). Sem grupo (`0`), fica fora. |
-| `currency` | Só para tomador no exterior: `tblcurrencies.code` é convertido para o código BACEN em `serv/comExt/tpMoeda` (sem moeda, usa `986`, Real). |
+| `currency` | Só para tomador no exterior: `tblcurrencies.code` é convertido para o código da tabela de moedas do Banco Central em `serv/comExt/tpMoeda` (`BacenCurrency`: BRL `790`, USD `220`, EUR `978`…; não é o código ISO numérico). Sem moeda, usa `790` (Real). Código de três dígitos é enviado como está. Moeda fora da tabela bloqueia a emissão com mensagem própria. O valor não é convertido: o módulo parte de faturas em reais. |
 
 Tomador no Brasil:
 
