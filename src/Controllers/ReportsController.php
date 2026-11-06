@@ -110,51 +110,52 @@ final class ReportsController
     {
         $active = trim((string) ($_GET['tab'] ?? 'emitidas'));
         $isAjaxRequest = (string) ($_REQUEST['ajax'] ?? '') === '1';
+        // Ordem e grupos do submenu: notas, conferências e diagnóstico.
         $tabMeta = [
             'emitidas' => [
+                'group' => 'Notas',
                 'label' => 'NFS-e Emitidas',
-                'badge' => 'Fiscal',
-                'summary' => 'Acompanha notas emitidas e canceladas, com totais e exportações do período.',
-            ],
-            'auditoria' => [
-                'label' => 'Auditoria Emissão',
-                'badge' => 'Conferência',
-                'summary' => 'Lista faturas pagas em gateways ativos que não geraram NFS-e e também não entraram na fila.',
-            ],
-            NfseNaoPagasReportController::TAB => [
-                'label' => 'NFS-e de faturas não pagas',
-                'badge' => 'Revisão',
-                'summary' => 'Lista notas emitidas cuja fatura não está paga (Unpaid, Cancelled, Refunded, Collections) e notas emitidas antes do pagamento.',
-            ],
-            'xml_auditoria' => [
-                'label' => 'Auditoria XML',
-                'badge' => 'Técnico',
-                'summary' => 'Compara a pasta mensal de XMLs com o xml_path atual das notas para encontrar órfãos e referências inconsistentes.',
-            ],
-            'auditoria_api_dps' => [
-                'label' => 'Auditoria DPS > API',
-                'badge' => 'API',
-                'summary' => 'Confere as DPS do período diretamente na API e verifica lacunas na sequência numérica do emissor.',
-            ],
-            'historico_fiscal' => [
-                'label' => 'Historico Fiscal',
-                'badge' => 'Fiscal',
-                'summary' => 'Preserva os documentos e eventos fiscais da invoice ao longo do tempo, inclusive emissões, cancelamentos e snapshots de migracao.',
+                'summary' => 'Notas emitidas e canceladas no período, com totais e exportações.',
             ],
             'cancelamentos' => [
+                'group' => 'Notas',
                 'label' => 'Cancelamentos',
-                'badge' => 'Auditoria',
-                'summary' => 'Mostra cancelamentos do período com foco em conferência fiscal e contábil.',
+                'summary' => 'Cancelamentos do período, para conferência fiscal e contábil.',
+            ],
+            'historico_fiscal' => [
+                'group' => 'Notas',
+                'label' => 'Histórico Fiscal',
+                'summary' => 'Documentos e eventos fiscais de cada fatura ao longo do tempo.',
+            ],
+            'auditoria' => [
+                'group' => 'Conferência',
+                'label' => 'Auditoria Emissão',
+                'summary' => 'Faturas pagas em gateways ativos que não geraram NFS-e nem entraram na fila.',
+            ],
+            NfseNaoPagasReportController::TAB => [
+                'group' => 'Conferência',
+                'label' => 'NFS-e de faturas não pagas',
+                'summary' => 'Notas cuja fatura não está paga e notas emitidas antes do pagamento.',
+            ],
+            'auditoria_api_dps' => [
+                'group' => 'Conferência',
+                'label' => 'Auditoria DPS > API',
+                'summary' => 'Confere as DPS do período na API e procura lacunas na numeração.',
+            ],
+            'xml_auditoria' => [
+                'group' => 'Conferência',
+                'label' => 'Auditoria XML',
+                'summary' => 'Compara a pasta de XMLs com as notas para achar órfãos e referências quebradas.',
             ],
             'falhas' => [
+                'group' => 'Diagnóstico',
                 'label' => 'Falhas',
-                'badge' => 'Atenção',
-                'summary' => 'Concentra erros de emissão, rejeições e problemas que exigem correção manual.',
+                'summary' => 'Erros de emissão e rejeições que pedem correção manual.',
             ],
             'logs' => [
+                'group' => 'Diagnóstico',
                 'label' => 'Logs',
-                'badge' => 'Técnico',
-                'summary' => 'Centraliza request/response e rastreabilidade técnica para suporte e diagnóstico.',
+                'summary' => 'Requisições e respostas da API, para suporte e diagnóstico.',
             ],
         ];
         $allowed = [];
@@ -182,12 +183,18 @@ final class ReportsController
         if ($active === 'auditoria_api') {
             $activeMeta = [
                 'label' => 'Auditoria API (NSU)',
-                'summary' => 'Compara os documentos distribuídos pela API (por NSU) com o histórico fiscal local do mês.',
+                'summary' => 'Documentos distribuídos pela API (por NSU) comparados com o histórico fiscal do mês.',
             ];
         }
 
         $navItems = [];
+        $lastGroup = '';
         foreach ($allowed as $key => $label) {
+            $group = (string) ($tabMeta[$key]['group'] ?? '');
+            if ($group !== '' && $group !== $lastGroup) {
+                $navItems[] = ['group' => $group];
+                $lastGroup = $group;
+            }
             $p = $params;
             $p['tab'] = $key;
             $url = 'addonmodules.php?module=OpenNfse&action=relatorios';
@@ -198,7 +205,6 @@ final class ReportsController
                 'label' => $label,
                 'href' => $url,
                 'current' => $key === $active,
-                'meta' => (string) ($tabMeta[$key]['badge'] ?? ''),
             ];
         }
 

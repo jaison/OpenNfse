@@ -548,8 +548,8 @@
 /* Cabeçalho de seção: título + resumo à esquerda, ações à direita. */
 .nfse-sechead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-2) var(--space-4); }
 .nfse-sechead__text { min-width: 0; }
-.nfse-ui h2.nfse-sechead__title { margin: 0; font-size: 16px; line-height: 22px; font-weight: 600; color: var(--ink); }
-.nfse-sechead__summary { margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.nfse-ui h2.nfse-sechead__title { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.nfse-sechead__summary { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--muted); max-width: 620px; }
 .nfse-sechead__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 
 /* Barra de filtros: um card, campos numa linha onde couber, ações no fim. */
@@ -630,17 +630,18 @@
 .nfse-savebar__note { margin-right: auto; font-size: 12px; color: var(--muted); }
 
 /* Submenu de seção (Relatórios, Configurações): lista vertical à esquerda, conteúdo à direita. */
-.nfse-withnav { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--space-4); align-items: start; }
-.nfse-withnav__content { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
-.nfse-subnav { display: flex; flex-direction: column; gap: 2px; padding: var(--space-2); }
-.nfse-subnav__group { padding: var(--space-2) 10px var(--space-1); font-size: 11px; line-height: 14px; font-weight: 600; color: var(--muted); }
-.nfse-ui a.nfse-subnav__item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 32px; padding: 6px 10px; border-radius: var(--radius-lg); font-size: 13px; line-height: 20px; color: var(--ink-2); text-decoration: none; }
+.nfse-withnav { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--space-6) 32px; align-items: start; }
+.nfse-withnav__content { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
+.nfse-subnav { display: flex; flex-direction: column; gap: 2px; padding: var(--space-3) var(--space-2); }
+.nfse-subnav__group { padding: 14px 10px 6px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
+.nfse-subnav__group:first-child { padding-top: 0; }
+.nfse-ui a.nfse-subnav__item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 36px; padding: 6px 10px; border-radius: var(--radius-lg); font-size: 13px; line-height: 20px; color: var(--ink-2); text-decoration: none; }
 .nfse-ui a.nfse-subnav__item:hover { background: var(--surface-subtle); color: var(--ink); text-decoration: none; }
 .nfse-ui a.nfse-subnav__item[aria-current="page"], .nfse-ui a.nfse-subnav__item[aria-current="page"]:hover { background: var(--badge-emitida-bg); color: var(--badge-emitida-ink); font-weight: 600; }
 .nfse-subnav__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nfse-subnav__meta { flex: none; font-size: 11px; line-height: 14px; font-weight: 400; color: var(--muted); }
-.nfse-subnav__item .nfse-badge { flex: none; font-size: 10px; padding: 2px 6px; }
-.nfse-subnav__dot { flex: none; width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--zero); }
+.nfse-subnav__item .nfse-badge { flex: none; font-size: 11px; padding: 1px 7px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.nfse-subnav__dot { flex: none; width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--zero); }
 .nfse-subnav__dot--ok { background: var(--ok-ink); }
 .nfse-subnav__dot--warn { background: var(--warn-border); }
 .nfse-subnav__dot--danger { background: var(--danger-ink); }
@@ -723,18 +724,10 @@
 
 /* Configurações (padrão E3, telas de texto e formulário; ver docs/UI.md):
    submenu em grupos, conteúdo até 900px, cada bloco com título e explicação à esquerda e os campos num card à direita. */
-.nfse-cfg .nfse-withnav { grid-template-columns: 240px minmax(0, 1fr); gap: var(--space-6) 32px; }
-.nfse-cfg .nfse-withnav__content { max-width: 900px; gap: var(--space-6); }
-.nfse-cfg .nfse-subnav { gap: 2px; padding: var(--space-3) var(--space-2); }
-.nfse-cfg .nfse-subnav__group { padding: 14px 10px 6px; letter-spacing: .04em; }
-.nfse-cfg .nfse-subnav__group:first-child { padding-top: 0; }
-.nfse-cfg.nfse-ui a.nfse-subnav__item, .nfse-cfg .nfse-ui a.nfse-subnav__item { min-height: 36px; }
-.nfse-cfg .nfse-subnav__dot { width: 7px; height: 7px; }
-/* Pílulas de status em texto normal ("Expira em 27 dias"), não em maiúsculas. */
-.nfse-cfg .nfse-subnav .nfse-badge, .nfse-cfg .nfse-sechead .nfse-badge { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.nfse-cfg .nfse-withnav__content { max-width: 900px; }
+/* Status da seção em texto normal ("Expira em 27 dias"), não em maiúsculas. */
+.nfse-cfg .nfse-sechead .nfse-badge { text-transform: none; letter-spacing: 0; font-weight: 500; }
 .nfse-cfg .nfse-sechead { align-items: flex-start; }
-.nfse-cfg.nfse-ui h2.nfse-sechead__title, .nfse-cfg .nfse-ui h2.nfse-sechead__title { font-size: 20px; line-height: 28px; }
-.nfse-cfg .nfse-sechead__summary { font-size: 13px; line-height: 20px; max-width: 620px; }
 .nfse-cfg-blk { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--space-4) 32px; align-items: start; padding-top: var(--space-6); border-top: 1px solid var(--divider); min-width: 0; }
 .nfse-cfg-blk--wide { grid-template-columns: minmax(0, 1fr); }
 .nfse-cfg-blk--wide > .nfse-cfg-blk__intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-4); }
@@ -811,10 +804,8 @@
 .nfse-cfg-logo { flex: none; width: 48px; height: 48px; display: flex; align-items: flex-start; justify-content: center; overflow: hidden; }
 .nfse-cfg-logo svg { display: block; width: 100%; height: 100%; max-width: 48px; max-height: 48px; }
 @container nfse-page (max-width: 999px) {
-  .nfse-cfg .nfse-withnav { grid-template-columns: minmax(0, 1fr); }
   .nfse-cfg .nfse-withnav__content { max-width: none; }
-  .nfse-cfg .nfse-subnav { padding: var(--space-1); gap: var(--space-1); }
-  .nfse-cfg.nfse-ui a.nfse-subnav__item { flex-wrap: nowrap; min-height: 30px; }
+  .nfse-cfg a.nfse-subnav__item { flex-wrap: nowrap; }
   .nfse-cfg .nfse-subnav__label { flex: none; white-space: nowrap; }
 }
 @container nfse-page (max-width: 699px) {
