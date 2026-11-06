@@ -147,7 +147,7 @@ final class UpdaterController
         $file = sprintf(
             '%s/opennfse-backup-%s-%s-%s.sql.gz',
             rtrim($dir, '/'),
-            preg_replace('/[^0-9A-Za-z.]/', '', (string) ($state['from_version'] ?? '')),
+            preg_replace('/[^0-9A-Za-z.-]/', '', (string) ($state['from_version'] ?? '')),
             date('Ymd-His'),
             bin2hex(random_bytes(4))
         );
@@ -197,7 +197,7 @@ final class UpdaterController
         $state = MaintenanceMode::store()->state();
         $name = sprintf(
             'opennfse-backup-%s-%s.sql.gz',
-            preg_replace('/[^0-9A-Za-z.]/', '', (string) ($state['from_version'] ?? '')),
+            preg_replace('/[^0-9A-Za-z.-]/', '', (string) ($state['from_version'] ?? '')),
             date('Ymd-His', strtotime((string) ($backup['created_at'] ?? '')) ?: time())
         );
         header('Content-Type: application/gzip');
@@ -621,19 +621,19 @@ final class UpdaterController
         $token = (new TokenService())->token();
         $hidden = $token !== '' ? Ui::hidden(['token' => $token]) : '';
 
-        if (!$paused || empty($data['backup']['downloaded_at'])) {
-            $this->renderPendingStep($title, $description, 'Disponível depois do download do backup.');
-
-            return;
-        }
-
-        if ($step === 'rolled_back') {
+        if ($paused && $step === 'rolled_back') {
             $this->renderConfigSectionStart($title, $description);
             $this->renderConfigBlock('<p class="nfse-cfg-text">' . Ui::h(sprintf(
                 'O módulo voltou para a versão %s e as tabelas foram restauradas. Retome a operação na etapa 2.',
                 $from
             )) . '</p>');
             $this->renderConfigSectionEnd();
+
+            return;
+        }
+
+        if (!$paused || empty($data['backup']['downloaded_at'])) {
+            $this->renderPendingStep($title, $description, 'Disponível depois do download do backup.');
 
             return;
         }
