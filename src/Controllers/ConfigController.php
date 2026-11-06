@@ -1278,6 +1278,15 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         }
     }
 
+    public function saveUpdateChannel(): void
+    {
+        $channel = (string) ($_POST['update_channel'] ?? '') === UpdateCheckService::CHANNEL_BETA
+            ? UpdateCheckService::CHANNEL_BETA
+            : UpdateCheckService::CHANNEL_STABLE;
+        (new ConfigRepository())->save(['update_channel' => $channel]);
+        $this->checkUpdates();
+    }
+
     public function checkUpdates(): void
     {
         try {
@@ -1336,6 +1345,22 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
             $facts['Erro'] = '<span class="nfse-text-danger">' . Ui::h($error) . '</span>';
         }
         $this->renderConfigBlock(($statusLine !== '' ? '<div class="nfse-cfg-status">' . $statusLine . '</div>' : '') . self::factsHtml($facts));
+        $channelSelect = Ui::select(
+            'update_channel',
+            [
+                UpdateCheckService::CHANNEL_STABLE => 'Estável',
+                UpdateCheckService::CHANNEL_BETA => 'Testes (inclui pré-releases)',
+            ],
+            (string) ($status['channel'] ?? UpdateCheckService::CHANNEL_STABLE),
+            ['id' => 'update_channel']
+        );
+        $channelButton = Ui::button('Salvar canal', ['sm'], ['formaction' => 'addonmodules.php?module=OpenNfse&action=saveUpdateChannel', 'formmethod' => 'post']);
+        $this->renderConfigBlock(Ui::formRow(
+            'Canal de atualização',
+            '<div class="nfse-actions">' . $channelSelect . $channelButton . '</div>',
+            'Use Testes só em ambiente de homologação: ele oferece versões ainda em teste.',
+            ['id' => 'update_channel']
+        ));
         $this->renderConfigBlock(
             '<details class="nfse-form__more"><summary>Como funciona</summary><div class="nfse-form__more-body">'
             . 'O cron lê o manifesto <span class="nfse-mono">' . Ui::h((string) ($status['manifest_url'] ?? '')) . '</span> e guarda a última resposta. '

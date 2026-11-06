@@ -6,6 +6,7 @@ namespace OpenNfse\Services;
 
 use OpenNfse\Helpers\AddonVersion;
 use OpenNfse\Repositories\ConfigRepository;
+use OpenNfse\Updater\PackageDownloader;
 
 final class UpdateCheckService
 {
@@ -13,6 +14,13 @@ final class UpdateCheckService
     /** Pacotes só são aceitos deste endereço: .../download/v{versão}/OpenNfse-{versão}.zip */
     public const PACKAGE_URL_PREFIX = 'https://github.com/jaison/OpenNfse/releases/download/';
     private const ALLOWED_HOSTS = ['raw.githubusercontent.com'];
+    /** Canal de testes: lê os releases do GitHub, inclusive pré-releases, em vez do update.json. */
+    private const RELEASES_URL = 'https://api.github.com/repos/jaison/OpenNfse/releases?per_page=15';
+    private const RELEASES_HOSTS = ['api.github.com'];
+    private const MAX_RELEASES_BYTES = 1048576;
+    public const CHANNEL_STABLE = 'stable';
+    public const CHANNEL_BETA = 'beta';
+    public const VERSION_PATTERN = '/^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$/';
     private const CACHE_TTL_SECONDS = 86400;
     private const REQUEST_TIMEOUT_SECONDS = 5;
     private const MAX_MANIFEST_BYTES = 65536;
@@ -74,13 +82,15 @@ final class UpdateCheckService
             'summary' => $summary,
             'update_available' => $updateAvailable,
             'is_stale' => $this->isCheckDue($config),
-            'manifest_url' => self::MANIFEST_URL,
+            'manifest_url' => self::channel($config) === self::CHANNEL_BETA ? self::RELEASES_URL : self::MANIFEST_URL,
+            'channel' => self::channel($config),
         ];
     }
 
     public function checkNow(): array
     {
-        $manifest = $this->fetchManifest();
+        $channel = self::channel((new ConfigRepository())->get());
+        $manifest = $channel === self::CHANNEL_BETA ? $this->fetchFromReleases() : $this->fetchManifest();
         $payload = $this->buildConfigPayloadFromManifest($manifest);
         (new ConfigRepository())->save($payload);
 
@@ -140,7 +150,7 @@ final class UpdateCheckService
 
         $module = trim((string) ($data['module'] ?? ''));
         $latestVersion = trim((string) ($data['latest_version'] ?? ''));
-        if ($module !== 'OpenNfse' || $latestVersion === '' || !preg_match('/^\d+\.\d+\.\d+([-.][A-Za-z0-9]+)?$/', $latestVersion)) {
+        if ($module !== 'OpenNfse' || $latestVersion === '' || !preg_match(self::VERSION_PATTERN, $latestVersion)) {
             throw new \RuntimeException('O manifesto remoto de atualização está incompleto ou inválido.');
         }
 
@@ -164,6 +174,98 @@ final class UpdateCheckService
             'changelog_url' => $changelogUrl,
             'minimum_whmcs' => trim((string) ($data['minimum_whmcs'] ?? '')),
             'minimum_php' => trim((string) ($data['minimum_php'] ?? '')),
+        ];
+    }
+
+    public static function channel(array $config): string
+    {
+        return ($config['update_channel'] ?? '') === self::CHANNEL_BETA ? self::CHANNEL_BETA : self::CHANNEL_STABLE;
+    }
+
+    /**
+     * Canal de testes: a maior versão entre os releases publicados (pré-releases incluídos)
+     * que tenham o zip e o SHA-256 anexados pelo workflow.
+     *
+     * @param list<array<string, mixed>> $releases resposta da API de releases do GitHub
+     * @return array{version: string, zip_url: string, sha_url: string, html_url: string, name: string}|null
+     */
+    public static function pickRelease(array $releases): ?array
+    {
+        $best = null;
+        foreach ($releases as $release) {
+            if (!is_array($release) || !empty($release['draft'])) {
+                continue;
+            }
+            $tag = (string) ($release['tag_name'] ?? '');
+            $version = strpos($tag, 'v') === 0 ? substr($tag, 1) : '';
+            if ($version === '' || preg_match(self::VERSION_PATTERN, $version) !== 1) {
+                continue;
+            }
+            $zipName = 'OpenNfse-' . $version . '.zip';
+            $zipUrl = '';
+            $shaUrl = '';
+            foreach ((array) ($release['assets'] ?? []) as $asset) {
+                $name = (string) ($asset['name'] ?? '');
+                if ($name === $zipName) {
+                    $zipUrl = (string) ($asset['browser_download_url'] ?? '');
+                } elseif ($name === $zipName . '.sha256') {
+                    $shaUrl = (string) ($asset['browser_download_url'] ?? '');
+                }
+            }
+            if ($zipUrl === '' || $shaUrl === '') {
+                continue;
+            }
+            if ($best === null || version_compare($version, $best['version'], '>')) {
+                $best = [
+                    'version' => $version,
+                    'zip_url' => $zipUrl,
+                    'sha_url' => $shaUrl,
+                    'html_url' => (string) ($release['html_url'] ?? ''),
+                    'name' => trim((string) ($release['name'] ?? '')),
+                ];
+            }
+        }
+
+        return $best;
+    }
+
+    private function fetchFromReleases(): array
+    {
+        $body = $this->httpGet(self::RELEASES_URL, self::REQUEST_TIMEOUT_SECONDS, self::RELEASES_HOSTS, self::MAX_RELEASES_BYTES);
+        $releases = $body !== null ? json_decode($body, true) : null;
+        if (!is_array($releases)) {
+            throw new \RuntimeException('Não foi possível consultar os releases do GitHub.');
+        }
+        $release = self::pickRelease($releases);
+        if ($release === null) {
+            throw new \RuntimeException('Nenhum release com pacote de atualização foi encontrado no GitHub.');
+        }
+
+        $tmp = (string) tempnam(sys_get_temp_dir(), 'opennfse-sha');
+        try {
+            (new PackageDownloader())->download($release['sha_url'], $tmp);
+            $line = (string) file_get_contents($tmp, false, null, 0, 1024);
+        } finally {
+            @unlink($tmp);
+        }
+        if (preg_match('/^([0-9a-fA-F]{64})\s+\*?(\S+)/', trim($line), $m) !== 1 || $m[2] !== 'OpenNfse-' . $release['version'] . '.zip') {
+            throw new \RuntimeException('O arquivo SHA-256 do release está em formato inesperado.');
+        }
+        [$packageUrl, $packageSha256] = self::parsePackage(
+            ['package_url' => $release['zip_url'], 'package_sha256' => $m[1]],
+            $release['version']
+        );
+        $page = $release['html_url'] !== '' && $this->isAllowedPublicUrl($release['html_url']) ? $release['html_url'] : '';
+
+        return [
+            'latest_version' => $release['version'],
+            'package_url' => $packageUrl,
+            'package_sha256' => $packageSha256,
+            'message' => $release['name'] !== '' ? 'Canal de testes: ' . $release['name'] : 'Canal de testes.',
+            'download_url' => $page,
+            'changelog_url' => $page,
+            'minimum_whmcs' => '',
+            'minimum_php' => '',
         ];
     }
 

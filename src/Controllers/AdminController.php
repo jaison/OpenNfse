@@ -331,6 +331,12 @@ final class AdminController
                 'requiresTokenMessage' => 'Método inválido para salvar configuração.',
                 'handler' => [$this->configController, 'saveConfig'],
             ],
+            'saveUpdateChannel' => [
+                'method' => 'POST',
+                'requiresToken' => true,
+                'requiresTokenMessage' => 'Método inválido para salvar o canal de atualização.',
+                'handler' => [$this->configController, 'saveUpdateChannel'],
+            ],
             'updater' => [
                 'method' => 'GET',
                 'requiresToken' => false,
