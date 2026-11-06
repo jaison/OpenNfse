@@ -348,6 +348,18 @@ final class AdminController
                 'requiresTokenMessage' => 'Método inválido para retomar a operação.',
                 'handler' => [$this->updaterController, 'resume'],
             ],
+            'updaterBackup' => [
+                'method' => 'POST',
+                'requiresToken' => true,
+                'requiresTokenMessage' => 'Método inválido para gerar o backup.',
+                'handler' => [$this->updaterController, 'createBackup'],
+            ],
+            'updaterBackupDownload' => [
+                'method' => 'POST',
+                'requiresToken' => true,
+                'requiresTokenMessage' => 'Método inválido para baixar o backup.',
+                'handler' => [$this->updaterController, 'downloadBackup'],
+            ],
         ];
 
         // Durante a atualização, o módulo só abre a tela do atualizador.
