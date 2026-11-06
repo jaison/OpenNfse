@@ -18,8 +18,15 @@ final class AddonVersionTest extends TestCase
     {
         $verAplic = AddonVersion::verAplic();
 
-        $this->assertSame('whmcs-nfse/' . AddonVersion::current(), $verAplic);
+        $this->assertStringStartsWith('whmcs-nfse/' . preg_replace('/-.*$/', '', (string) AddonVersion::current()), $verAplic);
         $this->assertLessThanOrEqual(20, strlen($verAplic));
+    }
+
+    public function testVerAplicCompactsPrereleaseSuffixToFit(): void
+    {
+        $this->assertSame('whmcs-nfse/1.0.0', AddonVersion::verAplic('1.0.0'));
+        $this->assertSame('whmcs-nfse/1.0.0rc1', AddonVersion::verAplic('1.0.0-rc.1'));
+        $this->assertSame('whmcs-nfse/1.0.0-rc', AddonVersion::verAplic('1.0.0-rc'));
     }
 
     public function testVerAplicNeverExceedsTwentyCharacters(): void

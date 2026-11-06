@@ -41,7 +41,8 @@ final class AddonVersion
 
     /**
      * verAplic da DPS: "whmcs-nfse/<versão>", sempre com no máximo 20 caracteres.
-     * Sem versão legível (ou com caracteres estranhos), usa só "whmcs-nfse".
+     * Se não couber, o sufixo de pré-release perde hífen e pontos (1.0.0-rc.1 → 1.0.0rc1);
+     * se ainda não couber, corta. Sem versão legível (ou com caracteres estranhos), usa só "whmcs-nfse".
      */
     public static function verAplic(?string $version = null): string
     {
@@ -50,6 +51,18 @@ final class AddonVersion
             return self::VER_APLIC_FALLBACK;
         }
 
-        return substr(self::VER_APLIC_PREFIX . $version, 0, self::VER_APLIC_MAX_LENGTH);
+        $full = self::VER_APLIC_PREFIX . $version;
+        if (strlen($full) <= self::VER_APLIC_MAX_LENGTH) {
+            return $full;
+        }
+        $dash = strpos($version, '-');
+        if ($dash !== false) {
+            $compact = self::VER_APLIC_PREFIX . substr($version, 0, $dash) . str_replace(['-', '.'], '', substr($version, $dash + 1));
+            if (strlen($compact) <= self::VER_APLIC_MAX_LENGTH) {
+                return $compact;
+            }
+        }
+
+        return substr($full, 0, self::VER_APLIC_MAX_LENGTH);
     }
 }

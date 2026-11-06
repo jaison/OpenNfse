@@ -91,7 +91,8 @@ final class DpsBuilderServiceTest extends TestCase
         $xml = $this->buildXml($this->config(DpsLayoutService::MODE_NT009), $this->clientePfSemEndereco(), '100.00');
 
         $this->assertSame(1, preg_match('#<verAplic>([^<]*)</verAplic>#', $xml, $m));
-        $this->assertSame('whmcs-nfse/' . AddonVersion::current(), $m[1]);
+        $this->assertSame(AddonVersion::verAplic(), $m[1]);
+        $this->assertStringStartsWith('whmcs-nfse/' . preg_replace('/-.*$/', '', (string) AddonVersion::current()), $m[1]);
         $this->assertLessThanOrEqual(20, strlen($m[1]));
     }
 
