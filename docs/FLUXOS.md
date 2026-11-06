@@ -458,8 +458,8 @@ flowchart LR
 
 A origem recomendada é o cron do WHMCS, pelo hook `AfterCronJob`. `cron.php` continua disponível para execução manual pela CLI. As duas origens passam pelos mesmos controles:
 
-1. Roda as migrations pendentes e sai se não houver configuração salva.
-2. Tenta o lock MySQL `<banco>.mod_opennfse_cron` sem esperar (`CronLockService`). Se outro processo está com o lock, sai e grava o log `CRON_LOCK_BUSY`, no máximo um a cada 15 minutos (`cron_lock_busy_at` na configuração).
+1. Com a [pausa do atualizador](#atualizador-embutido) ativa, sai sem fazer nada, nem as migrations. Fora da pausa, roda as migrations pendentes e sai se não houver configuração salva.
+2. Tenta o lock MySQL `<banco>.mod_opennfse_cron` sem esperar (`CronLockService`). Se outro processo está com o lock, sai e grava o log `CRON_LOCK_BUSY`, no máximo um a cada 15 minutos (`cron_lock_busy_at` na configuração). Com o lock, processa primeiro os eventos de fatura guardados durante a pausa (`HookGate::replayPending()`, até 200 por ciclo), para que a emissão que eles enfileiram saia na mesma rodada. Grava `UPDATER_REPLAY` quando processa algum evento e `UPDATER_REPLAY_ERROR` se a etapa falhar, sem interromper o ciclo.
 3. **Proteção por minuto**: compara `cron_last_minute_key` (formato `YmdHi`) com o minuto atual e sai se o cron já rodou neste minuto. Depois grava `cron_last_run_at`, `cron_last_source` (`whmcs_cron` ou `standalone`) e a chave do minuto.
 4. Com `queue_enabled = 1`:
    - trata as conferências de criação pendentes (`GenerationCheckService::processPending()`, até 200; ver [Emissão automática na geração da fatura](#emissão-automática-na-geração-da-fatura)). Uma falha nessa etapa vai para o log `QUEUE_AUTO_CREATED_ERROR` e não interrompe o ciclo;
@@ -468,7 +468,7 @@ A origem recomendada é o cron do WHMCS, pelo hook `AfterCronJob`. `cron.php` co
    - consulta até 50 notas `EMITIDA` sem chave para recuperar a chave, com a mesma exclusão.
 5. Executa as novas tentativas vencidas do e-mail automático (`AutoEmailService::processRetries()`, até 20 por ciclo), com ou sem fila, desde que `auto_send_nfse_email = 1`.
 6. Faz a [conferência diferida do total](#conferência-diferida-do-total) dos alertas de NFS-e (`runAlertChecks()`), com a fila ligada ou não. Uma falha nessa etapa vai para o log `NFSE_ALERTA_ERRO` e não interrompe o ciclo.
-7. Verifica atualização do módulo se a última checagem tiver mais de 24 h (`UpdateCheckService`).
+7. Verifica atualização do módulo se a última checagem tiver mais de 24 h (`UpdateCheckService`, ver [Atualizador embutido](#atualizador-embutido)).
 8. Limpa logs e itens `DONE`/`RESOLVIDO` da fila conforme a retenção configurada.
 9. Libera o lock. Falhas são registradas como `CRON_ERROR` (ou `CRON_HOOK_ERROR`, quando vêm do hook).
 
@@ -633,7 +633,7 @@ Todas as telas do addon (Dashboard, Fila, Relatórios, Configurações e as tela
 
 - à esquerda, o logo e "OpenNfse" e, depois de um divisor, o título da tela (o `h1` da página) com o subtítulo na mesma linha: "Visão geral · Operação fiscal de Novembro 2026", "Fila · Itens de emissão e consulta", "Relatórios · Notas, cancelamentos e exportações", "Configurações · Certificado, prestador e processamento"; as telas internas (alertas, cancelamento, logs) têm título próprio. Em espaço curto, o texto termina em reticências, e o texto inteiro fica na dica (title);
 - o estado da fila, com link para a Fila: "Fila: vazia", "Fila: 1 pendente", "Fila: 3 pendentes" ou, com erro em aberto, "Fila: 2 com erro · 3 pendentes". O ponto fica vermelho com erro em aberto (`ERROR`) ou com o cron parado ou nunca executado (mesmas regras do card Fila agora) e verde nos demais casos. Vem de `QueueRepository::currentSnapshot()`, uma consulta por tela; se ela falhar, o estado não aparece e a tela segue normal;
-- a pílula da versão: com versão nova, "v0.1.26 → 0.1.27 disponível", com link para **Configurações > Processamento**.
+- a pílula da versão: com versão nova, "v1.0.0 → 1.0.1 disponível", com link para **Configurações > Atualizações**.
 - por último, presas à direita, as abas **Dashboard**, **Fila**, **Relatórios** e **Configurações**, com ícone, separadas do estado da fila e da versão por um divisor; a aba da tela aberta fica destacada. Como vêm por último, ficam no mesmo lugar em todas as telas, qualquer que seja o tamanho do título.
 
 Em tela estreita (barra com menos de 1100px), o subtítulo some primeiro; abaixo de 900px, as abas descem para a linha de baixo, alinhadas à direita, e marca, título e estado da fila ficam na primeira. Não há linha de título separada: depois da barra vem o conteúdo da tela. Nas telas do addon, o título "OpenNfse" que o WHMCS imprime acima do conteúdo fica escondido: o hook `AdminAreaHeadOutput` acrescenta `<style>#contentarea > div > h1:first-of-type{display:none}</style>` só em `addonmodules.php?module=OpenNfse` (`AdminNav::moduleTitleStyle`).
@@ -706,3 +706,80 @@ Na situação **Paga após a emissão**, as duas datas são levadas ao mesmo fus
 Filtros: período de emissão (**Emitida de** e **Emitida até**, sobre `emitida_em`), situação (todas, fatura não paga ou paga após a emissão) e cliente (ID ou parte do nome, do sobrenome ou da empresa). A tela mostra até 500 notas, da emissão mais recente para a mais antiga. Quando o total do filtro passa disso, ela avisa "Exibindo as N notas mais recentes de M. Use os filtros ou o CSV para ver as demais.". Cada linha traz data de emissão, fatura, cliente, número e chave da NFS-e, status da fatura, data de pagamento, valor e situação. Abaixo vêm os totais de notas, de cada situação e do valor das faturas. A tela também leva à lista de [alertas de NFS-e](#alertas-de-nfs-e).
 
 **Exportar CSV** usa os mesmos filtros, com até 5.000 linhas separadas por `;` e as colunas `emitida_em`, `invoiceid`, `cliente`, `numero_nf`, `chave_acesso`, `status_fatura`, `data_pagamento`, `valor`, `credito_aplicado` e `situacao`. Cada célula passa pelo `CsvSanitizer`: um valor que começa com `=`, `+`, `-`, `@`, TAB ou CR recebe um apóstrofo na frente, para a planilha tratá-lo como texto e não como fórmula. Números simples, inclusive negativos, ficam como estão.
+
+## Atualizador embutido
+
+A tela **Configurações > Atualizações** mostra a versão instalada e a mais recente. Com versão nova, **Atualizar agora** abre `action=updater` (`UpdaterController`), que conduz as quatro etapas. Enquanto a pausa estiver ativa, é a única tela do módulo que abre no admin: qualquer outra `action` mostra o atualizador.
+
+### Checagem de versão
+
+`UpdateCheckService::checkNow()` roda pelo cron (no máximo a cada 24 h) ou pelo botão **Verificar agora**.
+
+- **Canal Estável** (padrão, `update_channel` vazio ou `stable`): lê o `update.json` da `main` em `raw.githubusercontent.com`.
+- **Canal Testes** (`update_channel = beta`): lê a API de releases do GitHub e escolhe a maior versão, pré-releases incluídas, que tenha os arquivos `OpenNfse-<versão>.zip` e `.sha256` anexados. O SHA-256 vem do arquivo `.sha256` do release.
+
+O manifesto só é aceito com `package_url` igual a `https://github.com/jaison/OpenNfse/releases/download/v<versão>/OpenNfse-<versão>.zip` e `package_sha256` com 64 caracteres hexadecimais. Sem esses dois campos, a versão aparece, mas só pode ser instalada à mão. O resultado fica em `mod_opennfse_config` (`update_*`).
+
+### Etapa 1: checagem
+
+`PreflightCheck::run()` não altera nada. Cada item volta `ok`, `warn` ou `fail`, e qualquer `fail` bloqueia a pausa:
+
+- pacote anunciado, com SHA-256, e mais novo que o instalado;
+- PHP e WHMCS mínimos do manifesto e extensões `zip`, `curl`, `openssl` e `json`;
+- instalação a partir do pacote: `build-info.json` com a mesma versão de `OpenNfse.php` e nenhum `.git` na pasta;
+- `UpdateTempPath` do WHMCS preenchido, existente e gravável;
+- criação, renomeação e remoção de pasta em `modules/addons` e escrita em todas as pastas do módulo;
+- espaço livre na pasta temporária e em `modules/addons`: o maior entre 100 MB e três vezes o tamanho do módulo.
+
+As provas de escrita criam e apagam arquivos de verdade. A localização da pasta temporária (dentro ou fora do webroot) só gera aviso e decide se a cópia do backup pode ficar no servidor.
+
+### Etapa 2: pausa da operação
+
+`MaintenanceMode::pause()` grava `paused = 1` em `mod_opennfse_updater`, que sobrevive à troca dos arquivos. Se a tabela não puder ser lida, a pausa conta como desligada. Com a pausa ativa:
+
+- os 12 hooks de fatura passam por `HookGate::run()`, que grava o evento em `mod_opennfse_updater_events` (só valores simples das `vars`) em vez de chamar o handler. Se não conseguir gravar, chama o handler como se não houvesse pausa, porque perder o evento é pior;
+- os hooks de tela (`AdminInvoicesControlsOutput`, `ClientAreaPageViewInvoice`, `ClientAreaHeadOutput`, `ClientAreaPrimaryNavbar`) não mostram nada e o `AfterCronJob` não roda;
+- `cron.php` sai antes das migrations, e `Migrator::up()` não roda, exceto quando o atualizador pede (`up(true)`);
+- `opennfse_clientarea()` mostra só um aviso de manutenção, inclusive para downloads;
+- o admin só abre o atualizador.
+
+A etapa seguinte só libera quando a pausa tem pelo menos 60 segundos (tempo para terminar requisições que começaram antes) e o lock do cron está livre (`MaintenanceMode::isSettled()`). Até a troca dos arquivos, **Retomar operação** cancela tudo: apaga a cópia do backup, roda as migrations e processa os eventos guardados (com o lock do cron; se o cron estiver rodando, ele mesmo processa).
+
+### Etapa 3: backup das tabelas
+
+`TableBackup::dump()` gera um SQL compactado (gzip) com `DROP TABLE`, `CREATE TABLE` e `INSERT` de todas as tabelas `mod_opennfse_*`, exceto `mod_opennfse_updater` e `mod_opennfse_updater_events`, para que restaurar o backup não apague a pausa nem os eventos guardados.
+
+- Um comando por linha: os textos vêm escapados pelo banco. Os `INSERT` têm até 1 MB e as linhas são lidas sem buffer no cliente.
+- O backup não troca o charset da conexão (sem `SET NAMES`). Assim, os bytes voltam exatamente como saíram, também nas instalações em que o WHMCS conversa com o banco em latin1. O cabeçalho registra o charset da conexão (`charset=`), e a restauração recusa o arquivo se a conexão atual estiver em outro.
+- O SHA-256, o tamanho, a quantidade de tabelas e linhas e o caminho ficam em `mod_opennfse_updater.data`.
+- O arquivo é gerado no `UpdateTempPath` quando ele fica fora do webroot (cópia no servidor até a confirmação). Senão, é gerado na pasta temporária do PHP e apagado logo depois do download.
+- O download (`updaterBackupDownload`) é obrigatório para seguir. Se a geração falhar, o erro aparece na própria etapa, porque durante a pausa os relatórios não abrem.
+
+### Etapa 4: troca dos arquivos
+
+`UpdaterController::install()` roda ainda com o código atual:
+
+1. Confere de novo o pacote anunciado e a checagem do ambiente.
+2. `PackageDownloader` baixa o zip para o `UpdateTempPath`: só HTTPS, só `github.com` e os hosts de arquivos do GitHub, cada redirecionamento conferido antes de ser seguido, no máximo 60 MB.
+3. `PackageInstaller::prepare()` confere o SHA-256, extrai entrada por entrada (recusa caminhos fora de `OpenNfse/`, `..`, links simbólicos e mais de 300 MB extraídos), exige os arquivos principais, a versão anunciada em `OpenNfse.php` e no `build-info.json`, e checa a sintaxe do código do módulo (raiz e `src/`) com o tokenizador do PHP, sem executá-lo.
+4. `stage()` monta `modules/addons/OpenNfse.new`, por `rename` ou por cópia se a pasta temporária estiver em outro disco.
+5. Carrega as classes que a requisição ainda vai usar e chama `swap()`: `OpenNfse` vira `OpenNfse.old` e `OpenNfse.new` vira `OpenNfse`. Se a segunda troca falhar, a primeira é desfeita. Depois limpa o opcache.
+
+Qualquer falha antes da troca apaga o pacote, a extração e a `OpenNfse.new`, mostra o erro na etapa 4 e mantém os arquivos atuais.
+
+A checagem final (`updaterVerify`) roda numa requisição nova, já com o código novo: versão em `OpenNfse.php`, arquivos principais, carregamento das classes principais e `Migrator::up(true)`. O resultado vai para `data.verify`, e a etapa fica `installed` ou `verify_failed`.
+
+### Confirmar ou voltar
+
+Depois da troca, **Retomar operação** só aparece se os arquivos já voltaram para a versão anterior. As saídas são:
+
+- **Confirmar e retomar operação** (`updaterConfirm`, só com a checagem final aprovada): apaga `OpenNfse.old` e a cópia do backup, retoma a operação e processa os eventos guardados.
+- **Voltar ao estado anterior** (`updaterRollback`): restaura as tabelas pelo backup do servidor, ou pelo arquivo enviado na tela, que precisa ter o SHA-256 registrado na etapa 3. Depois põe `OpenNfse.old` de volta no lugar e apaga a versão nova. A operação continua pausada até **Retomar operação**.
+
+Como a restauração regrava `mod_opennfse_logs`, os logs gravados entre o backup e a volta se perdem. O `UPDATER_ROLLBACK` é gravado depois da restauração.
+
+Logs do atualizador: `UPDATER_PAUSE`, `UPDATER_RESUME`, `UPDATER_BACKUP`, `UPDATER_BACKUP_ERROR`, `UPDATER_BACKUP_DOWNLOAD`, `UPDATER_INSTALL_ERROR`, `UPDATER_SWAP`, `UPDATER_VERIFY_OK`, `UPDATER_VERIFY_FAIL`, `UPDATER_ROLLBACK`, `UPDATER_ROLLBACK_ERROR`, `UPDATER_CONFIRM`, `UPDATER_REPLAY` e `UPDATER_REPLAY_ERROR`.
+
+### Pacote do release
+
+O workflow `.github/workflows/release-package.yml` roda quando um release é publicado. Ele confere se a versão de `OpenNfse.php` bate com a tag, gera `OpenNfse-<versão>.zip` com `git archive` (o `.gitattributes` tira testes, ferramentas e arquivos de desenvolvimento) e acrescenta o `build-info.json` (módulo, versão, commit e data). Depois anexa o zip e o `.sha256` ao release.

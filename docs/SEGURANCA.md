@@ -23,7 +23,8 @@ Documentar as regras de segurança operacionais do OpenNfse, os controles já im
   - emissão, reemissão, consulta de status e cancelamento (inclusive de XML órfão);
   - fila (`filaCheckNow`, `filaRetry`, `filaProcessNow`);
   - salvamento de configuração, DANFS-e, catálogo Serviço/NBS e mapeamento por grupo;
-  - validação de certificado, teste de conexão, sincronização IBGE e verificação de atualização;
+  - validação de certificado, teste de conexão, sincronização IBGE, verificação de atualização e canal de atualização;
+  - etapas do atualizador: pausa, retomada, backup, download do backup, instalação, volta ao estado anterior e confirmação. A checagem final (`updaterVerify`) é `GET` e só age logo depois da troca das pastas;
   - sequenciais;
   - downloads, envio por e-mail, exportações CSV/ZIP e visualização detalhada de log.
 - Na área do cliente, `downloadXml`, `downloadPdf` e `sendEmail` exigem `POST`, token e que a fatura pertença ao cliente logado.
@@ -165,6 +166,16 @@ Atrás do Cloudflare, confira também o cabeçalho `cf-cache-status` (`curl -sI`
 
 Detalhes em [LEVANTAMENTO_SDK.md](LEVANTAMENTO_SDK.md#rede-tls-e-timeouts).
 
+### 7. Atualizador embutido
+
+- Só quem tem acesso ao addon no admin abre a tela do atualizador. As etapas que alteram arquivos ou dados exigem `POST` e token (seção 1).
+- O manifesto vem do GitHub (`raw.githubusercontent.com` no canal Estável, `api.github.com` no canal Testes). O pacote só é aceito no endereço do release da versão anunciada, com SHA-256 de 64 caracteres.
+- O download é feito só por HTTPS e só de `github.com` e dos hosts de arquivos do GitHub. Cada redirecionamento é conferido antes de ser seguido, e o tamanho é limitado.
+- O SHA-256 do pacote é conferido antes da extração. A extração recusa caminhos fora de `OpenNfse/`, `..`, barras invertidas, links simbólicos e pacotes grandes demais, e grava entrada por entrada.
+- Antes da troca, a sintaxe do código do módulo é checada com o tokenizador do PHP, sem executar o código novo.
+- O backup das tabelas traz a configuração do módulo. O arquivo é criado com permissão `0600`. A cópia só fica no servidor quando o `UpdateTempPath` do WHMCS está fora do webroot, e é apagada na confirmação ou na retomada. A restauração só aceita o arquivo com o SHA-256 registrado na geração.
+- A pasta anterior fica em `modules/addons/OpenNfse.old` até a confirmação, protegida pelo mesmo `.htaccess` da pasta do módulo.
+
 ## Diretrizes para desenvolvimento
 
 ### Novas actions
@@ -203,3 +214,4 @@ Antes de colocar o módulo em produção:
 - Validar emissão, consulta, download XML, download PDF e envio por e-mail.
 - Confirmar que não existem links com `token=` expostos nas telas do módulo.
 - Revisar logs para garantir que não há vazamento desnecessário de dados sensíveis.
+- Para usar o atualizador embutido, conferir que o **Temporary Path** do WHMCS (**Utilities > Update WHMCS**) está configurado e, de preferência, fora do webroot. Guardar o arquivo de backup baixado durante a atualização em local seguro.

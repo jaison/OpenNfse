@@ -13,6 +13,7 @@ Tabelas e campos do WHMCS lidos pelo OpenNfse e como cada um entra na emissão, 
 | Moeda do tomador no exterior | `tblcurrencies` |
 | Gateways habilitados | `tblpaymentgateways` + `mod_opennfse_payment_gateway_settings` |
 | Política de emissão automática | `tblclients.groupid` + `tblclientgroups`, `tblcustomfields` + `tblcustomfieldsvalues`, `tblinvoiceitems.type` |
+| Pasta temporária e versão do WHMCS (atualizador) | `tblconfiguration` (`UpdateTempPath` e `Version`, lidos por `\WHMCS\Config\Setting`) |
 
 ## Tomador (`tblclients`)
 
@@ -122,7 +123,7 @@ Criadas e atualizadas pelos arquivos de [`migrations/`](../migrations/):
 
 | Tabela | Conteúdo |
 |---|---|
-| `mod_opennfse_config` | Ambiente, leiaute da DPS (`dps_leiaute`: `auto`, `pre_nt009` ou `nt009`), certificado, prestador, tributação, padrões do tomador, fila, política de emissão automática (`auto_emit_trigger`, `auto_emit_scope`, `auto_emit_group_ids`, `auto_emit_customfield_id`), e-mail, DANFS-e, aviso da área do cliente, retenção e metadados de cron, IBGE e atualização. |
+| `mod_opennfse_config` | Ambiente, leiaute da DPS (`dps_leiaute`: `auto`, `pre_nt009` ou `nt009`), certificado, prestador, tributação, padrões do tomador, fila, política de emissão automática (`auto_emit_trigger`, `auto_emit_scope`, `auto_emit_group_ids`, `auto_emit_customfield_id`), e-mail, DANFS-e, aviso da área do cliente, retenção e metadados de cron, IBGE e atualização (`update_*`, inclusive `update_package_url`, `update_package_sha256` e `update_channel`). |
 | `mod_opennfse_notas` | Uma linha por fatura: status, `id_dps`, chave, número, competência, `xml_path`, dados de cancelamento, erro, contador de E2404 e controle do e-mail automático. |
 | `mod_opennfse_notas_history` | Histórico fiscal: cada emissão, cancelamento e snapshot. |
 | `mod_opennfse_queue` | Fila: status, tentativas, consultas, `next_check_at`, `last_error`, `correlation_id`, `allow_unpaid` e `origem` (`gerada`, `paga` ou `manual`). |
@@ -134,3 +135,7 @@ Criadas e atualizadas pelos arquivos de [`migrations/`](../migrations/):
 | `mod_opennfse_ibge_municipios` | Catálogo local de municípios IBGE. |
 | `mod_opennfse_nsu_sync`, `mod_opennfse_distribuicao_dfe` | Estado e documentos da sincronização por NSU (Auditoria API). |
 | `mod_opennfse_dps_audit_runs`, `mod_opennfse_dps_audit_results` | Execuções e resultados da Auditoria DPS > API. |
+| `mod_opennfse_alertas`, `mod_opennfse_alerta_checks` | Alertas de NFS-e e pedidos de conferência diferida do total. |
+| `mod_opennfse_geracao_checks` | Conferências de criação de fatura, tratadas pelo cron. |
+| `mod_opennfse_updater` | Estado do atualizador embutido (uma linha): pausa, etapa, versões de origem e destino e dados da etapa em JSON (backup, checagem final). Fica fora do backup das tabelas. |
+| `mod_opennfse_updater_events` | Eventos de hook de fatura guardados durante a pausa, processados na volta. Fica fora do backup das tabelas. |

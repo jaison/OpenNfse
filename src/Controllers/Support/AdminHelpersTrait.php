@@ -183,7 +183,7 @@ trait AdminHelpersTrait
                 'current' => (string) ($status['current_version'] ?? ''),
                 'latest' => (string) ($status['latest_version'] ?? ''),
                 'update_available' => !empty($status['update_available']),
-                'href' => 'addonmodules.php?module=OpenNfse&action=config&tab=processamento',
+                'href' => 'addonmodules.php?module=OpenNfse&action=config&tab=atualizacoes',
             ];
         } catch (\Throwable $e) {
             $data['version'] = [];

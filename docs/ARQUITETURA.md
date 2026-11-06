@@ -14,7 +14,7 @@ Os fluxos (emissão, fila, cron, cancelamento etc.) estão em [FLUXOS.md](FLUXOS
 
 Todos ficam em `modules/addons/OpenNfse/`:
 
-- [`OpenNfse.php`](../OpenNfse.php): registro do addon (`opennfse_config`), ativação (roda as migrations), saída do admin (`opennfse_output` → `AdminController`) e área do cliente (`opennfse_clientarea` → `ClientController`).
+- [`OpenNfse.php`](../OpenNfse.php): registro do addon (`opennfse_config`), ativação (roda as migrations), saída do admin (`opennfse_output` → `AdminController`) e área do cliente (`opennfse_clientarea` → `ClientController`; durante a pausa do atualizador, só um aviso de manutenção).
 - [`hooks.php`](../hooks.php): registra os hooks do WHMCS:
   - `AdminInvoicesControlsOutput`: botões e status da NFS-e na fatura do admin (`InvoiceHook`).
   - `InvoicePaid`: enfileira a emissão automática no pagamento (`InvoicePaidHook`, prioridade 1) e, num hook separado de prioridade 2, confere o alerta de crédito após a emissão (`InvoiceAlertHook::onPaid()`).
@@ -23,11 +23,12 @@ Todos ficam em `modules/addons/OpenNfse/`:
   - `InvoiceCancelled`, `InvoiceRefunded`, `InvoiceUnpaid` e `AddTransaction`: abrem alertas de NFS-e quando a fatura já tem nota emitida (`InvoiceAlertHook`). O `AddTransaction` só age em transação de saída (estorno total ou parcial, reversão de pagamento).
   - `UpdateInvoiceTotal`, `AddInvoiceLateFee` e `InvoiceSplit`: só registram o pedido de conferência do total, que o cron faz depois (`InvoiceAlertHook::onTotalChanged()` e `onTotalChangedBy()` → `AlertCheckService`).
   - Os hooks de alerta só observam: não cancelam nota nem bloqueiam o fluxo do WHMCS.
+  - Os 12 hooks de fatura acima passam por `Updater\HookGate`: fora da pausa do atualizador, chamam o handler na hora; durante a pausa, guardam o evento para depois. Os hooks de tela e o `AfterCronJob` não fazem nada durante a pausa (ver [Atualizador embutido em FLUXOS.md](FLUXOS.md#atualizador-embutido)).
   - `AfterCronJob`: roda o cron do módulo junto com o cron do WHMCS (`CronService::runFromWhmcsCron()`).
   - `ClientAreaPageViewInvoice`: resumo da NFS-e emitida na fatura da área do cliente (`ClientInvoiceHook`).
   - `ClientAreaPrimaryNavbar`: item "Notas Fiscais" no menu Billing.
   - `AdminAreaHeadOutput` e `ClientAreaHeadOutput`: incluem `assets/nfse-ui.css`.
-- [`cron.php`](../cron.php): execução avulsa do cron pela CLI (`CronService::run()`). Recusa acesso que não seja CLI.
+- [`cron.php`](../cron.php): execução avulsa do cron pela CLI (`CronService::run()`). Recusa acesso que não seja CLI e sai sem fazer nada durante a pausa do atualizador.
 - [`bootstrap.php`](../bootstrap.php): carrega `vendor-scoped/autoload.php`; se não existir, `vendor/autoload.php`; se também não existir, o autoload interno `src/Autoload.php`. Depois carrega `functions.php`.
 - [`functions.php`](../functions.php): funções globais auxiliares (`normalizarNome`, `getIbgeCode`).
 - [`src/Module.php`](../src/Module.php): fábrica simples dos controllers, hooks, migrator e cron.
@@ -36,8 +37,9 @@ Todos ficam em `modules/addons/OpenNfse/`:
 
 ### Controllers (`src/Controllers/`)
 
-- `AdminController`: roteador do admin. Cada action declara o método HTTP (`GET`/`POST`) e se exige token CSRF. Delega às classes abaixo. Na Dashboard, só lê os dados (`ReportRepository`, atualização, certificado, auditoria, alertas) e imprime o HTML de `Views/Dashboard/DashboardView`.
-- `ConfigController`: configuração geral (inclusive a política de emissão automática, com a lista de `tblclientgroups` e dos custom fields de cliente em `tblcustomfields`, e o aviso quando o campo configurado foi apagado), certificado (validação e teste de conexão), DANFS-e, catálogo Serviço/NBS, mapeamento por grupo de produto, sincronização IBGE e verificação de atualização.
+- `AdminController`: roteador do admin. Cada action declara o método HTTP (`GET`/`POST`) e se exige token CSRF. Delega às classes abaixo. Durante a pausa do atualizador, só as actions de `UpdaterController::ACTIONS` abrem; as demais mostram a tela do atualizador. Na Dashboard, só lê os dados (`ReportRepository`, atualização, certificado, auditoria, alertas) e imprime o HTML de `Views/Dashboard/DashboardView`.
+- `ConfigController`: configuração geral (inclusive a política de emissão automática, com a lista de `tblclientgroups` e dos custom fields de cliente em `tblcustomfields`, e o aviso quando o campo configurado foi apagado), certificado (validação e teste de conexão), DANFS-e, catálogo Serviço/NBS, mapeamento por grupo de produto, sincronização IBGE, verificação de atualização e canal de atualização (`saveUpdateChannel`).
+- `UpdaterController`: tela do atualizador embutido (`updater`) e suas ações: pausa, retomada, backup, download do backup, instalação, checagem final, volta ao estado anterior e confirmação.
 - `QueueController`: tela da fila e ações `filaCheckNow`, `filaRetry` e `filaProcessNow`.
 - `NotasController`: emissão, reemissão, consulta de status, cancelamento, downloads e envio por e-mail a partir da fatura.
 - `ReportsController`: relatórios, auditorias, logs, exportações CSV/ZIP e cancelamento de XML órfão.
@@ -98,7 +100,18 @@ Auditoria e apoio:
 - `ApiAuditService`: sincroniza a distribuição de documentos da API por NSU (tela `auditoria_api` do `ReportsController`, que hoje não está na lista de abas do relatório).
 - `DpsApiAuditService`: confere as DPS de uma competência diretamente na API e procura lacunas na sequência (relatório "Auditoria DPS > API").
 - `IbgeService`: catálogo local de municípios IBGE (sincronização a partir da fonte primária, com aprovação de hash) e resolução do código IBGE por nome/UF, com ViaCEP como apoio pelo CEP.
-- `UpdateCheckService`: lê o manifesto `update.json` do repositório e informa se há versão nova. A checagem é manual ou automática, pelo cron, a cada 24 h.
+- `UpdateCheckService`: informa se há versão nova. No canal Estável lê o manifesto `update.json` da `main`; no canal Testes lê a API de releases do GitHub, pré-releases incluídas. Aceita o pacote (`package_url` e `package_sha256`) só no endereço do release da versão anunciada. A checagem é manual ou automática, pelo cron, a cada 24 h.
+
+### Atualizador (`src/Updater/`)
+
+- `PreflightCheck`: etapa 1, checagem do ambiente sem alterar nada.
+- `MaintenanceMode`: pausa da operação (marca em `mod_opennfse_updater`), espera do processamento em andamento e gravação dos eventos guardados.
+- `HookGate`: porta de entrada dos hooks de fatura; guarda os eventos durante a pausa e os processa depois (`replayPending()`).
+- `TableBackup`, `BackupDatabase` e `PdoBackupDatabase`: backup e restauração das tabelas `mod_opennfse_*` sem trocar o charset da conexão.
+- `PackageDownloader`: download do pacote só do GitHub, por HTTPS, com os redirecionamentos conferidos.
+- `PackageInstaller`: conferência e extração do pacote, checagem de sintaxe, troca das pastas, volta e remoção da versão anterior.
+- `UpdaterStore` e `CapsuleUpdaterStore`: estado do atualizador e eventos guardados (`mod_opennfse_updater` e `mod_opennfse_updater_events`).
+- `UpdaterEnvironment` e `WhmcsUpdaterEnvironment`: pasta do módulo, `UpdateTempPath`, versão do WHMCS e raízes web, separados para os testes.
 - `CryptoService`: criptografa e descriptografa a senha do certificado com `encrypt`/`decrypt` do WHMCS.
 - `TokenService`: token CSRF das actions.
 - `UiService`: cabeçalho, rodapé e mensagens das telas do admin.
@@ -142,6 +155,8 @@ O uso dos campos do WHMCS está em [MAPEAMENTO_DADOS_WHMCS.md](MAPEAMENTO_DADOS_
 - `CorrelationIdGenerator`: gera o `correlation_id` que liga fila e logs de uma mesma operação.
 - `ActionFormRenderer`: formulários `POST` com token para as ações das telas.
 - `NameNormalizer` e `UfNormalizer`: normalização de nomes de município e UF.
+- `WebRoot`: diz se um caminho fica dentro do webroot (`DOCUMENT_ROOT` ou a raiz do WHMCS). Usado na validação do certificado A1 e na decisão de guardar a cópia do backup do atualizador no servidor.
+- `BacenCurrency`: código da moeda na tabela do Banco Central para o `tpMoeda` do comércio exterior.
 
 ### Componentes de tela (`src/Views/Ui.php`)
 
@@ -166,7 +181,7 @@ Classes puras, sem acesso ao banco, testadas em `tests/Views/Dashboard/`. O HTML
 ### Migrations
 
 - [`src/Migrations/Migrator.php`](../src/Migrations/Migrator.php) executa em ordem todos os arquivos de [`migrations/`](../migrations/). Erros de coluna, tabela ou índice já existentes são ignorados, então rodar de novo é seguro.
-- O migrator é chamado na ativação do addon e também no início do cron, da fila, da emissão, do hook `InvoicePaid`, de cada enfileiramento (`QueueService::enqueueEmit()`), das telas do admin e da área do cliente. Por isso, ao atualizar os arquivos do addon, as migrations novas são aplicadas sozinhas. O `AlertService` também roda o migrator quando a tabela `mod_opennfse_alertas` ainda não existe na hora de abrir um alerta, e o `AlertCheckService` faz o mesmo com `mod_opennfse_alerta_checks` na hora de registrar um pedido de conferência. O `GenerationCheckService` faz o mesmo com `mod_opennfse_geracao_checks`.
+- O migrator é chamado na ativação do addon e também no início do cron, da fila, da emissão, do hook `InvoicePaid`, de cada enfileiramento (`QueueService::enqueueEmit()`), das telas do admin e da área do cliente. Por isso, ao atualizar os arquivos do addon, as migrations novas são aplicadas sozinhas. Durante a pausa do atualizador, o migrator não roda, exceto quando o próprio atualizador pede (`up(true)`, na checagem final). O `AlertService` também roda o migrator quando a tabela `mod_opennfse_alertas` ainda não existe na hora de abrir um alerta, e o `AlertCheckService` faz o mesmo com `mod_opennfse_alerta_checks` na hora de registrar um pedido de conferência. O `GenerationCheckService` faz o mesmo com `mod_opennfse_geracao_checks`.
 - Uma guarda estática faz o migrator rodar no máximo uma vez por processo PHP: as chamadas seguintes no mesmo processo (por exemplo, um enfileiramento por fatura na geração em lote) não repetem as migrations.
 
 ## Status internos
@@ -200,5 +215,6 @@ Status da fila (`mod_opennfse_queue.status`): `PENDING`, `RUNNING`, `WAIT_STATUS
 - Os anexos de e-mail são montados pelo serviço de e-mail a partir dos arquivos do módulo.
 - O SVG do cabeçalho do DANFS-e é sanitizado, e o XML é lido com `LIBXML_NONET`.
 - Os `.htaccess` da raiz e de `assets/` bloqueiam o acesso web direto aos arquivos do addon.
+- O atualizador só baixa pacotes do GitHub por HTTPS, confere o SHA-256 publicado antes de extrair e recusa pacotes com caminhos fora da pasta do módulo ou links simbólicos.
 
 Regras operacionais e checklist de produção em [SEGURANCA.md](SEGURANCA.md).

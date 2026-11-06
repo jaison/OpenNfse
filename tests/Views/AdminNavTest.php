@@ -71,7 +71,7 @@ final class AdminNavTest extends TestCase
         $html = AdminNav::bar('dashboard', [
             'logo_url' => 'https://whmcs.example/modules/addons/OpenNfse/assets/opennsfe_logo.png',
             'queue' => ['tone' => 'ok', 'text' => 'Fila: 3 pendentes', 'title' => 'Cron executado há 1 min (WHMCS)'],
-            'version' => ['current' => '0.1.26', 'latest' => '0.1.27', 'update_available' => true, 'href' => 'addonmodules.php?module=OpenNfse&action=config&tab=processamento'],
+            'version' => ['current' => '0.1.26', 'latest' => '0.1.27', 'update_available' => true, 'href' => 'addonmodules.php?module=OpenNfse&action=config&tab=atualizacoes'],
         ]);
 
         $this->assertStringContainsString(
@@ -82,7 +82,7 @@ final class AdminNavTest extends TestCase
         $this->assertStringContainsString(
             '<div class="nfse-navbar__status"><a class="nfse-navbar__queue" href="addonmodules.php?module=OpenNfse&amp;action=fila" title="Cron executado há 1 min (WHMCS)">'
             . '<span class="nfse-dot nfse-dot--ok" aria-hidden="true"></span>Fila: 3 pendentes</a>'
-            . '<a class="nfse-badge nfse-badge--version nfse-badge--warn" href="addonmodules.php?module=OpenNfse&amp;action=config&amp;tab=processamento">v0.1.26 → 0.1.27 disponível</a></div>',
+            . '<a class="nfse-badge nfse-badge--version nfse-badge--warn" href="addonmodules.php?module=OpenNfse&amp;action=config&amp;tab=atualizacoes">v0.1.26 → 0.1.27 disponível</a></div>',
             $html
         );
 
