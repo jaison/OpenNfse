@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenNfse\Controllers;
 
 use OpenNfse\Controllers\Support\AdminHelpersTrait;
+use OpenNfse\Helpers\AddonVersion;
 use OpenNfse\Helpers\WebRoot;
 use OpenNfse\Migrations\Migrator;
 use OpenNfse\Module;
@@ -15,6 +16,8 @@ use OpenNfse\Services\TokenService;
 use OpenNfse\Services\UpdateCheckService;
 use OpenNfse\Updater\HookGate;
 use OpenNfse\Updater\MaintenanceMode;
+use OpenNfse\Updater\PackageDownloader;
+use OpenNfse\Updater\PackageInstaller;
 use OpenNfse\Updater\PdoBackupDatabase;
 use OpenNfse\Updater\PreflightCheck;
 use OpenNfse\Updater\TableBackup;
@@ -30,7 +33,23 @@ final class UpdaterController
     use AdminHelpersTrait;
 
     /** Ações do admin que continuam abrindo durante a pausa. */
-    public const ACTIONS = ['updater', 'updaterPause', 'updaterResume', 'updaterBackup', 'updaterBackupDownload'];
+    public const ACTIONS = [
+        'updater', 'updaterPause', 'updaterResume', 'updaterBackup', 'updaterBackupDownload',
+        'updaterInstall', 'updaterVerify', 'updaterRollback', 'updaterConfirm',
+    ];
+
+    /** Etapas depois da troca das pastas: só sai delas confirmando ou voltando. */
+    private const AFTER_SWAP = ['swapped', 'installed', 'verify_failed'];
+
+    /** Classes que a checagem final carrega pelo autoload da versão nova. */
+    private const VERIFY_CLASSES = [
+        \OpenNfse\Module::class,
+        \OpenNfse\Controllers\AdminController::class,
+        \OpenNfse\Controllers\ClientController::class,
+        \OpenNfse\Services\NfseService::class,
+        \OpenNfse\Services\CronService::class,
+        \OpenNfse\Services\QueueService::class,
+    ];
 
     private const URL = 'addonmodules.php?module=OpenNfse&action=updater';
 
@@ -58,7 +77,7 @@ final class UpdaterController
         $this->renderPreflightStep($preflight, $paused);
         $this->renderPauseStep($preflight, $paused, $settled, $state);
         $this->renderBackupStep($paused, $settled);
-        $this->renderPendingStep('4. Atualização', 'Baixa o pacote, confere o SHA-256, troca os arquivos e faz a checagem final.');
+        $this->renderInstallStep($paused, $state);
 
         echo '</div></div>';
         if ($paused && !$settled) {
@@ -92,6 +111,9 @@ final class UpdaterController
     {
         if (!MaintenanceMode::isPaused()) {
             $this->redirect('');
+        }
+        if (!$this->canResume(MaintenanceMode::store()->state())) {
+            $this->redirect('resume_blocked');
         }
         // Retomar antes da troca dos arquivos cancela a atualização: a cópia do backup sai do servidor.
         $this->deleteBackupFile();
@@ -196,6 +218,217 @@ final class UpdaterController
     }
 
     /**
+     * Etapa 4, ainda com o código atual: baixa, confere, extrai e troca as pastas.
+     * A checagem final roda na próxima requisição (updaterVerify), já com o código novo.
+     */
+    public function install(): void
+    {
+        $state = MaintenanceMode::store()->state();
+        $data = $this->data();
+        if (!MaintenanceMode::isPaused() || !MaintenanceMode::isSettled([$this, 'cronIdle'])) {
+            $this->redirect('not_settled');
+        }
+        if (empty($data['backup']['downloaded_at'])) {
+            $this->redirect('backup_required');
+        }
+        if (in_array((string) ($state['step'] ?? ''), self::AFTER_SWAP, true)) {
+            $this->redirect('');
+        }
+        if (empty($_POST['ack_manual_rollback'])) {
+            $this->redirect('ack_required');
+        }
+
+        $status = $this->updateStatus();
+        $toVersion = (string) ($state['to_version'] ?? '');
+        $env = new WhmcsUpdaterEnvironment();
+        $moduleDir = $env->moduleDir();
+        $tempPath = $env->tempPath();
+        $zip = rtrim($tempPath, '/') . '/opennfse-pkg-' . bin2hex(random_bytes(4)) . '.zip';
+        $extracted = '';
+        @set_time_limit(0);
+        ignore_user_abort(true);
+
+        try {
+            if ($toVersion === '' || (string) $status['latest_version'] !== $toVersion || (string) $status['package_sha256'] === '') {
+                throw new \RuntimeException('O pacote anunciado mudou desde a pausa. Retome a operação e comece de novo.');
+            }
+            $preflight = (new PreflightCheck($env))->run($status, (string) $status['current_version']);
+            if (!$preflight['can_update']) {
+                throw new \RuntimeException('A checagem do ambiente não passou mais. Retome a operação e confira a etapa 1.');
+            }
+            $this->saveData($data, 'installing');
+            (new PackageDownloader())->download((string) $status['package_url'], $zip);
+            $installer = new PackageInstaller();
+            $extracted = $installer->prepare($zip, (string) $status['package_sha256'], $toVersion, $tempPath);
+            $installer->stage($extracted, $moduleDir);
+            // Depois da troca, o autoload aponta para os arquivos novos: carrega antes tudo o que
+            // esta requisição ainda usa, para não misturar classes das duas versões.
+            class_exists(LogRepository::class);
+            class_exists(\OpenNfse\Updater\CapsuleUpdaterStore::class);
+            $installer->swap($moduleDir);
+        } catch (\Throwable $e) {
+            @unlink($zip);
+            if ($extracted !== '') {
+                PackageInstaller::removeTree(dirname($extracted));
+            }
+            PackageInstaller::removeTree($moduleDir . PackageInstaller::NEW_SUFFIX);
+            $data['install_error'] = $e->getMessage();
+            $this->saveData($data, 'backup_ready');
+            $this->log('UPDATER_INSTALL_ERROR', ['to' => $toVersion], $e->getMessage());
+            $this->redirect('install_failed');
+        }
+
+        @unlink($zip);
+        PackageInstaller::removeTree(dirname($extracted));
+        unset($data['install_error']);
+        $data['swapped_at'] = date('Y-m-d H:i:s');
+        $this->saveData($data, 'swapped');
+        $this->log('UPDATER_SWAP', ['from' => $state['from_version'] ?? '', 'to' => $toVersion, 'admin' => $this->adminId()]);
+        header('Location: ' . self::URL . 'Verify');
+        exit;
+    }
+
+    /**
+     * Checagem final, já com o código da versão nova: migrations, versão e autoload.
+     */
+    public function verify(): void
+    {
+        $state = MaintenanceMode::store()->state();
+        if (!MaintenanceMode::isPaused() || (string) ($state['step'] ?? '') !== 'swapped') {
+            $this->redirect('');
+        }
+        $data = $this->data();
+        $toVersion = (string) ($state['to_version'] ?? '');
+        $moduleDir = (new WhmcsUpdaterEnvironment())->moduleDir();
+        $items = [];
+
+        $declared = PackageInstaller::declaredVersion($moduleDir);
+        $items[] = ['label' => 'Versão instalada', 'ok' => $declared === $toVersion, 'detail' => (string) $declared];
+        $missing = [];
+        foreach (['OpenNfse.php', 'hooks.php', 'bootstrap.php', 'cron.php', 'vendor-scoped/autoload.php'] as $file) {
+            if (!is_file($moduleDir . '/' . $file)) {
+                $missing[] = $file;
+            }
+        }
+        $items[] = ['label' => 'Arquivos principais', 'ok' => $missing === [], 'detail' => $missing === [] ? 'Todos no lugar.' : 'Faltam: ' . implode(', ', $missing)];
+        $classErrors = [];
+        foreach (self::VERIFY_CLASSES as $class) {
+            try {
+                if (!class_exists($class)) {
+                    $classErrors[] = $class;
+                }
+            } catch (\Throwable $e) {
+                $classErrors[] = $class . ' (' . $e->getMessage() . ')';
+            }
+        }
+        $items[] = ['label' => 'Carregamento do código', 'ok' => $classErrors === [], 'detail' => $classErrors === [] ? 'As classes principais carregam.' : implode('; ', $classErrors)];
+        try {
+            (new Migrator())->up(true);
+            $items[] = ['label' => 'Migrations', 'ok' => true, 'detail' => 'Aplicadas sem erro.'];
+        } catch (\Throwable $e) {
+            $items[] = ['label' => 'Migrations', 'ok' => false, 'detail' => $e->getMessage()];
+        }
+
+        $ok = !in_array(false, array_column($items, 'ok'), true);
+        $data['verify'] = ['ok' => $ok, 'items' => $items, 'at' => date('Y-m-d H:i:s')];
+        $this->saveData($data, $ok ? 'installed' : 'verify_failed');
+        $this->log($ok ? 'UPDATER_VERIFY_OK' : 'UPDATER_VERIFY_FAIL', ['to' => $toVersion, 'items' => $items]);
+        $this->redirect($ok ? 'verified' : 'verify_failed');
+    }
+
+    /**
+     * Volta ao estado anterior: tabelas pelo backup e a pasta OpenNfse.old de volta ao lugar.
+     * A operação continua pausada até "Retomar".
+     */
+    public function rollback(): void
+    {
+        $state = MaintenanceMode::store()->state();
+        if (!MaintenanceMode::isPaused() || !in_array((string) ($state['step'] ?? ''), self::AFTER_SWAP, true)) {
+            $this->redirect('');
+        }
+        $data = $this->data();
+        $backup = is_array($data['backup'] ?? null) ? $data['backup'] : [];
+        $sha = (string) ($backup['sha256'] ?? '');
+        $moduleDir = (new WhmcsUpdaterEnvironment())->moduleDir();
+        if (!is_dir($moduleDir . PackageInstaller::OLD_SUFFIX)) {
+            $this->redirect('rollback_no_old');
+        }
+
+        $file = (string) ($backup['file'] ?? '');
+        $uploaded = '';
+        if ($file === '' || !is_file($file)) {
+            $upload = $_FILES['backup_file'] ?? null;
+            if (!is_array($upload) || (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file((string) $upload['tmp_name'])) {
+                $this->redirect('rollback_upload_required');
+            }
+            $uploaded = rtrim(sys_get_temp_dir(), '/') . '/opennfse-restore-' . bin2hex(random_bytes(4)) . '.sql.gz';
+            if (!move_uploaded_file((string) $upload['tmp_name'], $uploaded)) {
+                $this->redirect('rollback_upload_required');
+            }
+            @chmod($uploaded, 0600);
+            $file = $uploaded;
+        }
+
+        @set_time_limit(0);
+        ignore_user_abort(true);
+        try {
+            (new TableBackup(new PdoBackupDatabase()))->restore($file, $sha);
+            (new PackageInstaller())->rollbackFiles($moduleDir);
+        } catch (\Throwable $e) {
+            if ($uploaded !== '') {
+                @unlink($uploaded);
+            }
+            $data['rollback_error'] = $e->getMessage();
+            $this->saveData($data);
+            $this->log('UPDATER_ROLLBACK_ERROR', [], $e->getMessage());
+            $this->redirect('rollback_failed');
+        }
+        if ($uploaded !== '') {
+            @unlink($uploaded);
+        }
+        unset($data['rollback_error']);
+        $data['rolled_back_at'] = date('Y-m-d H:i:s');
+        $this->saveData($data, 'rolled_back');
+        $this->log('UPDATER_ROLLBACK', ['to' => $state['from_version'] ?? '', 'admin' => $this->adminId()]);
+        $this->redirect('rolled_back');
+    }
+
+    /**
+     * Confirma a versão nova: apaga a pasta anterior e a cópia do backup e retoma a operação.
+     */
+    public function confirm(): void
+    {
+        $state = MaintenanceMode::store()->state();
+        if (!MaintenanceMode::isPaused() || (string) ($state['step'] ?? '') !== 'installed') {
+            $this->redirect('');
+        }
+        (new PackageInstaller())->discardOld((new WhmcsUpdaterEnvironment())->moduleDir());
+        $this->deleteBackupFile();
+        MaintenanceMode::store()->saveState(['data' => null]);
+        MaintenanceMode::resume();
+        $replay = $this->replayDeferredEvents();
+        $this->log('UPDATER_CONFIRM', [
+            'from' => $state['from_version'] ?? '',
+            'to' => $state['to_version'] ?? '',
+            'admin' => $this->adminId(),
+            'replay' => $replay,
+        ]);
+        $this->redirect('confirmed');
+    }
+
+    /**
+     * Depois da troca, só retoma se os arquivos já voltaram para a versão anterior (pela tela ou à mão).
+     */
+    private function canResume(array $state): bool
+    {
+        if (!in_array((string) ($state['step'] ?? ''), self::AFTER_SWAP, true)) {
+            return true;
+        }
+
+        return AddonVersion::current() === trim((string) ($state['from_version'] ?? ''));
+    }
+
+    /**
      * Sem cron do OpenNfse rodando agora (o lock está livre).
      */
     public function cronIdle(): bool
@@ -296,8 +529,9 @@ final class UpdaterController
             return;
         }
 
-        $resume = '<form method="post" action="' . Ui::h(self::URL . 'Resume') . '">' . $hidden
-            . Ui::button('Retomar operação', ['sm']) . '</form>';
+        $resume = $this->canResume($state)
+            ? '<form method="post" action="' . Ui::h(self::URL . 'Resume') . '">' . $hidden . Ui::button('Retomar operação', ['sm']) . '</form>'
+            : '';
         $this->renderConfigSectionStart('2. Pausa da operação', 'A operação fica parada até você retomar.', $resume);
         $pausedAt = trim((string) ($state['paused_at'] ?? ''));
         $facts = [
@@ -368,6 +602,110 @@ final class UpdaterController
         $this->renderConfigSectionEnd();
     }
 
+    private function renderInstallStep(bool $paused, array $state): void
+    {
+        $title = '4. Atualização';
+        $description = 'Baixa o pacote, confere o SHA-256, troca os arquivos e faz a checagem final.';
+        $data = $this->data();
+        $step = (string) ($state['step'] ?? '');
+        $to = (string) ($state['to_version'] ?? '');
+        $from = (string) ($state['from_version'] ?? '');
+        $token = (new TokenService())->token();
+        $hidden = $token !== '' ? Ui::hidden(['token' => $token]) : '';
+
+        if (!$paused || empty($data['backup']['downloaded_at'])) {
+            $this->renderPendingStep($title, $description, 'Disponível depois do download do backup.');
+
+            return;
+        }
+
+        if ($step === 'rolled_back') {
+            $this->renderConfigSectionStart($title, $description);
+            $this->renderConfigBlock('<p class="nfse-cfg-text">' . Ui::h(sprintf(
+                'O módulo voltou para a versão %s e as tabelas foram restauradas. Retome a operação na etapa 2.',
+                $from
+            )) . '</p>');
+            $this->renderConfigSectionEnd();
+
+            return;
+        }
+
+        if (in_array($step, self::AFTER_SWAP, true)) {
+            $this->renderAfterSwap($step, $data, $hidden, $from, $to);
+
+            return;
+        }
+
+        $form = '<form method="post" action="' . Ui::h(self::URL . 'Install') . '">' . $hidden
+            . '<label class="nfse-upd-ack"><input type="checkbox" name="ack_manual_rollback" value="1" required> '
+            . Ui::h('Li como voltar à mão, caso o WHMCS não abra depois da troca.') . '</label>'
+            . Ui::button('Instalar a versão ' . $to, ['primary', 'sm']) . '</form>';
+        $this->renderConfigSectionStart($title, $description);
+        $html = '';
+        if (!empty($data['install_error'])) {
+            $html .= Ui::callout('danger', 'A atualização não foi feita', (string) $data['install_error'] . ' Os arquivos atuais não foram alterados.');
+        }
+        $html .= self::manualRollbackHtml();
+        $html .= $form;
+        $this->renderConfigBlock($html);
+        $this->renderConfigSectionEnd();
+    }
+
+    private function renderAfterSwap(string $step, array $data, string $hidden, string $from, string $to): void
+    {
+        $title = '4. Atualização';
+        if ($step === 'swapped') {
+            $this->renderConfigSectionStart($title, 'Arquivos trocados. Falta a checagem final.', Ui::button('Fazer a checagem final', ['primary', 'sm'], ['href' => self::URL . 'Verify']));
+            $this->renderConfigBlock('<p class="nfse-cfg-text">A checagem roda as migrations e confere a versão nova.</p>');
+            $this->renderConfigSectionEnd();
+
+            return;
+        }
+
+        $verify = is_array($data['verify'] ?? null) ? $data['verify'] : ['items' => []];
+        $actions = '';
+        if ($step === 'installed') {
+            $actions .= '<form method="post" action="' . Ui::h(self::URL . 'Confirm') . '">' . $hidden
+                . Ui::button('Confirmar e retomar operação', ['primary', 'sm']) . '</form>';
+        }
+        $this->renderConfigSectionStart(
+            $title,
+            $step === 'installed'
+                ? sprintf('Versão %s instalada. Confira o módulo e confirme, ou volte para a %s.', $to, $from)
+                : sprintf('A checagem final falhou. Volte para a versão %s.', $from),
+            $actions
+        );
+        $html = '<ul class="nfse-upd-checks">';
+        foreach ((array) ($verify['items'] ?? []) as $item) {
+            $html .= '<li class="nfse-upd-check"><span class="nfse-upd-check__label">' . Ui::h((string) ($item['label'] ?? '')) . '</span>'
+                . (!empty($item['ok']) ? Ui::badge('OK', 'ok') : Ui::badge('Falhou', 'danger'))
+                . '<span class="nfse-upd-check__detail">' . Ui::h((string) ($item['detail'] ?? '')) . '</span></li>';
+        }
+        $html .= '</ul>';
+        if (!empty($data['rollback_error'])) {
+            $html .= Ui::callout('danger', 'A volta não terminou', (string) $data['rollback_error'] . ' Siga a volta manual abaixo.');
+        }
+
+        $backup = is_array($data['backup'] ?? null) ? $data['backup'] : [];
+        $needsUpload = (string) ($backup['file'] ?? '') === '' || !is_file((string) $backup['file']);
+        $html .= '<form method="post" enctype="multipart/form-data" action="' . Ui::h(self::URL . 'Rollback') . '" class="nfse-upd-rollback">' . $hidden;
+        if ($needsUpload) {
+            $html .= '<label class="nfse-upd-ack">' . Ui::h('Arquivo de backup baixado na etapa 3:')
+                . ' <input type="file" name="backup_file" accept=".gz,application/gzip" required></label>';
+        }
+        $html .= Ui::button('Voltar ao estado anterior (' . $from . ')', $step === 'installed' ? ['danger', 'sm'] : ['primary', 'sm']) . '</form>';
+        $html .= self::manualRollbackHtml();
+        $this->renderConfigBlock($html);
+        $this->renderConfigSectionEnd();
+    }
+
+    private static function manualRollbackHtml(): string
+    {
+        return '<details class="nfse-form__more"><summary>Como voltar à mão</summary><div class="nfse-form__more-body">'
+            . Ui::h('Se o WHMCS não abrir depois da troca: pelo FTP ou gerenciador de arquivos, em modules/addons/, renomeie a pasta OpenNfse para OpenNfse.falhou e a pasta OpenNfse.old para OpenNfse. Depois importe no banco o arquivo de backup baixado na etapa 3 (por exemplo, pelo phpMyAdmin). Com a versão anterior de volta, a tela de atualização libera o botão Retomar operação.')
+            . '</div></details>';
+    }
+
     private function renderPendingStep(string $title, string $description, string $text = 'Disponível depois da pausa.'): void
     {
         $this->renderConfigSectionStart($title, $description);
@@ -385,6 +723,17 @@ final class UpdaterController
             'backup_ready' => ['ok', 'Backup gerado. Baixe o arquivo para continuar.'],
             'backup_failed' => ['danger', 'Não foi possível gerar o backup. Veja o log UPDATER_BACKUP_ERROR.'],
             'backup_missing' => ['danger', 'O arquivo de backup não está mais disponível.'],
+            'backup_required' => ['warn', 'Baixe o backup antes de instalar.'],
+            'ack_required' => ['warn', 'Marque que leu como voltar à mão.'],
+            'install_failed' => ['danger', 'A atualização não foi feita. Os arquivos atuais não foram alterados.'],
+            'verified' => ['ok', 'Versão nova instalada e conferida.'],
+            'verify_failed' => ['danger', 'A checagem final falhou.'],
+            'rolled_back' => ['ok', 'O módulo voltou para a versão anterior.'],
+            'rollback_failed' => ['danger', 'A volta não terminou. Veja o erro na etapa 4.'],
+            'rollback_no_old' => ['danger', 'A pasta da versão anterior não existe mais. Siga a volta manual.'],
+            'rollback_upload_required' => ['warn', 'Envie o arquivo de backup baixado na etapa 3.'],
+            'resume_blocked' => ['warn', 'Confirme a versão nova ou volte ao estado anterior antes de retomar.'],
+            'confirmed' => ['ok', 'Atualização confirmada e operação retomada.'],
         ];
         $key = (string) ($_GET['msg'] ?? '');
         if (isset($messages[$key])) {

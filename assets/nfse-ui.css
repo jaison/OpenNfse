@@ -824,3 +824,5 @@
 .nfse-ui .nfse-upd-check:first-child { border-top: 0; padding-top: 0; }
 .nfse-ui .nfse-upd-check__label { font-weight: 500; }
 .nfse-ui .nfse-upd-check__detail { grid-column: 1 / -1; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.nfse-ui .nfse-upd-ack { display: flex; gap: var(--space-2); align-items: flex-start; margin: var(--space-3) 0; font-size: 13px; }
+.nfse-ui .nfse-upd-rollback { margin-top: var(--space-4); }

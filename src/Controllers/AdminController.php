@@ -360,6 +360,29 @@ final class AdminController
                 'requiresTokenMessage' => 'Método inválido para baixar o backup.',
                 'handler' => [$this->updaterController, 'downloadBackup'],
             ],
+            'updaterInstall' => [
+                'method' => 'POST',
+                'requiresToken' => true,
+                'requiresTokenMessage' => 'Método inválido para instalar a atualização.',
+                'handler' => [$this->updaterController, 'install'],
+            ],
+            'updaterVerify' => [
+                'method' => 'GET',
+                'requiresToken' => false,
+                'handler' => [$this->updaterController, 'verify'],
+            ],
+            'updaterRollback' => [
+                'method' => 'POST',
+                'requiresToken' => true,
+                'requiresTokenMessage' => 'Método inválido para voltar ao estado anterior.',
+                'handler' => [$this->updaterController, 'rollback'],
+            ],
+            'updaterConfirm' => [
+                'method' => 'POST',
+                'requiresToken' => true,
+                'requiresTokenMessage' => 'Método inválido para confirmar a atualização.',
+                'handler' => [$this->updaterController, 'confirm'],
+            ],
         ];
 
         // Durante a atualização, o módulo só abre a tela do atualizador.
