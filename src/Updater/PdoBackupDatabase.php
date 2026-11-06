@@ -85,6 +85,13 @@ final class PdoBackupDatabase implements BackupDatabase
         $this->pdo->exec($sql);
     }
 
+    public function connectionCharset(): string
+    {
+        $row = $this->pdo->query('SELECT @@character_set_client')->fetch(\PDO::FETCH_NUM);
+
+        return (string) ($row[0] ?? '');
+    }
+
     public static function ident(string $name): string
     {
         if (preg_match('/^[A-Za-z0-9_]+$/', $name) !== 1) {

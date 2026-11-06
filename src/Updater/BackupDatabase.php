@@ -26,4 +26,7 @@ interface BackupDatabase
     public function quote(mixed $value): string;
 
     public function exec(string $sql): void;
+
+    /** Charset da conexão (character_set_client). O backup só volta pela conexão com o mesmo charset. */
+    public function connectionCharset(): string;
 }

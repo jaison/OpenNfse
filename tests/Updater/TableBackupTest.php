@@ -35,16 +35,35 @@ final class TableBackupTest extends TestCase
         $count = (new TableBackup($db))->restore($this->file, $info['sha256']);
 
         $executed = $db->executed;
-        // SET NAMES, FK=0, (DROP, CREATE, INSERT) x 2 tabelas, FK=1.
-        $this->assertSame(9, $count);
-        $this->assertSame('SET NAMES utf8mb4', $executed[0]);
-        $this->assertSame('DROP TABLE IF EXISTS `mod_opennfse_config`', $executed[2]);
-        $this->assertStringStartsWith('CREATE TABLE `mod_opennfse_config` ( `id` int', $executed[3]);
+        // FK=0, (DROP, CREATE, INSERT) x 2 tabelas, FK=1. Sem SET NAMES: o charset da conexão não muda.
+        $this->assertSame(8, $count);
+        $this->assertSame('SET FOREIGN_KEY_CHECKS=0', $executed[0]);
+        $this->assertSame('DROP TABLE IF EXISTS `mod_opennfse_config`', $executed[1]);
+        $this->assertStringStartsWith('CREATE TABLE `mod_opennfse_config` ( `id` int', $executed[2]);
         $this->assertStringContainsString("'linha 1\\nlinha 2; com ponto e vírgula'", implode("\n", $executed));
-        $this->assertStringContainsString('NULL', $executed[4]);
+        $this->assertStringContainsString('NULL', $executed[3]);
+        foreach ($executed as $sql) {
+            $this->assertStringNotContainsStringIgnoringCase('SET NAMES', $sql);
+        }
         foreach ($executed as $sql) {
             $this->assertStringNotContainsString('mod_opennfse_updater', $sql);
         }
+    }
+
+    public function testRestoreRefusesBackupFromAnotherConnectionCharset(): void
+    {
+        $db = $this->fakeDb();
+        $info = (new TableBackup($db))->dump($this->file, '1.0.0');
+        $db->charset = 'utf8mb4';
+
+        try {
+            (new TableBackup($db))->restore($this->file, $info['sha256']);
+            $this->fail('Restaurou com outro charset.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('latin1', $e->getMessage());
+            $this->assertStringContainsString('utf8mb4', $e->getMessage());
+        }
+        $this->assertSame([], $db->executed);
     }
 
     public function testLargeTablesAreSplitIntoSeveralInserts(): void
@@ -135,6 +154,13 @@ final class TableBackupTest extends TestCase
             public function exec(string $sql): void
             {
                 $this->executed[] = $sql;
+            }
+
+            public string $charset = 'latin1';
+
+            public function connectionCharset(): string
+            {
+                return $this->charset;
             }
         };
     }

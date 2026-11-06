@@ -7,6 +7,10 @@ namespace OpenNfse\Updater;
 /**
  * Etapa 3: backup das tabelas mod_opennfse_* em SQL compactado (gzip).
  *
+ * O backup e a restauração passam pela conexão do WHMCS sem trocar o charset (sem SET NAMES):
+ * os bytes voltam exatamente como saíram. Muitas instalações conversam com o banco em latin1;
+ * trocar o charset no meio gravaria os textos acentuados com outra codificação.
+ *
  * Um comando por linha: os textos vêm escapados pelo banco (quebras de linha viram \n),
  * então a restauração lê linha a linha. As tabelas do próprio atualizador ficam de fora:
  * restaurar o backup não pode apagar a pausa nem os eventos guardados durante ela.
@@ -39,13 +43,13 @@ final class TableBackup
         $rows = 0;
         try {
             $this->write($gz, sprintf(
-                '%s module=%s created=%s tables=%s',
+                '%s module=%s created=%s charset=%s tables=%s',
                 self::HEADER,
                 preg_replace('/[^0-9A-Za-z.+-]/', '', $moduleVersion),
                 gmdate('Y-m-d\TH:i:s\Z'),
+                self::cleanCharset($this->db->connectionCharset()),
                 implode(',', $tables)
             ));
-            $this->write($gz, 'SET NAMES utf8mb4;');
             $this->write($gz, 'SET FOREIGN_KEY_CHECKS=0;');
             foreach ($tables as $table) {
                 $ident = PdoBackupDatabase::ident($table);
@@ -96,6 +100,15 @@ final class TableBackup
         if ($first === null || strpos($first, self::HEADER . ' ') !== 0 || $last !== '-- fim') {
             throw new \RuntimeException('O arquivo de backup está incompleto.');
         }
+        $saved = preg_match('/ charset=(\S+)/', $first, $m) === 1 ? $m[1] : '';
+        $current = self::cleanCharset($this->db->connectionCharset());
+        if ($saved === '' || $saved !== $current) {
+            throw new \RuntimeException(sprintf(
+                'O backup foi gerado com a conexão em %s e a conexão atual está em %s. Restaurar assim estragaria os acentos.',
+                $saved !== '' ? $saved : 'charset desconhecido',
+                $current
+            ));
+        }
 
         $count = 0;
         foreach ($this->lines($path) as $line) {
@@ -107,6 +120,11 @@ final class TableBackup
         }
 
         return $count;
+    }
+
+    private static function cleanCharset(string $charset): string
+    {
+        return (string) preg_replace('/[^0-9A-Za-z_]/', '', $charset);
     }
 
     /**
