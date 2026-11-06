@@ -48,7 +48,7 @@ final class NfseNaoPagasReportController
         echo Ui::callout(
             'info',
             'Cancelamento manual',
-            'Notas EMITIDA cuja fatura não está Paid e notas emitidas antes do pagamento. O cancelamento da NFS-e, quando cabível, é manual. Veja também os ',
+            'Quando cabível, o cancelamento da NFS-e é feito à mão. Veja também os ',
             '<a href="addonmodules.php?module=OpenNfse&amp;action=alertas">alertas de NFS-e</a>.'
         );
 
