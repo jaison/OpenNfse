@@ -28,9 +28,34 @@ O leiaute da DPS segue a NT 009 e muda automaticamente em produção em 01/12/20
 
 Se encontrar algum problema ou tiver uma sugestão, [abra uma issue](https://github.com/jaison/OpenNfse/issues/new).
 
-## Screenshot
+## Telas
 
-![Screenshot do OpenNfse](opennfse.png)
+As telas abaixo usam dados fictícios.
+
+[![Dashboard do OpenNfse: barra de saúde, indicadores do período, fila agora, emissões por dia, média por dia da semana, linha do tempo e atividade recente](docs/screenshots/01-dashboard.png)](docs/screenshots/01-dashboard.png)
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/02-fila.png"><img src="docs/screenshots/02-fila.png" alt="Fila de processamento com filtros, indicadores e itens"></a>
+      <br><sub><b>Fila</b>: itens de emissão e consulta, filtros e processamento na hora.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/03-relatorios.png"><img src="docs/screenshots/03-relatorios.png" alt="Relatório de NFS-e emitidas com totais e exportações"></a>
+      <br><sub><b>Relatórios</b>: notas, conferências e diagnóstico, com exportação CSV e ZIP.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/04-configuracoes.png"><img src="docs/screenshots/04-configuracoes.png" alt="Configurações de fila e processamento, com navegação por grupos"></a>
+      <br><sub><b>Configurações</b>: grupos Empresa, Fiscal, Integração, Documentos e Sistema.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/05-atualizador.png"><img src="docs/screenshots/05-atualizador.png" alt="Atualizador embutido com a checagem do ambiente e as quatro etapas"></a>
+      <br><sub><b>Atualizador</b>: checagem, pausa, backup e troca dos arquivos.</sub>
+    </td>
+  </tr>
+</table>
 
 ## Visão Geral
 

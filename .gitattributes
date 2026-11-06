@@ -10,3 +10,4 @@
 /composer.json export-ignore
 /composer.lock export-ignore
 /update.json export-ignore
+/docs/screenshots export-ignore
