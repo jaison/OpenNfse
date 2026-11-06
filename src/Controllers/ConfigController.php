@@ -1312,7 +1312,11 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         $summary = trim((string) ($status['summary'] ?? ''));
         $error = trim((string) ($status['error'] ?? ''));
 
-        $actions = Ui::button('Verificar agora', ['sm'], ['formaction' => 'addonmodules.php?module=OpenNfse&action=checkUpdates', 'formmethod' => 'post']);
+        $actions = '';
+        if (!empty($status['update_available'])) {
+            $actions .= Ui::button('Atualizar agora', ['primary', 'sm'], ['href' => 'addonmodules.php?module=OpenNfse&action=updater']);
+        }
+        $actions .= Ui::button('Verificar agora', ['sm'], ['formaction' => 'addonmodules.php?module=OpenNfse&action=checkUpdates', 'formmethod' => 'post']);
         if ($downloadUrl !== '') {
             $actions .= Ui::button('Releases no GitHub', ['sm'], ['href' => $downloadUrl, 'target' => '_blank', 'rel' => 'noopener noreferrer']);
         }
@@ -1335,7 +1339,8 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         $this->renderConfigBlock(
             '<details class="nfse-form__more"><summary>Como funciona</summary><div class="nfse-form__more-body">'
             . 'O cron lê o manifesto <span class="nfse-mono">' . Ui::h((string) ($status['manifest_url'] ?? '')) . '</span> e guarda a última resposta. '
-            . 'A instalação continua manual: baixe a versão nova em Releases no GitHub.</div></details>'
+            . 'Com versão nova, Atualizar agora abre a atualização em etapas: checagem, pausa da operação, backup das tabelas e troca dos arquivos. '
+            . 'Se a versão não tiver pacote para atualização automática, baixe-a em Releases no GitHub.</div></details>'
         );
         $this->renderConfigSectionEnd();
 

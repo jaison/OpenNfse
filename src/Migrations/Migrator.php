@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenNfse\Migrations;
 
+use OpenNfse\Updater\MaintenanceMode;
 use WHMCS\Database\Capsule;
 
 final class Migrator
@@ -11,9 +12,15 @@ final class Migrator
     /** As migrations rodam no máximo uma vez por processo PHP (cron, lote da fila, hooks, telas). */
     private static bool $ran = false;
 
-    public function up(): void
+    /**
+     * Com a atualização em andamento (pausa), só roda quando o atualizador pede ($evenIfPaused).
+     */
+    public function up(bool $evenIfPaused = false): void
     {
         if (self::$ran) {
+            return;
+        }
+        if (!$evenIfPaused && MaintenanceMode::isPaused()) {
             return;
         }
 

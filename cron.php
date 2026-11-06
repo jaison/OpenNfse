@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use OpenNfse\Module;
+use OpenNfse\Updater\MaintenanceMode;
 
 if (!defined('WHMCS')) {
     if (PHP_SAPI !== 'cli') {
@@ -17,6 +18,10 @@ if (!defined('WHMCS')) {
 }
 
 require_once __DIR__ . '/bootstrap.php';
+
+if (MaintenanceMode::isPaused()) {
+    exit(0);
+}
 
 Module::migrator()->up();
 Module::cron()->run();

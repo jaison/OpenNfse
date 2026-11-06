@@ -51,6 +51,17 @@ function opennfse_output(array $vars): void
 
 function opennfse_clientarea(array $vars): array
 {
+    if (\OpenNfse\Updater\MaintenanceMode::isPaused()) {
+        return [
+            'pagetitle' => 'Notas Fiscais',
+            'breadcrumb' => ['index.php?m=OpenNfse' => 'Notas Fiscais'],
+            'requirelogin' => true,
+            'templatefile' => 'clienthome',
+            'vars' => [
+                'output' => '<div class="alert alert-info">As notas fiscais estão temporariamente indisponíveis por manutenção. Tente novamente em alguns minutos.</div>',
+            ],
+        ];
+    }
     try {
         $action = (string) ($_REQUEST['action'] ?? 'list');
         return Module::clientController()->handle($action, $vars);

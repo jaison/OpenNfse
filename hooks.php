@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use OpenNfse\Module;
 use OpenNfse\Repositories\LogRepository;
+use OpenNfse\Updater\HookGate;
+use OpenNfse\Updater\MaintenanceMode;
 use OpenNfse\Views\AdminNav;
 
 if (!defined('WHMCS')) {
@@ -12,7 +14,12 @@ if (!defined('WHMCS')) {
 
 require_once __DIR__ . '/bootstrap.php';
 
+// Durante a atualização (MaintenanceMode), os hooks de fatura guardam o evento para depois
+// (HookGate) e os de tela não mostram nada.
 add_hook('AdminInvoicesControlsOutput', 1, static function (array $vars) {
+    if (MaintenanceMode::isPaused()) {
+        return '';
+    }
     return Module::invoiceHook()->renderControls($vars);
 });
 
@@ -31,11 +38,11 @@ add_hook('AdminAreaHeadOutput', 1, static function (array $vars) {
     if ($base === '') {
         return $titleStyle;
     }
-    return '<link rel="stylesheet" type="text/css" href="' . htmlspecialchars($base . '/modules/addons/OpenNfse/assets/nfse-ui.css', ENT_QUOTES, 'UTF-8') . '?v=33" />' . $titleStyle;
+    return '<link rel="stylesheet" type="text/css" href="' . htmlspecialchars($base . '/modules/addons/OpenNfse/assets/nfse-ui.css', ENT_QUOTES, 'UTF-8') . '?v=34" />' . $titleStyle;
 });
 
 add_hook('InvoicePaid', 1, static function (array $vars) {
-    Module::invoicePaidHook()->handle($vars);
+    HookGate::run('invoice_paid_emit', $vars);
 });
 
 // Emissão na geração da fatura. Observado no WHMCS 9 (ambiente de testes): o admin não chama
@@ -43,51 +50,54 @@ add_hook('InvoicePaid', 1, static function (array $vars) {
 // não chama hook útil (o InvoiceCreation registra uma conferência, e o cron trata a fatura depois).
 // O PreEmail só age na fatura com conferência registrada (não reavalia reenvio de e-mail).
 add_hook('InvoiceCreated', 1, static function (array $vars) {
-    Module::invoiceCreatedHook()->handle($vars);
+    HookGate::run('invoice_created', $vars);
 });
 
 add_hook('InvoiceCreationPreEmail', 1, static function (array $vars) {
-    Module::invoiceCreatedHook()->handlePreEmail($vars);
+    HookGate::run('invoice_pre_email', $vars);
 });
 
 add_hook('InvoiceCreation', 1, static function (array $vars) {
-    Module::invoiceCreatedHook()->registerCreation($vars);
+    HookGate::run('invoice_creation', $vars);
 });
 
 // Alertas de NFS-e (só observam; nunca cancelam nota nem bloqueiam o fluxo do WHMCS).
 add_hook('InvoicePaid', 2, static function (array $vars) {
-    Module::invoiceAlertHook()->onPaid($vars);
+    HookGate::run('invoice_paid_alert', $vars);
 });
 
 add_hook('InvoiceCancelled', 1, static function (array $vars) {
-    Module::invoiceAlertHook()->onCancelled($vars);
+    HookGate::run('invoice_cancelled', $vars);
 });
 
 add_hook('InvoiceRefunded', 1, static function (array $vars) {
-    Module::invoiceAlertHook()->onRefunded($vars);
+    HookGate::run('invoice_refunded', $vars);
 });
 
 add_hook('InvoiceUnpaid', 1, static function (array $vars) {
-    Module::invoiceAlertHook()->onUnpaid($vars);
+    HookGate::run('invoice_unpaid', $vars);
 });
 
 add_hook('UpdateInvoiceTotal', 1, static function (array $vars) {
-    Module::invoiceAlertHook()->onTotalChanged($vars);
+    HookGate::run('invoice_total', $vars);
 });
 
 add_hook('AddInvoiceLateFee', 1, static function (array $vars) {
-    Module::invoiceAlertHook()->onTotalChangedBy('AddInvoiceLateFee', $vars);
+    HookGate::run('invoice_late_fee', $vars);
 });
 
 add_hook('InvoiceSplit', 1, static function (array $vars) {
-    Module::invoiceAlertHook()->onTotalChangedBy('InvoiceSplit', $vars);
+    HookGate::run('invoice_split', $vars);
 });
 
 add_hook('AddTransaction', 1, static function (array $vars) {
-    Module::invoiceAlertHook()->onTransaction($vars);
+    HookGate::run('add_transaction', $vars);
 });
 
 add_hook('AfterCronJob', 1, static function (array $vars) {
+    if (MaintenanceMode::isPaused()) {
+        return;
+    }
     try {
         Module::cron()->runFromWhmcsCron();
     } catch (Throwable $e) {
@@ -104,10 +114,16 @@ add_hook('AfterCronJob', 1, static function (array $vars) {
 });
 
 add_hook('ClientAreaPageViewInvoice', 1, static function (array $vars) {
+    if (MaintenanceMode::isPaused()) {
+        return [];
+    }
     return Module::clientInvoiceHook()->capturePageContext($vars);
 });
 
 add_hook('ClientAreaHeadOutput', 1, static function (array $vars) {
+    if (MaintenanceMode::isPaused()) {
+        return '';
+    }
     $base = '';
     if (isset($vars['systemurl']) && is_string($vars['systemurl'])) {
         $base = rtrim($vars['systemurl'], '/');
@@ -117,10 +133,13 @@ add_hook('ClientAreaHeadOutput', 1, static function (array $vars) {
     if ($base === '') {
         return '';
     }
-    return '<link rel="stylesheet" type="text/css" href="' . htmlspecialchars($base . '/modules/addons/OpenNfse/assets/nfse-ui.css', ENT_QUOTES, 'UTF-8') . '?v=33" />';
+    return '<link rel="stylesheet" type="text/css" href="' . htmlspecialchars($base . '/modules/addons/OpenNfse/assets/nfse-ui.css', ENT_QUOTES, 'UTF-8') . '?v=34" />';
 });
 
 add_hook('ClientAreaPrimaryNavbar', 1, static function ($primaryNavbar) {
+    if (MaintenanceMode::isPaused()) {
+        return;
+    }
     try {
         if (!is_object($primaryNavbar) || !method_exists($primaryNavbar, 'getChild')) {
             return;

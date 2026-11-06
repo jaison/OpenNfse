@@ -24,6 +24,7 @@ use OpenNfse\Services\QueueErrorClassifierService;
 use OpenNfse\Services\QueueService;
 use OpenNfse\Services\StorageService;
 use OpenNfse\Services\TokenService;
+use OpenNfse\Updater\MaintenanceMode;
 use OpenNfse\Views\Dashboard\DashboardFeed;
 use OpenNfse\Views\Dashboard\DashboardPeriod;
 use OpenNfse\Views\Dashboard\DashboardView;
@@ -45,6 +46,8 @@ final class AdminController
 
     private AlertasController $alertasController;
 
+    private UpdaterController $updaterController;
+
     public function __construct()
     {
         $this->sequenciaisController = new SequenciaisController();
@@ -53,6 +56,7 @@ final class AdminController
         $this->notasController = new NotasController();
         $this->queueController = new QueueController();
         $this->alertasController = new AlertasController();
+        $this->updaterController = new UpdaterController();
     }
 
     public function handle(string $action): void
@@ -327,7 +331,30 @@ final class AdminController
                 'requiresTokenMessage' => 'Método inválido para salvar configuração.',
                 'handler' => [$this->configController, 'saveConfig'],
             ],
+            'updater' => [
+                'method' => 'GET',
+                'requiresToken' => false,
+                'handler' => [$this->updaterController, 'showUpdater'],
+            ],
+            'updaterPause' => [
+                'method' => 'POST',
+                'requiresToken' => true,
+                'requiresTokenMessage' => 'Método inválido para pausar a operação.',
+                'handler' => [$this->updaterController, 'pause'],
+            ],
+            'updaterResume' => [
+                'method' => 'POST',
+                'requiresToken' => true,
+                'requiresTokenMessage' => 'Método inválido para retomar a operação.',
+                'handler' => [$this->updaterController, 'resume'],
+            ],
         ];
+
+        // Durante a atualização, o módulo só abre a tela do atualizador.
+        if (MaintenanceMode::isPaused() && !in_array($action, UpdaterController::ACTIONS, true)) {
+            $this->updaterController->showUpdater();
+            return;
+        }
 
         if (!isset($routes[$action])) {
             $this->configController->showConfig();
