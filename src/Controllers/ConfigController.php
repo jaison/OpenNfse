@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenNfse\Controllers;
 
 use OpenNfse\Exceptions\NfseModuleException;
+use OpenNfse\Helpers\WebRoot;
 use OpenNfse\Module;
 use OpenNfse\Repositories\ConfigRepository;
 use OpenNfse\Repositories\GroupServiceCodeRepository;
@@ -1464,29 +1465,12 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         }
         $certificatePath = $realCertificatePath;
 
-        $webRoots = [];
-        if (!empty($_SERVER['DOCUMENT_ROOT'])) {
-            $docRoot = realpath((string) $_SERVER['DOCUMENT_ROOT']);
-            if (is_string($docRoot) && $docRoot !== '') {
-                $webRoots[] = $docRoot;
-            }
-        }
-        if (defined('ROOTDIR')) {
-            $rootDir = realpath((string) ROOTDIR);
-            if (is_string($rootDir) && $rootDir !== '') {
-                $webRoots[] = $rootDir;
-            }
-        }
-        $webRoots = array_values(array_unique(array_filter($webRoots, static fn ($v): bool => is_string($v) && $v !== '')));
-        foreach ($webRoots as $webRoot) {
-            $prefix = rtrim($webRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
-            if (strpos($certificatePath, $prefix) === 0) {
-                return [
-                    'valid' => false,
-                    'status' => 'error',
-                    'error' => 'O certificado deve estar fora do webroot (ex.: fora de public_html/www).',
-                ];
-            }
+        if (WebRoot::contains($certificatePath)) {
+            return [
+                'valid' => false,
+                'status' => 'error',
+                'error' => 'O certificado deve estar fora do webroot (ex.: fora de public_html/www).',
+            ];
         }
         if (!is_readable($certificatePath)) {
             return [

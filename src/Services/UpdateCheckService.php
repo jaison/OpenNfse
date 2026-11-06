@@ -10,6 +10,8 @@ use OpenNfse\Repositories\ConfigRepository;
 final class UpdateCheckService
 {
     private const MANIFEST_URL = 'https://raw.githubusercontent.com/jaison/OpenNfse/main/update.json';
+    /** Pacotes só são aceitos deste endereço: .../download/v{versão}/OpenNfse-{versão}.zip */
+    public const PACKAGE_URL_PREFIX = 'https://github.com/jaison/OpenNfse/releases/download/';
     private const ALLOWED_HOSTS = ['raw.githubusercontent.com'];
     private const CACHE_TTL_SECONDS = 86400;
     private const REQUEST_TIMEOUT_SECONDS = 5;
@@ -27,6 +29,8 @@ final class UpdateCheckService
         $error = trim((string) ($config['update_error'] ?? ''));
         $minimumWhmcs = trim((string) ($config['update_minimum_whmcs'] ?? ''));
         $minimumPhp = trim((string) ($config['update_minimum_php'] ?? ''));
+        $packageUrl = trim((string) ($config['update_package_url'] ?? ''));
+        $packageSha256 = trim((string) ($config['update_package_sha256'] ?? ''));
         $updateAvailable = $latestVersion !== '' && version_compare($latestVersion, $currentVersion, '>');
 
         if ($status === '') {
@@ -61,6 +65,8 @@ final class UpdateCheckService
             'changelog_url' => $changelogUrl !== '' ? $changelogUrl : 'https://github.com/jaison/OpenNfse/releases',
             'minimum_whmcs' => $minimumWhmcs,
             'minimum_php' => $minimumPhp,
+            'package_url' => $packageUrl,
+            'package_sha256' => $packageSha256,
             'message' => $message,
             'error' => $error,
             'status' => $status,
@@ -147,14 +153,43 @@ final class UpdateCheckService
             throw new \RuntimeException('O manifesto remoto retornou uma URL de changelog inválida.');
         }
 
+        [$packageUrl, $packageSha256] = $this->parsePackage($data, $latestVersion);
+
         return [
             'latest_version' => $latestVersion,
+            'package_url' => $packageUrl,
+            'package_sha256' => $packageSha256,
             'message' => trim((string) ($data['message'] ?? '')),
             'download_url' => $downloadUrl,
             'changelog_url' => $changelogUrl,
             'minimum_whmcs' => trim((string) ($data['minimum_whmcs'] ?? '')),
             'minimum_php' => trim((string) ($data['minimum_php'] ?? '')),
         ];
+    }
+
+    /**
+     * Pacote para a atualização embutida. Opcional: sem ele, a versão só pode ser instalada à mão.
+     * A URL precisa ser exatamente a do release da versão anunciada.
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function parsePackage(array $data, string $latestVersion): array
+    {
+        $url = trim((string) ($data['package_url'] ?? ''));
+        $sha = strtolower(trim((string) ($data['package_sha256'] ?? '')));
+        if ($url === '' && $sha === '') {
+            return ['', ''];
+        }
+
+        $expectedUrl = self::PACKAGE_URL_PREFIX . 'v' . $latestVersion . '/OpenNfse-' . $latestVersion . '.zip';
+        if ($url !== $expectedUrl) {
+            throw new \RuntimeException('O manifesto remoto retornou uma URL de pacote inválida.');
+        }
+        if (preg_match('/^[0-9a-f]{64}$/', $sha) !== 1) {
+            throw new \RuntimeException('O manifesto remoto retornou um SHA-256 de pacote inválido.');
+        }
+
+        return [$url, $sha];
     }
 
     private function buildConfigPayloadFromManifest(array $manifest): array
@@ -168,6 +203,8 @@ final class UpdateCheckService
             'update_changelog_url' => (string) ($manifest['changelog_url'] ?? ''),
             'update_minimum_whmcs' => (string) ($manifest['minimum_whmcs'] ?? ''),
             'update_minimum_php' => (string) ($manifest['minimum_php'] ?? ''),
+            'update_package_url' => (string) ($manifest['package_url'] ?? '') ?: null,
+            'update_package_sha256' => (string) ($manifest['package_sha256'] ?? '') ?: null,
             'update_error' => null,
         ];
     }
