@@ -17,7 +17,7 @@ function opennfse_config(): array
         'name' => 'OpenNfse',
         'description' => 'Emissão automática de NFS-e Nacional integrada ao WHMCS.',
         'author' => '<a href="https://github.com/jaison/OpenNfse/" target="_blank" rel="noopener noreferrer">Jaison Perazza</a>',
-        'version' => '0.1.28',
+        'version' => '1.0.0',
         'language' => 'portuguese-br',
     ];
 }
@@ -51,6 +51,17 @@ function opennfse_output(array $vars): void
 
 function opennfse_clientarea(array $vars): array
 {
+    if (\OpenNfse\Updater\MaintenanceMode::isPaused()) {
+        return [
+            'pagetitle' => 'Notas Fiscais',
+            'breadcrumb' => ['index.php?m=OpenNfse' => 'Notas Fiscais'],
+            'requirelogin' => true,
+            'templatefile' => 'clienthome',
+            'vars' => [
+                'output' => '<div class="alert alert-info">As notas fiscais estão temporariamente indisponíveis por manutenção. Tente novamente em alguns minutos.</div>',
+            ],
+        ];
+    }
     try {
         $action = (string) ($_REQUEST['action'] ?? 'list');
         return Module::clientController()->handle($action, $vars);

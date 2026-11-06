@@ -6,8 +6,8 @@ use Isolated\Symfony\Component\Finder\Finder;
 
 // Só os pacotes de produção entram no vendor-scoped/. A lista vem do
 // vendor/composer/installed.json: tudo que não está em "dev-package-names".
-// Não dá para usar um `composer install --no-dev` temporário porque o plugin
-// que aplica patches/ na SDK (cweagans/composer-patches) é de desenvolvimento.
+// Não dá para usar um `composer install --no-dev` temporário porque o próprio
+// php-scoper é dependência de desenvolvimento.
 $vendorDir = __DIR__ . '/vendor';
 $installed = json_decode((string) @file_get_contents($vendorDir . '/composer/installed.json'), true);
 if (!is_array($installed) || !isset($installed['packages'], $installed['dev-package-names'])) {

@@ -227,6 +227,15 @@ Ao salvar a configuração, `auto_emit_on_payment` é gravado como `1` sempre qu
 
 Ao escolher o gatilho `gerada`, ou com o custom field configurado, a tela mostra um aviso: a NFS-e é emitida antes do pagamento, o ISS é devido mesmo que a fatura nunca seja paga, a competência é a data de emissão e o prazo do município para cancelar a NFS-e é curto. Se a fatura for cancelada ou alterada depois da emissão, o cancelamento da NFS-e continua manual (ver [Cancelamento](#cancelamento)).
 
+## Observações da fatura
+
+O WHMCS mostra o campo `tblinvoices.notes` ao cliente, como "Observações" na fatura e no PDF. Por isso o addon (`InvoiceHistoryService`) acrescenta nele só duas linhas:
+
+- emissão: "NFS-e emitida com sucesso. Número: … Chave: …", gravada pelo `emitir()` ou pela [consulta de status](#consulta-de-status) que leva a nota para `EMITIDA` (por exemplo, `PROCESSANDO` depois de um timeout);
+- cancelamento: "NFS-e cancelada com sucesso. Motivo: …" ou, no [cancelamento de XML órfão](#cancelamento-de-xml-órfão), "NFS-e cancelada com sucesso. Chave: … Motivo: …" (com a chave da nota cancelada, que o cliente pode conferir no Portal Nacional).
+
+Consultas de status, envios e falhas de e-mail, alertas e ações do admin (reemissão) ficam só no log do addon (`mod_opennfse_logs`). As linhas já gravadas nas observações por versões anteriores não são alteradas.
+
 ## Emissão
 
 ### Emissão manual pelo admin
@@ -260,6 +269,7 @@ Botão **Reemitir NFS-e** (`NotasController::reemitir()`), disponível quando a 
 - Com a fila ligada, enfileira (`QUEUE_REEMITIR_ADMIN`). Sem fila, chama `emitir()` na hora.
 - Quando a fatura já tem item ativo, inclusive se outro pedido o criou no instante do enfileiramento, a reemissão não é registrada: grava o log `ADMIN_REEMITIR_BLOCKED` com motivo `active_queue` e mostra ao admin o aviso de item já ativo na fila.
 - A reemissão gera uma DPS nova, com o próximo número da sequência.
+- O pedido fica no log (`ADMIN_REEMITIR_ENQUEUE` ou `ADMIN_REEMITIR_DIRECT`, com a origem), não nas observações da fatura.
 
 ### Emissão automática na geração da fatura
 
@@ -414,6 +424,7 @@ flowchart TD
 - **Erro transitório na consulta**: o status é preservado e o erro é limpo. Uma nota em `ERRO` volta para `PROCESSANDO`, para ser consultada de novo.
 - **Outro erro**: `ERRO`. Se a nota já estava em `ERRO` com o mesmo código de erro da API, a mensagem anterior é mantida.
 - As consultas que alteram a nota atualizam `last_status_checked_at`, usado pelo cron para priorizar as notas consultadas há mais tempo.
+- A consulta grava `CONSULTA_NFSE` ou `CONSULTA_DPS`. Quando muda o status ou localiza a chave, grava também `CONSULTA_STATUS_ATUALIZADO`, com o status antes e depois. Isso não vai para as observações da fatura; a única exceção é a consulta que leva a nota para `EMITIDA`, que acrescenta lá a linha de emissão com o número e a chave salvos. Uma nota que já estava `EMITIDA` não ganha outra linha.
 
 ### Indisponibilidade da API (503 e timeout)
 
@@ -447,8 +458,8 @@ flowchart LR
 
 A origem recomendada é o cron do WHMCS, pelo hook `AfterCronJob`. `cron.php` continua disponível para execução manual pela CLI. As duas origens passam pelos mesmos controles:
 
-1. Roda as migrations pendentes e sai se não houver configuração salva.
-2. Tenta o lock MySQL `<banco>.mod_opennfse_cron` sem esperar (`CronLockService`). Se outro processo está com o lock, sai e grava o log `CRON_LOCK_BUSY`, no máximo um a cada 15 minutos (`cron_lock_busy_at` na configuração).
+1. Com a [pausa do atualizador](#atualizador-embutido) ativa, sai sem fazer nada, nem as migrations. Fora da pausa, roda as migrations pendentes e sai se não houver configuração salva.
+2. Tenta o lock MySQL `<banco>.mod_opennfse_cron` sem esperar (`CronLockService`). Se outro processo está com o lock, sai e grava o log `CRON_LOCK_BUSY`, no máximo um a cada 15 minutos (`cron_lock_busy_at` na configuração). Com o lock, processa primeiro os eventos de fatura guardados durante a pausa (`HookGate::replayPending()`, até 200 por ciclo), para que a emissão que eles enfileiram saia na mesma rodada. Grava `UPDATER_REPLAY` quando processa algum evento e `UPDATER_REPLAY_ERROR` se a etapa falhar, sem interromper o ciclo.
 3. **Proteção por minuto**: compara `cron_last_minute_key` (formato `YmdHi`) com o minuto atual e sai se o cron já rodou neste minuto. Depois grava `cron_last_run_at`, `cron_last_source` (`whmcs_cron` ou `standalone`) e a chave do minuto.
 4. Com `queue_enabled = 1`:
    - trata as conferências de criação pendentes (`GenerationCheckService::processPending()`, até 200; ver [Emissão automática na geração da fatura](#emissão-automática-na-geração-da-fatura)). Uma falha nessa etapa vai para o log `QUEUE_AUTO_CREATED_ERROR` e não interrompe o ciclo;
@@ -457,7 +468,7 @@ A origem recomendada é o cron do WHMCS, pelo hook `AfterCronJob`. `cron.php` co
    - consulta até 50 notas `EMITIDA` sem chave para recuperar a chave, com a mesma exclusão.
 5. Executa as novas tentativas vencidas do e-mail automático (`AutoEmailService::processRetries()`, até 20 por ciclo), com ou sem fila, desde que `auto_send_nfse_email = 1`.
 6. Faz a [conferência diferida do total](#conferência-diferida-do-total) dos alertas de NFS-e (`runAlertChecks()`), com a fila ligada ou não. Uma falha nessa etapa vai para o log `NFSE_ALERTA_ERRO` e não interrompe o ciclo.
-7. Verifica atualização do módulo se a última checagem tiver mais de 24 h (`UpdateCheckService`).
+7. Verifica atualização do módulo se a última checagem tiver mais de 24 h (`UpdateCheckService`, ver [Atualizador embutido](#atualizador-embutido)).
 8. Limpa logs e itens `DONE`/`RESOLVIDO` da fila conforme a retenção configurada.
 9. Libera o lock. Falhas são registradas como `CRON_ERROR` (ou `CRON_HOOK_ERROR`, quando vêm do hook).
 
@@ -474,7 +485,7 @@ O cron segura o lock do cron e, dentro do lote, cada emissão pega também o loc
 
 ## Envio de XML e PDF por e-mail
 
-`InvoiceEmailService::sendToClient()` exige nota `EMITIDA` com XML. Gera o PDF do DANFS-e na hora, monta assunto e corpo (`EmailTemplateService`) e envia ao e-mail do cliente com o XML e o PDF anexados. O resultado vai para os logs (`EMAIL_NFSE_*`) e para as notas da fatura.
+`InvoiceEmailService::sendToClient()` exige nota `EMITIDA` com XML. Gera o PDF do DANFS-e na hora, monta assunto e corpo (`EmailTemplateService`) e envia ao e-mail do cliente com o XML e o PDF anexados. O resultado, sucesso ou falha com o motivo, vai só para os logs (`EMAIL_NFSE_*`), não para as observações da fatura.
 
 Os anexos são montados pelo próprio `InvoiceEmailService`, a partir do XML salvo da nota e do PDF gerado:
 
@@ -526,7 +537,7 @@ Logs:
 | Log | Quando |
 |---|---|
 | `EMAIL_NFSE_AUTO_SENT` | E-mail enviado (com a chave e o número da tentativa). |
-| `EMAIL_NFSE_AUTO_ERROR` | Falha no envio, com a próxima tentativa (`proxima_tentativa_at`) ou `null` quando as tentativas acabaram. A falha também vai para as notas da fatura. |
+| `EMAIL_NFSE_AUTO_ERROR` | Falha no envio, com a próxima tentativa (`proxima_tentativa_at`) ou `null` quando as tentativas acabaram. A falha não vai para as observações da fatura. |
 | `EMAIL_NFSE_AUTO_SKIPPED` | Disparo não enviado com o envio automático ligado. O campo `motivo` traz `ja_enviado_para_chave`, `nota_nao_emitida` ou `nota_sem_chave`. Só é gravado quando a nota passa a `EMITIDA`, nunca a cada consulta, e não é gravado com `ja_enviado_para_chave` na rede de segurança da fila. Com `auto_send_nfse_email = 0`, nada é enviado e nada é registrado. |
 
 **Novas tentativas**: depois de uma falha, o módulo agenda até 3 novas tentativas, 15 minutos, 1 hora e 6 horas depois da falha anterior (`email_automatico_tentativas` e `email_automatico_proxima_tentativa_at`; regras em `AutomaticEmailPolicy`). Elas são executadas pelo cron, sob o lock do cron, com um claim próprio (`claimAutomaticEmailRetry()`) que exige a falha da chave atual e a tentativa vencida. Se a última tentativa falhar, a nota fica com `FALHOU` e as notas da fatura indicam o envio manual. Com `auto_send_nfse_email = 0`, as tentativas pendentes ficam paradas. A nota que deixa de estar `EMITIDA` ou ganha chave nova não recebe a tentativa pendente da chave anterior.
@@ -548,7 +559,7 @@ Botão **Cancelar NFS-e** na fatura → formulário (`cancelForm`) → `cancel` 
 
 ### Cancelamento de XML órfão
 
-No relatório **Auditoria XML**, um XML de NFS-e salvo em disco mas sem vínculo com a nota atual da fatura pode ser cancelado (`cancelOrphanXml` → `NfseService::cancelarNfseOrfaPorXmlPath()`). A chave vem do XML ou, se faltar, da consulta da DPS. O módulo recusa o cancelamento se o histórico fiscal já tiver cancelamento para aquela chave. O resultado vai para o histórico fiscal e para as notas da fatura, sem alterar a nota atual.
+No relatório **Auditoria XML**, um XML de NFS-e salvo em disco mas sem vínculo com a nota atual da fatura pode ser cancelado (`cancelOrphanXml` → `NfseService::cancelarNfseOrfaPorXmlPath()`). A chave vem do XML ou, se faltar, da consulta da DPS. O módulo recusa o cancelamento se o histórico fiscal já tiver cancelamento para aquela chave. O resultado vai para o histórico fiscal e para as observações da fatura, com a chave da nota órfã, sem alterar a nota atual.
 
 ## Alertas de NFS-e
 
@@ -599,23 +610,72 @@ Se a tabela `mod_opennfse_alertas` ainda não existir na hora de gravar, o `Aler
 
 ### Onde o alerta aparece
 
-- **Dashboard**: card **Alertas de NFS-e** no bloco "Exigem atenção", com o total de alertas abertos de qualquer período. O card leva à lista.
+- **Dashboard**: item **N alertas de NFS-e abertos** na barra de saúde, com o total de alertas abertos de qualquer período. O link "Ver alertas" leva à lista. Sem alerta aberto, o item não aparece.
 - **Lista de alertas** (action `alertas`, `AlertasController`): filtros por situação (abertos, que é o padrão, resolvidos ou todos), tipo e fatura, com até 500 alertas, do mais novo para o mais antigo. Quando há mais alertas que isso, a lista avisa "Exibindo os 500 alertas mais recentes. Use os filtros para ver os demais.". Mostra data, fatura e status dela, cliente, número e chave da NFS-e, tipo, detalhes e, nos resolvidos, quando e por quem. Se a nota atual da fatura não é mais a do alerta, a linha avisa "A nota atual da fatura é outra.". Se é a mesma nota, mas fora de `EMITIDA`, mostra o status atual.
-- **Log**: `NFSE_ALERTA_CRIADO` na abertura e `NFSE_ALERTA_RESOLVIDO` na resolução.
-- **Histórico da fatura**: uma linha em `tblinvoices.notes` (`InvoiceHistoryService`) na abertura ("Alerta: <tipo>. <detalhes>") e outra na resolução, com o admin.
+- **Log**: `NFSE_ALERTA_CRIADO` na abertura e `NFSE_ALERTA_RESOLVIDO` na resolução, com o admin. O alerta não vai para as observações da fatura, que o cliente vê.
 
 ### Como resolver
 
 Na lista de alertas, cada alerta aberto tem duas ações:
 
 - **Cancelar NFS-e**: atalho para o formulário de cancelamento existente (`cancelForm`), exibido quando a nota do alerta ainda é a nota atual da fatura e está `EMITIDA` com chave. O cancelamento segue o fluxo normal e não fecha o alerta.
-- **Marcar como resolvido** (`alertaResolver`, `POST` com token CSRF e confirmação): grava `resolvido_em` e `resolvido_por` (o `adminid` da sessão), limpa `chave_aberto`, registra o log e o histórico e volta à lista com os mesmos filtros. Um alerta já resolvido não é alterado de novo.
+- **Marcar como resolvido** (`alertaResolver`, `POST` com token CSRF e confirmação): grava `resolvido_em` e `resolvido_por` (o `adminid` da sessão), limpa `chave_aberto`, registra o log e volta à lista com os mesmos filtros. Um alerta já resolvido não é alterado de novo.
 
 ## Área do cliente
 
 - **Menu**: item **Notas Fiscais** no menu Billing (`index.php?m=OpenNfse`). Lista até 50 notas `EMITIDA` com XML das faturas do cliente logado, com aviso configurável no topo (`client_area_notice_*`).
-- **Fatura**: o hook `ClientAreaPageViewInvoice` mostra status, número, data de emissão ou cancelamento e chave da NFS-e. Com a nota `EMITIDA`, mostra os botões de XML, PDF e e-mail. Com `ERRO` ou `REJEITADA`, mostra o detalhe do erro.
+- **Fatura**: o hook `ClientAreaPageViewInvoice` mostra o resumo só quando a nota da fatura está `EMITIDA`, a mesma regra da lista: número, data de emissão, chave e, com XML, os botões de XML, PDF e e-mail. Com qualquer outro status (`PROCESSANDO`, `ERRO`, `REJEITADA`, `CANCELADA`), a fatura não mostra nada da NFS-e.
 - **Ações** (`downloadXml`, `downloadPdf`, `sendEmail`): só por `POST`, com token CSRF e conferindo se a fatura pertence ao cliente logado. Download exige nota `EMITIDA`.
+
+## Navegação do admin
+
+Todas as telas do addon (Dashboard, Fila, Relatórios, Configurações e as telas internas, como alertas e cancelamento) começam com a mesma barra (`Views\AdminNav`, impressa por `AdminHelpersTrait::renderTabs()`):
+
+- à esquerda, o logo e "OpenNfse" e, depois de um divisor, o título da tela (o `h1` da página) com o subtítulo na mesma linha: "Visão geral · Operação fiscal de Novembro 2026", "Fila · Itens de emissão e consulta", "Relatórios · Notas, cancelamentos e exportações", "Configurações · Certificado, prestador e processamento"; as telas internas (alertas, cancelamento, logs) têm título próprio. Em espaço curto, o texto termina em reticências, e o texto inteiro fica na dica (title);
+- o estado da fila, com link para a Fila: "Fila: vazia", "Fila: 1 pendente", "Fila: 3 pendentes" ou, com erro em aberto, "Fila: 2 com erro · 3 pendentes". O ponto fica vermelho com erro em aberto (`ERROR`) ou com o cron parado ou nunca executado (mesmas regras do card Fila agora) e verde nos demais casos. Vem de `QueueRepository::currentSnapshot()`, uma consulta por tela; se ela falhar, o estado não aparece e a tela segue normal;
+- a pílula da versão: com versão nova, "v1.0.0 → 1.0.1 disponível", com link para **Configurações > Atualizações**.
+- por último, presas à direita, as abas **Dashboard**, **Fila**, **Relatórios** e **Configurações**, com ícone, separadas do estado da fila e da versão por um divisor; a aba da tela aberta fica destacada. Como vêm por último, ficam no mesmo lugar em todas as telas, qualquer que seja o tamanho do título.
+
+Em tela estreita (barra com menos de 1100px), o subtítulo some primeiro; abaixo de 900px, as abas descem para a linha de baixo, alinhadas à direita, e marca, título e estado da fila ficam na primeira. Não há linha de título separada: depois da barra vem o conteúdo da tela. Nas telas do addon, o título "OpenNfse" que o WHMCS imprime acima do conteúdo fica escondido: o hook `AdminAreaHeadOutput` acrescenta `<style>#contentarea > div > h1:first-of-type{display:none}</style>` só em `addonmodules.php?module=OpenNfse` (`AdminNav::moduleTitleStyle`).
+
+## Dashboard
+
+Em **Addons > OpenNfse > Dashboard** (`AdminController::showDashboard()`, HTML em `src/Views/Dashboard/`). De cima para baixo:
+
+- **Barra de saúde**: "Operação em dia" quando erros, pendentes, rejeitadas, aguardando status e faturas pagas sem nota estão em zero. Senão, um item lista só os contadores acima de zero (crítico quando há erro ou rejeitada), cada um com link próprio, sempre no período:
+  - erros → **Relatórios > Falhas**;
+  - rejeitadas → **Relatórios > Emitidas** com `status=REJEITADA`;
+  - pendentes → **Fila**;
+  - aguardando status → **Fila** com `status=WAIT_STATUS`.
+
+  Os contadores não repetem a mesma nota: erros = `com_erro_periodo` − `rejeitadas` e pendentes = `pendentes` − `aguardando_status` (as métricas de `dashboardOverview` já incluem umas nas outras). Faturas pagas sem nota têm item próprio, com link para a auditoria. Também aparecem o certificado vencido ou com 30 dias ou menos, o certificado não configurado ou ilegível (aviso com link para **Configurações > Ambiente**), o custom field apagado, os alertas abertos e o cron parado: item crítico "Cron parado há X min" quando a última execução tem mais de 10 minutos (`DashboardQueue::CRON_STALE_MINUTES`), ou "Cron nunca executado", com link para **Configurações > Processamento Automático**.
+- **Indicadores e Fila agora**, numa barra única: um card só, com os indicadores do período à esquerda (cerca de 3/4) e a **Fila agora** à direita (1/4, fundo cinza-claro), os dois com a mesma altura. As larguras contam a área da Dashboard, e não a janela (o menu lateral do WHMCS também conta).
+  - no cabeçalho, "No período" e as ferramentas do período, compactas: seta para o mês anterior, o rótulo ("Novembro 2026", o mesmo do título na barra, ou o intervalo quando o período não é um mês inteiro), seta para o mês seguinte (desativada quando o mês ainda não começou) e os chips **Hoje**, **7 dias** e **Personalizado** (data inicial e final, num painel que abre sobre a página). O título da Dashboard fica na barra de navegação ("Visão geral · Operação fiscal de Novembro 2026"), e a validade do certificado vai só na dica do título. Abaixo, os 6 indicadores: emitidas, valor emitido, canceladas, taxa de sucesso, processadas e XMLs armazenados. Com a área a partir de 1840px, ficam lado a lado a 24px; de 1640px a 1839px, lado a lado a 22px; abaixo de 1640px, em 2 linhas de 3, a 24px, para caber um valor como R$ 1.258.700,87.
+  - **Fila agora** (estado atual, fora do filtro de período; o título traz essa dica ao passar o mouse):
+    - no cabeçalho, só um ponto verde (cron em dia) ou vermelho (cron parado ou nunca executado), o título e o botão **Processar agora**, que envia o mesmo POST da Fila (`filaProcessNow`, com o token) e volta para a Fila;
+    - uma grade 2x2 com Pendentes (`PENDING`), Processando (`RUNNING`), Aguard. status (`WAIT_STATUS`) e Com erro (`ERROR`, o erro ainda não resolvido; o resolvido vira `RESOLVIDO`), com o número à direita. Cada linha abre a **Fila** filtrada pelo status, desde 01/01/2000, porque a Fila sem datas mostra só os últimos 7 dias. Zero aparece esmaecido; Com erro acima de zero aparece em vermelho;
+    - no rodapé, preso à base do painel: à esquerda, "Cron há 1 min · mais antigo há 12 min" (só "Cron há 1 min" quando não há pendentes; o cron fica vermelho quando parado, e a frase completa, com a origem WHMCS ou CLI, aparece ao passar o mouse); à direita, o link **Abrir fila**. A última execução vem de `cron_last_run_at` e `cron_last_source`, gravados pelo `CronService`.
+
+    Abaixo de 1000px de área, a Fila agora desce para baixo dos indicadores, dentro do mesmo card. Os dados vêm de uma consulta só (`QueueRepository::currentSnapshot`: `status`, `COUNT(*)` e `MIN(created_at)` agrupados por status).
+- **Emissões por dia, Média por dia da semana e Linha do tempo**, numa linha de três cards compactos (cerca de 1,05 / 0,75 / 1,5 da largura, com a mesma altura). Com a área da Dashboard abaixo de 1100px, calendário e média ficam lado a lado e a linha do tempo desce, em largura total; abaixo de 700px, os três se empilham.
+  - **Emissões por dia**: calendário de calor do período, em semanas de domingo a sábado (cabeçalho com as iniciais D S T Q Q S S), células baixas com o dia e o número de emitidas. Canceladas e erros do dia aparecem como pontos no canto da célula; os números exatos ficam na dica e no rótulo acessível ("05/11: 12 emitidas, 2 canceladas, 1 erro"). Faixas fixas: 0–7, 8–13, 14–18, 19–23 e 24 ou mais. Cada dia é um botão: clicar (ou Enter/Espaço) filtra a atividade recente (`dia=`).
+  - **Média por dia da semana**: sete colunas verticais (valor, barra e nome), fim de semana em azul mais claro, "—" no dia da semana sem dias no período. A média e o resumo do calendário contam só os dias até hoje.
+  - **Linha do tempo**: um gráfico só, com as três séries na mesma escala (o maior valor do período arredondado para cima em múltiplo de 5) e linhas de grade em 0, na metade e no máximo. Por dia, a barra larga é o total emitido (fim de semana mais claro) e, na frente dela, duas barras finas mostram canceladas e erros (incl. resolvidos). Qualquer valor acima de zero tem altura mínima, para não sumir. Hoje fica com contorno; os dias que ainda não chegaram têm só um marcador plano e a data esmaecida. A dica de cada dia mostra os três números; o cabeçalho traz os totais. Em período longo (mais de 62 dias), o gráfico ganha rolagem horizontal.
+  - Abaixo da linha, uma legenda: faixas de calor, canceladas, erros (incl. resolvidos) e "Clique num dia para filtrar a atividade recente".
+- **Atividade recente**: até 10 eventos (emissões, cancelamentos e erros), do mais novo para o mais antigo, com filtros Tudo, Emitidas, Canceladas e Erros e link para o relatório completo. Cada fatura aparece com um erro só, o mais recente (a mesma fatura pode vir da nota e da fila).
+
+Parâmetros da URL (`action=dashboard`):
+
+| Parâmetro | Valores | Uso |
+|---|---|---|
+| `periodo` | `hoje`, `7_dias`, `mes_atual` (padrão), `mes_anterior`, `personalizado` | Período da tela. |
+| `data_inicial`, `data_final` | `AAAA-MM-DD` | Com `periodo=personalizado`. As setas de mês usam o primeiro e o último dia do mês. Data inválida ou fora dos anos 2000–2100 vira o mês atual; datas invertidas são trocadas. No máximo 366 dias: num intervalo maior, o início passa a ser a data final menos 365 dias. |
+| `dia` | `AAAA-MM-DD` dentro do período | Clique num dia do calendário: a atividade recente mostra só esse dia. Clicar de novo no mesmo dia tira o filtro. Valor inválido ou fora do período é ignorado. |
+| `feed` | `tudo` (padrão), `emitidas`, `canceladas`, `erros` | Filtro da atividade recente. |
+
+A seta para trás vai ao mês anterior; a seta para frente, ao mês seguinte. Num período que não é um mês inteiro (Hoje, 7 dias, personalizado), a seta para trás vai ao mês antes do mês da data final, e a seta para frente, ao mês inteiro da data final. A seta para frente fica desativada quando o mês ainda não começou.
+
+A tela não faz consulta por dia: usa `dashboardOverview`, `dashboardDailySeries`, as três listas recentes (`dashboardRecentEmitidas`, `dashboardRecentCancelamentos`, `dashboardRecentIssues`) e, para a Fila agora, `QueueRepository::currentSnapshot`. Com `dia`, as listas recentes rodam só nesse dia, e os contadores dos filtros vêm da série diária.
 
 ## Relatórios
 
@@ -646,3 +706,80 @@ Na situação **Paga após a emissão**, as duas datas são levadas ao mesmo fus
 Filtros: período de emissão (**Emitida de** e **Emitida até**, sobre `emitida_em`), situação (todas, fatura não paga ou paga após a emissão) e cliente (ID ou parte do nome, do sobrenome ou da empresa). A tela mostra até 500 notas, da emissão mais recente para a mais antiga. Quando o total do filtro passa disso, ela avisa "Exibindo as N notas mais recentes de M. Use os filtros ou o CSV para ver as demais.". Cada linha traz data de emissão, fatura, cliente, número e chave da NFS-e, status da fatura, data de pagamento, valor e situação. Abaixo vêm os totais de notas, de cada situação e do valor das faturas. A tela também leva à lista de [alertas de NFS-e](#alertas-de-nfs-e).
 
 **Exportar CSV** usa os mesmos filtros, com até 5.000 linhas separadas por `;` e as colunas `emitida_em`, `invoiceid`, `cliente`, `numero_nf`, `chave_acesso`, `status_fatura`, `data_pagamento`, `valor`, `credito_aplicado` e `situacao`. Cada célula passa pelo `CsvSanitizer`: um valor que começa com `=`, `+`, `-`, `@`, TAB ou CR recebe um apóstrofo na frente, para a planilha tratá-lo como texto e não como fórmula. Números simples, inclusive negativos, ficam como estão.
+
+## Atualizador embutido
+
+A tela **Configurações > Atualizações** mostra a versão instalada e a mais recente. Com versão nova, **Atualizar agora** abre `action=updater` (`UpdaterController`), que conduz as quatro etapas. Enquanto a pausa estiver ativa, é a única tela do módulo que abre no admin: qualquer outra `action` mostra o atualizador.
+
+### Checagem de versão
+
+`UpdateCheckService::checkNow()` roda pelo cron (no máximo a cada 24 h) ou pelo botão **Verificar agora**.
+
+- **Canal Estável** (padrão, `update_channel` vazio ou `stable`): lê o `update.json` da `main` em `raw.githubusercontent.com`.
+- **Canal Testes** (`update_channel = beta`): lê a API de releases do GitHub e escolhe a maior versão, pré-releases incluídas, que tenha os arquivos `OpenNfse-<versão>.zip` e `.sha256` anexados. O SHA-256 vem do arquivo `.sha256` do release.
+
+O manifesto só é aceito com `package_url` igual a `https://github.com/jaison/OpenNfse/releases/download/v<versão>/OpenNfse-<versão>.zip` e `package_sha256` com 64 caracteres hexadecimais. Sem esses dois campos, a versão aparece, mas só pode ser instalada à mão. O resultado fica em `mod_opennfse_config` (`update_*`).
+
+### Etapa 1: checagem
+
+`PreflightCheck::run()` não altera nada. Cada item volta `ok`, `warn` ou `fail`, e qualquer `fail` bloqueia a pausa:
+
+- pacote anunciado, com SHA-256, e mais novo que o instalado;
+- PHP e WHMCS mínimos do manifesto e extensões `zip`, `curl`, `openssl` e `json`;
+- instalação a partir do pacote: `build-info.json` com a mesma versão de `OpenNfse.php` e nenhum `.git` na pasta;
+- `UpdateTempPath` do WHMCS preenchido, existente e gravável;
+- criação, renomeação e remoção de pasta em `modules/addons` e escrita em todas as pastas do módulo;
+- espaço livre na pasta temporária e em `modules/addons`: o maior entre 100 MB e três vezes o tamanho do módulo.
+
+As provas de escrita criam e apagam arquivos de verdade. A localização da pasta temporária (dentro ou fora do webroot) só gera aviso e decide se a cópia do backup pode ficar no servidor.
+
+### Etapa 2: pausa da operação
+
+`MaintenanceMode::pause()` grava `paused = 1` em `mod_opennfse_updater`, que sobrevive à troca dos arquivos. Se a tabela não puder ser lida, a pausa conta como desligada. Com a pausa ativa:
+
+- os 12 hooks de fatura passam por `HookGate::run()`, que grava o evento em `mod_opennfse_updater_events` (só valores simples das `vars`) em vez de chamar o handler. Se não conseguir gravar, chama o handler como se não houvesse pausa, porque perder o evento é pior;
+- os hooks de tela (`AdminInvoicesControlsOutput`, `ClientAreaPageViewInvoice`, `ClientAreaHeadOutput`, `ClientAreaPrimaryNavbar`) não mostram nada e o `AfterCronJob` não roda;
+- `cron.php` sai antes das migrations, e `Migrator::up()` não roda, exceto quando o atualizador pede (`up(true)`);
+- `opennfse_clientarea()` mostra só um aviso de manutenção, inclusive para downloads;
+- o admin só abre o atualizador.
+
+A etapa seguinte só libera quando a pausa tem pelo menos 60 segundos (tempo para terminar requisições que começaram antes) e o lock do cron está livre (`MaintenanceMode::isSettled()`). Até a troca dos arquivos, **Retomar operação** cancela tudo: apaga a cópia do backup, roda as migrations e processa os eventos guardados (com o lock do cron; se o cron estiver rodando, ele mesmo processa).
+
+### Etapa 3: backup das tabelas
+
+`TableBackup::dump()` gera um SQL compactado (gzip) com `DROP TABLE`, `CREATE TABLE` e `INSERT` de todas as tabelas `mod_opennfse_*`, exceto `mod_opennfse_updater` e `mod_opennfse_updater_events`, para que restaurar o backup não apague a pausa nem os eventos guardados.
+
+- Um comando por linha: os textos vêm escapados pelo banco. Os `INSERT` têm até 1 MB e as linhas são lidas sem buffer no cliente.
+- O backup não troca o charset da conexão (sem `SET NAMES`). Assim, os bytes voltam exatamente como saíram, também nas instalações em que o WHMCS conversa com o banco em latin1. O cabeçalho registra o charset da conexão (`charset=`), e a restauração recusa o arquivo se a conexão atual estiver em outro.
+- O SHA-256, o tamanho, a quantidade de tabelas e linhas e o caminho ficam em `mod_opennfse_updater.data`.
+- O arquivo é gerado no `UpdateTempPath` quando ele fica fora do webroot (cópia no servidor até a confirmação). Senão, é gerado na pasta temporária do PHP e apagado logo depois do download.
+- O download (`updaterBackupDownload`) é obrigatório para seguir. Se a geração falhar, o erro aparece na própria etapa, porque durante a pausa os relatórios não abrem.
+
+### Etapa 4: troca dos arquivos
+
+`UpdaterController::install()` roda ainda com o código atual:
+
+1. Confere de novo o pacote anunciado e a checagem do ambiente.
+2. `PackageDownloader` baixa o zip para o `UpdateTempPath`: só HTTPS, só `github.com` e os hosts de arquivos do GitHub, cada redirecionamento conferido antes de ser seguido, no máximo 60 MB.
+3. `PackageInstaller::prepare()` confere o SHA-256, extrai entrada por entrada (recusa caminhos fora de `OpenNfse/`, `..`, links simbólicos e mais de 300 MB extraídos), exige os arquivos principais, a versão anunciada em `OpenNfse.php` e no `build-info.json`, e checa a sintaxe do código do módulo (raiz e `src/`) com o tokenizador do PHP, sem executá-lo.
+4. `stage()` monta `modules/addons/OpenNfse.new`, por `rename` ou por cópia se a pasta temporária estiver em outro disco.
+5. Carrega as classes que a requisição ainda vai usar e chama `swap()`: `OpenNfse` vira `OpenNfse.old` e `OpenNfse.new` vira `OpenNfse`. Se a segunda troca falhar, a primeira é desfeita. Depois limpa o opcache.
+
+Qualquer falha antes da troca apaga o pacote, a extração e a `OpenNfse.new`, mostra o erro na etapa 4 e mantém os arquivos atuais.
+
+A checagem final (`updaterVerify`) roda numa requisição nova, já com o código novo: versão em `OpenNfse.php`, arquivos principais, carregamento das classes principais e `Migrator::up(true)`. O resultado vai para `data.verify`, e a etapa fica `installed` ou `verify_failed`.
+
+### Confirmar ou voltar
+
+Depois da troca, **Retomar operação** só aparece se os arquivos já voltaram para a versão anterior. As saídas são:
+
+- **Confirmar e retomar operação** (`updaterConfirm`, só com a checagem final aprovada): apaga `OpenNfse.old` e a cópia do backup, retoma a operação e processa os eventos guardados.
+- **Voltar ao estado anterior** (`updaterRollback`): restaura as tabelas pelo backup do servidor, ou pelo arquivo enviado na tela, que precisa ter o SHA-256 registrado na etapa 3. Depois põe `OpenNfse.old` de volta no lugar e apaga a versão nova. A operação continua pausada até **Retomar operação**.
+
+Como a restauração regrava `mod_opennfse_logs`, os logs gravados entre o backup e a volta se perdem. O `UPDATER_ROLLBACK` é gravado depois da restauração.
+
+Logs do atualizador: `UPDATER_PAUSE`, `UPDATER_RESUME`, `UPDATER_BACKUP`, `UPDATER_BACKUP_ERROR`, `UPDATER_BACKUP_DOWNLOAD`, `UPDATER_INSTALL_ERROR`, `UPDATER_SWAP`, `UPDATER_VERIFY_OK`, `UPDATER_VERIFY_FAIL`, `UPDATER_ROLLBACK`, `UPDATER_ROLLBACK_ERROR`, `UPDATER_CONFIRM`, `UPDATER_REPLAY` e `UPDATER_REPLAY_ERROR`.
+
+### Pacote do release
+
+O workflow `.github/workflows/release-package.yml` roda quando um release é publicado. Ele confere se a versão de `OpenNfse.php` bate com a tag, gera `OpenNfse-<versão>.zip` com `git archive` (o `.gitattributes` tira testes, ferramentas e arquivos de desenvolvimento) e acrescenta o `build-info.json` (módulo, versão, commit e data). Depois anexa o zip e o `.sha256` ao release.

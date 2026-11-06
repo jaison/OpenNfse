@@ -8,6 +8,9 @@ use WHMCS\Database\Capsule;
 
 final class QueueRepository
 {
+    /** Status em aberto mostrados na Dashboard. ERROR é o erro não resolvido; o resolvido vira RESOLVIDO. */
+    public const OPEN_STATUSES = ['PENDING', 'RUNNING', 'WAIT_STATUS', 'ERROR'];
+
     public function findById(int $id): ?array
     {
         $row = Capsule::table('mod_opennfse_queue')->where('id', $id)->first();
@@ -32,6 +35,50 @@ final class QueueRepository
             ->first();
 
         return $row !== null;
+    }
+
+    /**
+     * Estado atual da fila para o card "Fila agora" da Dashboard, numa consulta só:
+     * contagem por status em aberto e o created_at do PENDING mais antigo.
+     *
+     * @return array{counts: array{PENDING: int, RUNNING: int, WAIT_STATUS: int, ERROR: int}, oldest_pending: string}
+     */
+    public function currentSnapshot(): array
+    {
+        $rows = Capsule::table('mod_opennfse_queue')
+            ->select([
+                'status',
+                Capsule::raw('COUNT(*) as total'),
+                Capsule::raw('MIN(created_at) as oldest'),
+            ])
+            ->whereIn('status', self::OPEN_STATUSES)
+            ->groupBy('status')
+            ->get();
+
+        return self::snapshotFromRows($rows);
+    }
+
+    /**
+     * @param iterable<int, object|array<string, mixed>> $rows linhas com status, total e oldest
+     * @return array{counts: array{PENDING: int, RUNNING: int, WAIT_STATUS: int, ERROR: int}, oldest_pending: string}
+     */
+    public static function snapshotFromRows(iterable $rows): array
+    {
+        $counts = array_fill_keys(self::OPEN_STATUSES, 0);
+        $oldestPending = '';
+        foreach ($rows as $row) {
+            $row = (array) $row;
+            $status = (string) ($row['status'] ?? '');
+            if (!array_key_exists($status, $counts)) {
+                continue;
+            }
+            $counts[$status] += (int) ($row['total'] ?? 0);
+            if ($status === 'PENDING') {
+                $oldestPending = trim((string) ($row['oldest'] ?? ''));
+            }
+        }
+
+        return ['counts' => $counts, 'oldest_pending' => $oldestPending];
     }
 
     public function hasPendingOrRunning(int $invoiceId): bool

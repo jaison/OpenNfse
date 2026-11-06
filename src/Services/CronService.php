@@ -9,6 +9,8 @@ use OpenNfse\Migrations\Migrator;
 use OpenNfse\Repositories\ConfigRepository;
 use OpenNfse\Repositories\LogRepository;
 use OpenNfse\Repositories\NotaRepository;
+use OpenNfse\Updater\HookGate;
+use OpenNfse\Updater\MaintenanceMode;
 use WHMCS\Database\Capsule;
 
 final class CronService
@@ -49,6 +51,9 @@ final class CronService
 
     private function runInternal(string $source): void
     {
+        if (MaintenanceMode::isPaused()) {
+            return;
+        }
         (new Migrator())->up();
         $configRepo = new ConfigRepository();
         $config = $configRepo->get();
@@ -64,6 +69,10 @@ final class CronService
         }
 
         try {
+            // Eventos de fatura guardados durante a pausa da atualização: antes da fila,
+            // para que a emissão que eles enfileiram saia nesta mesma rodada.
+            $this->replayDeferredHookEvents();
+
             $config = $configRepo->get();
             if (empty($config) || !$this->shouldRunForCurrentMinute($config)) {
                 return;
@@ -88,6 +97,25 @@ final class CronService
             throw $e;
         } finally {
             $lock->release($lockName);
+        }
+    }
+
+    private function replayDeferredHookEvents(): void
+    {
+        try {
+            $result = HookGate::replayPending();
+        } catch (\Throwable $e) {
+            (new LogRepository())->insert(null, 'UPDATER_REPLAY_ERROR', null, $e->getMessage());
+
+            return;
+        }
+        if ($result['replayed'] > 0) {
+            (new LogRepository())->insert(
+                null,
+                'UPDATER_REPLAY',
+                json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                $result['failed'] > 0 ? 'Eventos com erro: ' . $result['failed'] : null
+            );
         }
     }
 

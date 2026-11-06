@@ -125,6 +125,8 @@ final class ReportRepository
 
         $query = $this->historyDocumentsQuery($filters)
             ->leftJoin('mod_opennfse_notas as nk', 'nk.chave_acesso', '=', 'h.chave_acesso')
+            // Só para registro sem chave. Se a fatura foi reemitida, a linha de nota_id pode já ser a da
+            // nota nova: a data dela é aproximada, mas ainda melhor que h.created_at.
             ->leftJoin('mod_opennfse_notas as nid', static function ($join): void {
                 $join->on('nid.id', '=', 'h.nota_id')->whereNull('h.chave_acesso');
             })
@@ -245,6 +247,8 @@ final class ReportRepository
      * Data de referência da emissão no histórico. Sem emitida_em e sem competencia, usa a da linha atual
      * da mesma chave (ou da mesma nota_id, quando o registro não tem chave); h.created_at, que é a data
      * de gravação no histórico, fica só como último recurso.
+     * A linha de nota_id (nid) pode ser a da nota nova, se a fatura foi reemitida: é uma data aproximada,
+     * melhor que h.created_at.
      */
     private function historyReferenceDateExpression(): string
     {
@@ -374,13 +378,16 @@ final class ReportRepository
             }
         }
 
-        $canceladasQueries = [
-            $this->notasCanceladasForaDoHistorico($start, $end, 'n.cancelado_em'),
-            $this->historicoCancelamentos($start, $end, true),
-        ];
-        foreach ($canceladasQueries as $query) {
-            $series = self::addDailyCounts($series, $query->get(), 'canceladas');
-        }
+        $series = self::addDailyCounts(
+            $series,
+            $this->notasCanceladasForaDoHistorico($start, $end, 'n.cancelado_em')->get(),
+            'canceladas'
+        );
+        $series = self::addDailyCounts(
+            $series,
+            self::countByDay($this->historicoCancelamentosPorDocumento($start, $end)),
+            'canceladas'
+        );
 
         $issueSets = [];
         foreach (Capsule::table('mod_opennfse_notas as n')
@@ -431,9 +438,9 @@ final class ReportRepository
             ->whereBetween('n.emitida_em', [$start, $end])
             ->count();
 
-        // Canceladas: histórico mais as linhas cuja chave não tem cancelamento no histórico.
+        // Canceladas: documentos do histórico mais as linhas cuja chave não tem cancelamento no histórico.
         $canceladas = (int) $this->notasCanceladasForaDoHistorico($start, $end)->count()
-            + (int) $this->historicoCancelamentos($start, $end)->count();
+            + count($this->historicoCancelamentosPorDocumento($start, $end));
 
         $rejeitadas = (int) Capsule::table('mod_opennfse_notas as n')
             ->where('n.status', 'REJEITADA')
@@ -673,24 +680,26 @@ final class ReportRepository
             $notas[] = (array) $r;
         }
 
+        // Folga no limite: a mesma chave pode ter mais de um registro CANCELAMENTO.
         $historico = [];
         $query = $this->historicoCancelamentos($start, $end)
             ->join('tblclients as c', 'c.id', '=', 'h.userid')
             ->select([
                 'h.invoiceid',
                 'h.numero_nf',
+                'h.chave_acesso',
                 'h.cancelado_em as data',
                 'c.companyname',
                 'c.firstname',
                 'c.lastname',
             ])
             ->orderBy('h.cancelado_em', 'desc')
-            ->limit($limit);
+            ->limit($limit * 4);
         foreach ($query->get() as $r) {
             $historico[] = (array) $r;
         }
 
-        return self::mergeRecentByDate($historico, $notas, $limit);
+        return self::mergeRecentByDate(self::recentesPorDocumento($historico), $notas, $limit);
     }
 
     /**
@@ -752,14 +761,108 @@ final class ReportRepository
     /**
      * Registros CANCELAMENTO do histórico com cancelado_em no período.
      */
-    private function historicoCancelamentos(string $start, string $end, bool $groupByDay = false)
+    private function historicoCancelamentos(string $start, string $end)
     {
-        $query = Capsule::table('mod_opennfse_notas_history as h')
+        return Capsule::table('mod_opennfse_notas_history as h')
             ->where('h.tipo_registro', 'CANCELAMENTO')
             ->whereNotNull('h.cancelado_em')
             ->whereBetween('h.cancelado_em', [$start, $end]);
+    }
 
-        return $groupByDay ? $this->groupByDay($query, 'h.cancelado_em') : $query;
+    /**
+     * Cancelamentos do histórico no período, um por documento (ver cancelamentosPorDocumento).
+     *
+     * @return array<string, string>
+     */
+    private function historicoCancelamentosPorDocumento(string $start, string $end): array
+    {
+        return self::cancelamentosPorDocumento(
+            $this->historicoCancelamentos($start, $end)
+                ->select(['h.invoiceid', 'h.chave_acesso', 'h.cancelado_em'])
+                ->get()
+        );
+    }
+
+    /**
+     * Um cancelamento por documento, como na aba Cancelamentos: a mesma chave com mais de um registro
+     * CANCELAMENTO conta uma vez, no cancelado_em mais recente. Sem chave, conta por fatura e data do
+     * cancelamento, como a aba.
+     *
+     * @param iterable<object|array> $rows linhas com invoiceid, chave_acesso e cancelado_em
+     * @return array<string, string> documento => cancelado_em
+     */
+    public static function cancelamentosPorDocumento(iterable $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $row = (array) $row;
+            $canceladoEm = trim((string) ($row['cancelado_em'] ?? ''));
+            if ($canceladoEm === '') {
+                continue;
+            }
+            $doc = self::documentoCancelado($row, $canceladoEm);
+            if (!isset($out[$doc]) || strcmp($canceladoEm, $out[$doc]) > 0) {
+                $out[$doc] = $canceladoEm;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Cancelamentos recentes do histórico (data em 'data'), um por documento, com a mesma regra
+     * de cancelamentosPorDocumento: fica a linha com a data mais recente.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    public static function recentesPorDocumento(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $data = trim((string) ($row['data'] ?? ''));
+            if ($data === '') {
+                continue;
+            }
+            $doc = self::documentoCancelado($row, $data);
+            if (!isset($out[$doc]) || strcmp($data, trim((string) ($out[$doc]['data'] ?? ''))) > 0) {
+                $out[$doc] = $row;
+            }
+        }
+
+        return array_values($out);
+    }
+
+    /**
+     * Documento do cancelamento: a chave; sem chave, fatura e data do cancelamento (como a aba Cancelamentos).
+     */
+    private static function documentoCancelado(array $row, string $canceladoEm): string
+    {
+        $chave = trim((string) ($row['chave_acesso'] ?? ''));
+
+        return $chave !== '' ? 'chave:' . $chave : 'evento:' . (int) ($row['invoiceid'] ?? 0) . '|' . $canceladoEm;
+    }
+
+    /**
+     * Conta as datas por dia, no formato (dia, total) do addDailyCounts.
+     *
+     * @param array<array-key, string> $datas
+     * @return array<int, array{dia: string, total: int}>
+     */
+    public static function countByDay(array $datas): array
+    {
+        $totais = [];
+        foreach ($datas as $data) {
+            $dia = substr(trim((string) $data), 0, 10);
+            $totais[$dia] = ($totais[$dia] ?? 0) + 1;
+        }
+
+        $out = [];
+        foreach ($totais as $dia => $total) {
+            $out[] = ['dia' => (string) $dia, 'total' => $total];
+        }
+
+        return $out;
     }
 
     private function groupByDay($query, string $field)

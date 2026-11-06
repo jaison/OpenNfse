@@ -28,10 +28,18 @@ use OpenNfse\Services\StorageService;
 use OpenNfse\Services\TokenService;
 use WHMCS\Database\Capsule;
 use OpenNfse\Controllers\Support\AdminHelpersTrait;
+use OpenNfse\Views\Ui;
 
 final class QueueController
 {
     use AdminHelpersTrait;
+
+    /** Status da fila e da nota → linha destacada na tabela. */
+    private const ROW_TONES = [
+        'ERROR' => 'danger',
+        'RESOLVIDO' => 'info',
+        'WAIT_STATUS' => 'info',
+    ];
 
     public function showFila(): void
     {
@@ -39,19 +47,19 @@ final class QueueController
         $this->renderTabs('fila');
 
         $token = (new TokenService())->token();
+        echo '<div class="nfse-ui nfse-page nfse-fila">';
 
         $msg = (string) ($_REQUEST['msg'] ?? '');
         if ($msg === 'check_done') {
-            echo '<div class="successbox">Consulta executada. Verifique o status na lista e/ou na fatura.</div>';
+            echo Ui::callout('ok', 'Consulta executada', 'Verifique o status na lista e/ou na fatura.');
         } elseif ($msg === 'check_error') {
-            echo '<div class="errorbox">Erro ao consultar status. Verifique os logs do módulo.</div>';
+            echo Ui::callout('danger', 'Erro ao consultar status', 'Verifique os logs do módulo.');
         } elseif ($msg === 'process_done') {
-            echo '<div class="successbox">Processamento manual da fila executado.</div>';
+            echo Ui::callout('ok', 'Processamento manual da fila executado');
         } elseif ($msg === 'process_error') {
-            echo '<div class="errorbox">Erro ao processar a fila manualmente. Verifique os logs do módulo.</div>';
+            echo Ui::callout('danger', 'Erro ao processar a fila manualmente', 'Verifique os logs do módulo.');
         } elseif ($msg === 'process_busy') {
-            echo '<div class="errorbox">Processamento já em andamento (cron ou outro administrador). '
-                . 'Aguarde alguns instantes e atualize a tela.</div>';
+            echo Ui::callout('warn', 'Processamento já em andamento', 'O cron ou outro administrador está processando a fila. Aguarde alguns instantes e atualize a tela.');
         }
 
         $statusFilter = trim((string) ($_REQUEST['status'] ?? ''));
@@ -73,75 +81,17 @@ final class QueueController
             $page = 1;
         }
 
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);">';
-        echo '<form id="nfse-fila-filters" method="get" action="addonmodules.php" style="margin:0;">';
-        echo '<input type="hidden" name="module" value="OpenNfse" />';
-        echo '<input type="hidden" name="action" value="fila" />';
-        echo '<input type="hidden" name="per_page" value="' . htmlspecialchars((string) $perPage, ENT_QUOTES, 'UTF-8') . '" />';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;">';
-        echo '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;flex:1 1 760px;">';
-        echo '<div style="min-width:130px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Invoice ID</div>';
-        echo '<input type="text" name="invoiceid" placeholder="Invoice ID" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" style="width:130px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="min-width:190px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Status</div>';
-        echo '<select name="status" style="width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
-        $statusOptions = [
-            '' => 'Todos os status',
-            'PENDING' => 'PENDING',
-            'RUNNING' => 'RUNNING',
-            'WAIT_STATUS' => 'WAIT_STATUS',
-            'ERROR' => 'ERROR',
-            'RESOLVIDO' => 'RESOLVIDO',
-            'DONE' => 'DONE',
-        ];
-        foreach ($statusOptions as $val => $label) {
-            $sel = $val === $statusFilter ? ' selected' : '';
-            echo '<option value="' . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . '"' . $sel . '>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
-        }
-        echo '</select>';
-        echo '</div>';
-        echo '<div style="min-width:160px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Atualizado de</div>';
-        echo '<input type="date" name="updated_from" value="' . htmlspecialchars($updatedFrom, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '<div style="min-width:160px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Atualizado até</div>';
-        echo '<input type="date" name="updated_to" value="' . htmlspecialchars($updatedTo, ENT_QUOTES, 'UTF-8') . '" style="width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" />';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
-        echo '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<button type="submit" form="nfse-fila-filters" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=fila">Limpar</a>';
-        echo '</div>';
-        echo '</div>';
-        echo '<div style="margin-top:12px;padding:12px 14px;border:1px solid #bfd7ea;border-radius:8px;background:#fff;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
-        echo '<div style="flex:1 1 420px;">';
-        echo '<div style="font-size:11px;color:#5f6b7a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Ação operacional</div>';
-        echo '<div style="font-size:15px;font-weight:700;color:#1f2937;margin-bottom:4px;">Processamento manual da fila</div>';
-        echo '<div style="font-size:12px;color:#5b6573;line-height:1.5;">Use este atalho para executar imediatamente um lote da fila e atualizar a visão operacional sem esperar o próximo cron.</div>';
-        echo '</div>';
-        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=filaProcessNow" style="margin:0;">';
-        if ($token !== '') {
-            echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
-        }
-        if ($invoiceFilter !== '') {
-            echo '<input type="hidden" name="return_invoiceid" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" />';
-        }
-        if ($statusFilter !== '') {
-            echo '<input type="hidden" name="return_status" value="' . htmlspecialchars($statusFilter, ENT_QUOTES, 'UTF-8') . '" />';
-        }
-        echo '<input type="hidden" name="return_updated_from" value="' . htmlspecialchars($updatedFrom, ENT_QUOTES, 'UTF-8') . '" />';
-        echo '<input type="hidden" name="return_updated_to" value="' . htmlspecialchars($updatedTo, ENT_QUOTES, 'UTF-8') . '" />';
-        echo '<input type="hidden" name="return_page" value="' . $page . '" />';
-        echo '<input type="hidden" name="return_per_page" value="' . $perPage . '" />';
-        echo '<button type="submit" class="btn btn-primary">Processar a fila manualmente agora</button>';
-        echo '</form>';
-        echo '</div>';
-        echo '</div>';
-
+        $statusOptions = Ui::statusOptions(['PENDING', 'RUNNING', 'WAIT_STATUS', 'ERROR', 'RESOLVIDO', 'DONE']);
+        echo Ui::filterBar(
+            ['id' => 'nfse-fila-filters', 'method' => 'get', 'action' => 'addonmodules.php', 'hidden' => ['module' => 'OpenNfse', 'action' => 'fila', 'per_page' => $perPage]],
+            Ui::field('Fatura', Ui::input('invoiceid', $invoiceFilter, 'text', ['placeholder' => 'ID da fatura', 'inputmode' => 'numeric'], 'nfse-input--w-sm'))
+            . Ui::field('Status', Ui::select('status', $statusOptions, $statusFilter, [], 'nfse-input--w-md'))
+            . Ui::field('Atualizado de', Ui::input('updated_from', $updatedFrom, 'date'))
+            . Ui::field('Atualizado até', Ui::input('updated_to', $updatedTo, 'date')),
+            Ui::button('Filtrar', ['primary'])
+            . Ui::button('Limpar', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=fila']),
+            'Filtros da fila'
+        );
 
         $applyFilters = static function ($query) use ($statusFilter, $invoiceFilter, $updatedFrom, $updatedTo): void {
             if ($statusFilter !== '') {
@@ -178,21 +128,32 @@ final class QueueController
             $statusTotals[(string) ($statusRow->status ?? '')] = (int) ($statusRow->total ?? 0);
         }
 
-        echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">';
-        $summaryCards = [
-            ['label' => 'Itens filtrados', 'value' => $totalRows, 'color' => '#1f2937', 'border' => '#dbe5f0'],
-            ['label' => 'PENDENTES', 'value' => (int) ($statusTotals['PENDING'] ?? 0), 'color' => '#8a5a00', 'border' => '#f3e2b8'],
-            ['label' => 'WAIT_STATUS', 'value' => (int) ($statusTotals['WAIT_STATUS'] ?? 0), 'color' => '#8a6d3b', 'border' => '#f2e7c7'],
-            ['label' => 'ERROS', 'value' => (int) ($statusTotals['ERROR'] ?? 0), 'color' => '#b42318', 'border' => '#f1c7c3'],
-            ['label' => 'CONCLUÍDOS', 'value' => (int) (($statusTotals['DONE'] ?? 0) + ($statusTotals['RESOLVIDO'] ?? 0)), 'color' => '#176b46', 'border' => '#cce5d6'],
-        ];
-        foreach ($summaryCards as $card) {
-            echo '<div style="border:1px solid ' . htmlspecialchars((string) $card['border'], ENT_QUOTES, 'UTF-8') . ';border-radius:8px;background:#fff;padding:12px 14px;box-shadow:0 1px 2px rgba(15,23,42,0.04);">';
-            echo '<div style="font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;">' . htmlspecialchars((string) $card['label'], ENT_QUOTES, 'UTF-8') . '</div>';
-            echo '<div style="font-size:26px;line-height:1.1;font-weight:700;color:' . htmlspecialchars((string) $card['color'], ENT_QUOTES, 'UTF-8') . ';">' . (int) $card['value'] . '</div>';
-            echo '</div>';
+        $errorTotal = (int) ($statusTotals['ERROR'] ?? 0);
+        echo Ui::kpis([
+            ['label' => 'Itens filtrados', 'value' => $totalRows],
+            ['label' => 'Pendentes', 'value' => (int) ($statusTotals['PENDING'] ?? 0)],
+            ['label' => 'Aguardando status', 'value' => (int) ($statusTotals['WAIT_STATUS'] ?? 0)],
+            ['label' => 'Erros', 'value' => $errorTotal, 'tone' => $errorTotal > 0 ? 'danger' : ''],
+            ['label' => 'Concluídos', 'value' => (int) (($statusTotals['DONE'] ?? 0) + ($statusTotals['RESOLVIDO'] ?? 0))],
+        ]);
+
+        $returnFields = [];
+        if ($invoiceFilter !== '') {
+            $returnFields['return_invoiceid'] = $invoiceFilter;
         }
-        echo '</div>';
+        if ($statusFilter !== '') {
+            $returnFields['return_status'] = $statusFilter;
+        }
+        $returnFields['return_updated_from'] = $updatedFrom;
+        $returnFields['return_updated_to'] = $updatedTo;
+        $returnFields['return_page'] = $page;
+        $returnFields['return_per_page'] = $perPage;
+        $tokenField = $token !== '' ? ['token' => $token] : [];
+
+        $processForm = '<form class="nfse-inline-form" method="post" action="addonmodules.php?module=OpenNfse&amp;action=filaProcessNow">'
+            . Ui::hidden($tokenField + $returnFields)
+            . Ui::button('Processar a fila agora', ['primary'])
+            . '</form>';
 
         $baseParams = [
             'module' => 'OpenNfse',
@@ -235,7 +196,7 @@ final class QueueController
         $columnOptions = [
             'correlation' => 'Rastreio',
             'queue_id' => 'Fila ID',
-            'invoice' => 'Invoice',
+            'invoice' => 'Fatura',
             'dps' => 'DPS atual',
             'nfse' => 'NFS-e',
             'queue_status' => 'Status Fila',
@@ -254,43 +215,25 @@ final class QueueController
             'erro' => true,
         ];
 
-        echo '<div style="margin-bottom:10px;display:flex;justify-content:flex-end;align-items:center;">';
-        echo '<div id="nfse-fila-columns-wrap" style="position:relative;">';
-        echo '<button type="button" id="nfse-fila-columns-toggle" class="btn btn-xs btn-default" style="height:32px;padding:0 12px;line-height:30px;">Colunas</button>';
-        echo '<div id="nfse-fila-columns-popover" style="display:none;position:absolute;right:0;top:36px;z-index:30;width:220px;max-height:320px;overflow:auto;padding:10px 12px;border:1px solid #dbe3ea;border-radius:8px;background:#fff;box-shadow:0 10px 28px rgba(15,23,42,0.14);">';
-        echo '<div style="display:flex;flex-direction:column;gap:6px;">';
+        $columnsMenu = '<div id="nfse-fila-columns-wrap" class="nfse-menu">';
+        $columnsMenu .= '<button type="button" id="nfse-fila-columns-toggle" class="nfse-btn nfse-btn--sm" aria-haspopup="true" aria-expanded="false" aria-controls="nfse-fila-columns-popover">Colunas</button>';
+        $columnsMenu .= '<div id="nfse-fila-columns-popover" class="nfse-menu__panel" hidden><div class="nfse-menu__list">';
         foreach ($columnOptions as $columnKey => $columnLabel) {
             $checked = isset($defaultVisibleColumns[$columnKey]) ? ' checked' : '';
-            echo '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;cursor:pointer;">';
-            echo '<input class="nfse-fila-column-toggle" type="checkbox" value="' . htmlspecialchars($columnKey, ENT_QUOTES, 'UTF-8') . '"' . $checked . ' />';
-            echo '<span>' . htmlspecialchars($columnLabel, ENT_QUOTES, 'UTF-8') . '</span>';
-            echo '</label>';
+            $columnsMenu .= '<label class="nfse-check"><input class="nfse-fila-column-toggle" type="checkbox" value="' . Ui::h($columnKey) . '"' . $checked . ' />'
+                . '<span>' . Ui::h($columnLabel) . '</span></label>';
         }
-        echo '</div>';
-        echo '<div style="display:flex;justify-content:space-between;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid #eef2f7;">';
-        echo '<button type="button" id="nfse-fila-columns-default" class="btn btn-xs btn-default">Padrão</button>';
-        echo '<button type="button" id="nfse-fila-columns-all" class="btn btn-xs btn-default">Todas</button>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
+        $columnsMenu .= '</div><div class="nfse-menu__foot">';
+        $columnsMenu .= '<button type="button" id="nfse-fila-columns-default" class="nfse-btn nfse-btn--sm">Padrão</button>';
+        $columnsMenu .= '<button type="button" id="nfse-fila-columns-all" class="nfse-btn nfse-btn--sm">Todas</button>';
+        $columnsMenu .= '</div></div></div>';
 
-        echo '<table id="nfse-fila-table" class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th data-col="correlation" style="width:16%;">Rastreio</th>';
-        echo '<th data-col="queue_id" style="width:5%;text-align:center;">Fila ID</th>';
-        echo '<th data-col="invoice" style="width:7%;">Invoice</th>';
-        echo '<th data-col="dps" style="width:14%;">DPS atual</th>';
-        echo '<th data-col="nfse" style="width:6%;text-align:center;">NFS-e</th>';
-        echo '<th data-col="queue_status" style="width:8%;text-align:center;">Status fila</th>';
-        echo '<th data-col="nota_status" style="width:8%;text-align:center;">Status nota</th>';
-        echo '<th data-col="tentativas" style="width:5%;text-align:center;">Tent.</th>';
-        echo '<th data-col="ultima" style="width:9%;">Última</th>';
-        echo '<th data-col="checks" style="width:4%;text-align:center;">Checks</th>';
-        echo '<th data-col="proxima" style="width:9%;">Próxima</th>';
-        echo '<th data-col="erro" style="width:15%;">Erro</th>';
-        echo '<th data-col="acoes" style="width:10%;">Ações</th>';
-        echo '</tr>';
+        echo Ui::sectionHeader(
+            'Itens da fila',
+            '"Processar a fila agora" executa um lote na hora, sem esperar o próximo cron.',
+            $columnsMenu . $processForm,
+            'nfse-fila-itens'
+        );
 
         $truncateError = static function (string $value): string {
             $value = trim($value);
@@ -303,45 +246,34 @@ final class QueueController
             }
             return mb_substr($value, 0, $max) . '...';
         };
-        $renderStatusBadge = static function (string $value): string {
-            $styles = [
-                'DONE' => ['bg' => '#e8f5e9', 'color' => '#2e7d32'],
-                'RESOLVIDO' => ['bg' => '#e3f2fd', 'color' => '#1565c0'],
-                'ERROR' => ['bg' => '#fdecea', 'color' => '#c62828'],
-                'WAIT_STATUS' => ['bg' => '#fff8e1', 'color' => '#8a6d3b'],
-                'RUNNING' => ['bg' => '#e8f1fb', 'color' => '#23527c'],
-                'PENDING' => ['bg' => '#eef2f7', 'color' => '#5f6b7a'],
-            ];
-            $style = $styles[$value] ?? ['bg' => '#f1f3f5', 'color' => '#555'];
-
-            return '<span style="display:inline-block;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700;background:' . $style['bg'] . ';color:' . $style['color'] . ';white-space:nowrap;">' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '</span>';
-        };
-        $renderDateCell = static function (string $value, string $meta = ''): string {
+        $dash = '<span class="nfse-muted">-</span>';
+        $renderDateCell = static function (string $value, string $meta = '') use ($dash): string {
             $value = trim($value);
             $meta = trim($meta);
             if ($value === '') {
-                return '<span style="color:#999;">-</span>';
+                return $dash;
             }
 
             $ts = strtotime($value);
-            if ($ts === false) {
-                $html = '<div style="line-height:1.3;">' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '</div>';
-                if ($meta !== '') {
-                    $html .= '<div style="font-size:11px;color:#777;line-height:1.3;">' . htmlspecialchars($meta, ENT_QUOTES, 'UTF-8') . '</div>';
-                }
-
-                return $html;
+            $html = '<div class="nfse-nowrap">' . Ui::h($ts === false ? $value : date('d/m/Y', $ts)) . '</div>';
+            if ($ts !== false) {
+                $html .= '<div class="nfse-cell-meta">' . Ui::h(date('H:i:s', $ts)) . '</div>';
             }
-
-            $html = '<div style="line-height:1.2;">';
-            $html .= '<div>' . htmlspecialchars(date('d/m/Y', $ts), ENT_QUOTES, 'UTF-8') . '</div>';
-            $html .= '<div style="font-size:11px;color:#666;">' . htmlspecialchars(date('H:i:s', $ts), ENT_QUOTES, 'UTF-8') . '</div>';
             if ($meta !== '') {
-                $html .= '<div style="font-size:11px;color:#777;">' . htmlspecialchars($meta, ENT_QUOTES, 'UTF-8') . '</div>';
+                $html .= '<div class="nfse-cell-meta">' . Ui::h($meta) . '</div>';
             }
-            $html .= '</div>';
 
             return $html;
+        };
+        $renderCopyCell = static function (string $value, string $buttonLabel, bool $strong = false) use ($truncateError, $dash): string {
+            if ($value === '') {
+                return $dash;
+            }
+
+            return '<div class="nfse-cell-stack">'
+                . '<span class="nfse-break' . ($strong ? ' nfse-mono' : '') . '" title="' . Ui::h($value) . '">' . Ui::h($truncateError($value)) . '</span>'
+                . '<button type="button" class="nfse-btn nfse-btn--sm nfse-copy" data-copy="' . Ui::h($value) . '">' . Ui::h($buttonLabel) . '</button>'
+                . '</div>';
         };
         $containsE2404ReemitMessage = static function (string $value): bool {
             $value = trim($value);
@@ -355,6 +287,28 @@ final class QueueController
                 || strpos($normalized, 'e2404 recebido na consulta da dps') !== false;
         };
 
+        echo '<section class="nfse-card nfse-card--table" aria-labelledby="nfse-fila-itens">';
+        echo '<div class="nfse-table-wrap"><table id="nfse-fila-table" class="nfse-table">';
+        echo '<thead><tr>';
+        echo '<th data-col="correlation">Rastreio</th>';
+        echo '<th data-col="queue_id" class="nfse-num">Fila ID</th>';
+        echo '<th data-col="invoice">Fatura</th>';
+        echo '<th data-col="dps">DPS atual</th>';
+        echo '<th data-col="nfse" class="nfse-num">NFS-e</th>';
+        echo '<th data-col="queue_status">Status fila</th>';
+        echo '<th data-col="nota_status">Status nota</th>';
+        echo '<th data-col="tentativas" class="nfse-center">Tent.</th>';
+        echo '<th data-col="ultima">Última</th>';
+        echo '<th data-col="checks" class="nfse-num">Checks</th>';
+        echo '<th data-col="proxima">Próxima</th>';
+        echo '<th data-col="erro">Erro</th>';
+        echo '<th data-col="acoes">Ações</th>';
+        echo '</tr></thead><tbody>';
+
+        if (count($rows) === 0) {
+            echo Ui::emptyRow(count($columnOptions), 'Nenhum item da fila com estes filtros.');
+        }
+
         foreach ($rows as $r) {
             $id = (int) ($r->id ?? 0);
             $invoiceId = (int) ($r->invoiceid ?? 0);
@@ -363,7 +317,6 @@ final class QueueController
             $notaStatus = trim((string) ($r->nota_status ?? ''));
             $notaIdDps = trim((string) ($r->nota_id_dps ?? ''));
             $notaNumeroNf = trim((string) ($r->nota_numero_nf ?? ''));
-            $notaChave = trim((string) ($r->nota_chave_acesso ?? ''));
             $tentativas = (string) ($r->tentativas ?? '');
             $ultima = (string) ($r->ultima_tentativa ?? '');
             $checks = (string) ($r->status_checks ?? '');
@@ -392,180 +345,79 @@ final class QueueController
                 }
             }
 
-            $rowStyle = '';
-            if ($status === 'ERROR') {
-                $rowStyle = ' style="background:#fffafa;"';
-            } elseif ($status === 'RESOLVIDO') {
-                $rowStyle = ' style="background:#f4f9ff;"';
-            } elseif ($status === 'WAIT_STATUS') {
-                $rowStyle = ' style="background:#fffdf5;"';
-            }
-            if ($isE2404Reemit) {
-                $rowStyle = ' style="background:#fff7ed;box-shadow:inset 4px 0 0 #ea580c;"';
-            }
-
-            echo '<tr' . $rowStyle . '>';
-            echo '<td data-col="correlation" style="vertical-align:top;word-break:break-word;overflow-wrap:anywhere;">';
-            if ($correlationId !== '') {
-                echo '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;">';
-                echo '<span title="' . htmlspecialchars($correlationId, ENT_QUOTES, 'UTF-8') . '" style="display:inline-block;max-width:100%;line-height:1.35;color:#1f2937;font-weight:600;">' . htmlspecialchars($truncateError($correlationId), ENT_QUOTES, 'UTF-8') . '</span>';
-                echo '<button type="button" class="btn btn-xs btn-default nfse-copy" data-copy="' . htmlspecialchars($correlationId, ENT_QUOTES, 'UTF-8') . '">Copiar</button>';
-                echo '</div>';
-            } else {
-                echo '<span style="color:#999;">-</span>';
-            }
-            echo '</td>';
-            echo '<td data-col="queue_id" style="text-align:center;vertical-align:top;">' . (int) $id . '</td>';
+            $rowTone = $isE2404Reemit ? 'warn' : (self::ROW_TONES[$status] ?? '');
+            echo '<tr' . ($rowTone !== '' ? ' class="nfse-row--' . $rowTone . '"' : '') . '>';
+            echo '<td data-col="correlation">' . $renderCopyCell($correlationId, 'Copiar', true) . '</td>';
+            echo '<td data-col="queue_id" class="nfse-num">' . $id . '</td>';
             $invoiceUrl = 'invoices.php?action=edit&id=' . $invoiceId;
-            echo '<td data-col="invoice" style="vertical-align:top;"><a href="' . htmlspecialchars($invoiceUrl, ENT_QUOTES, 'UTF-8') . '" style="font-weight:600;" title="Abre o estado atual da invoice e da nota vinculada">' . (int) $invoiceId . '</a></td>';
-            echo '<td data-col="dps" style="vertical-align:top;word-break:break-word;overflow-wrap:anywhere;">';
-            if ($notaIdDps !== '') {
-                echo '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;">';
-                echo '<span title="' . htmlspecialchars($notaIdDps, ENT_QUOTES, 'UTF-8') . '" style="display:inline-block;max-width:100%;line-height:1.35;color:#1f2937;">' . htmlspecialchars($truncateError($notaIdDps), ENT_QUOTES, 'UTF-8') . '</span>';
-                echo '<button type="button" class="btn btn-xs btn-default nfse-copy" data-copy="' . htmlspecialchars($notaIdDps, ENT_QUOTES, 'UTF-8') . '">Copiar</button>';
-                echo '</div>';
-            } else {
-                echo '<span style="color:#999;">-</span>';
-            }
-            echo '</td>';
-            echo '<td data-col="nfse" style="text-align:center;vertical-align:top;">' . htmlspecialchars($notaNumeroNf !== '' ? $notaNumeroNf : '-', ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td data-col="queue_status" style="text-align:center;vertical-align:top;">';
-            echo '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;">';
-            echo $renderStatusBadge($status);
+            echo '<td data-col="invoice"><a href="' . Ui::h($invoiceUrl) . '" title="Abre o estado atual da fatura e da nota vinculada"><b>' . $invoiceId . '</b></a></td>';
+            echo '<td data-col="dps">' . $renderCopyCell($notaIdDps, 'Copiar', true) . '</td>';
+            echo '<td data-col="nfse" class="nfse-num">' . ($notaNumeroNf !== '' ? Ui::h($notaNumeroNf) : $dash) . '</td>';
+            echo '<td data-col="queue_status"><div class="nfse-cell-stack">' . Ui::statusBadge($status);
             if ($isE2404Reemit) {
-                echo '<span style="display:inline-block;padding:4px 9px;border-radius:999px;font-size:10px;font-weight:700;line-height:1.2;background:#ffedd5;color:#9a3412;border:1px solid #fdba74;">Reemitindo mesma DPS</span>';
+                echo Ui::badge('Reemitindo mesma DPS', 'warn');
             }
-            echo '</div>';
-            echo '</td>';
-            echo '<td data-col="nota_status" style="text-align:center;vertical-align:top;">';
-            echo '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;">';
-            echo ($notaStatus !== '' ? $renderStatusBadge($notaStatus) : '<span style="color:#999;">-</span>');
+            echo '</div></td>';
+            echo '<td data-col="nota_status"><div class="nfse-cell-stack">' . ($notaStatus !== '' ? Ui::statusBadge($notaStatus) : $dash);
             if ($isE2404Reemit) {
-                echo '<span style="font-size:10px;font-weight:700;color:#9a3412;background:#fff1e6;border:1px solid #fed7aa;border-radius:999px;padding:3px 8px;">Tentativa ' . $e2404ReemitAttempts . '/2</span>';
+                echo Ui::badge('Tentativa ' . $e2404ReemitAttempts . '/2', 'warn');
             }
-            echo '</div>';
-            echo '</td>';
-            echo '<td data-col="tentativas" style="text-align:center;vertical-align:top;">'
-                . htmlspecialchars(QueueStatePolicy::attemptsLabel((int) $tentativas), ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td data-col="ultima" style="vertical-align:top;">' . $renderDateCell($ultima) . '</td>';
-            echo '<td data-col="checks" style="text-align:center;vertical-align:top;">' . htmlspecialchars($checks, ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td data-col="proxima" style="vertical-align:top;">' . $renderDateCell($nextCheckAt, $nextMeta) . '</td>';
+            echo '</div></td>';
+            echo '<td data-col="tentativas" class="nfse-center">' . Ui::h(QueueStatePolicy::attemptsLabel((int) $tentativas)) . '</td>';
+            echo '<td data-col="ultima">' . $renderDateCell($ultima) . '</td>';
+            echo '<td data-col="checks" class="nfse-num">' . Ui::h($checks) . '</td>';
+            echo '<td data-col="proxima">' . $renderDateCell($nextCheckAt, $nextMeta) . '</td>';
+            echo '<td data-col="erro">';
             if (trim($erro) === '') {
-                echo '<td data-col="erro" style="vertical-align:top;word-break:break-word;overflow-wrap:anywhere;"><span style="color:#999;">-</span></td>';
+                echo $dash;
             } else {
-                $short = $truncateError($erro);
-                echo '<td data-col="erro" style="vertical-align:top;word-break:break-word;overflow-wrap:anywhere;">';
-                echo '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;">';
+                echo '<div class="nfse-cell-stack">';
                 if ($isE2404Reemit) {
-                    echo '<div style="padding:7px 9px;border-radius:8px;background:#fff1e6;border:1px solid #fed7aa;color:#9a3412;font-size:11px;font-weight:700;line-height:1.35;">Reemitindo a mesma DPS apos E2404 (' . $e2404ReemitAttempts . '/2)</div>';
+                    echo '<span class="nfse-cell-meta nfse-text-danger">Reemitindo a mesma DPS apos E2404 (' . $e2404ReemitAttempts . '/2)</span>';
                 }
-                echo '<span title="' . htmlspecialchars($erro, ENT_QUOTES, 'UTF-8') . '" style="display:inline-block;max-width:100%;line-height:1.35;color:#444;">' . htmlspecialchars($short, ENT_QUOTES, 'UTF-8') . '</span>';
-                echo '<button type="button" class="btn btn-xs btn-default nfse-copy" data-copy="' . htmlspecialchars($erro, ENT_QUOTES, 'UTF-8') . '">Copiar erro</button>';
+                echo '<span class="nfse-cell-inline"><span class="nfse-break" title="' . Ui::h($erro) . '">' . Ui::h($truncateError($erro)) . '</span>';
+                echo '<button type="button" class="nfse-btn nfse-btn--icon nfse-btn--xs nfse-copy" data-copy="' . Ui::h($erro) . '" aria-label="Copiar erro" title="Copiar erro">' . Ui::icon('copy') . '</button></span>';
                 echo '</div>';
-                echo '</td>';
             }
-            echo '<td data-col="acoes" style="vertical-align:top;">';
-            echo '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+            echo '</td>';
+            echo '<td data-col="acoes"><div class="nfse-actions">';
             if ($status === 'WAIT_STATUS') {
-                echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=filaCheckNow" style="display:inline-block;margin:0;">';
-                if ($token !== '') {
-                    echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
-                }
-                echo '<input type="hidden" name="queueid" value="' . (int) $id . '" />';
-                if ($invoiceFilter !== '') {
-                    echo '<input type="hidden" name="return_invoiceid" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" />';
-                }
-                if ($statusFilter !== '') {
-                    echo '<input type="hidden" name="return_status" value="' . htmlspecialchars($statusFilter, ENT_QUOTES, 'UTF-8') . '" />';
-                }
-                echo '<input type="hidden" name="return_updated_from" value="' . htmlspecialchars($updatedFrom, ENT_QUOTES, 'UTF-8') . '" />';
-                echo '<input type="hidden" name="return_updated_to" value="' . htmlspecialchars($updatedTo, ENT_QUOTES, 'UTF-8') . '" />';
-                echo '<input type="hidden" name="return_page" value="' . $page . '" />';
-                echo '<input type="hidden" name="return_per_page" value="' . $perPage . '" />';
-                echo '<button type="submit" class="btn btn-xs btn-default">Consultar agora</button>';
+                echo '<form class="nfse-inline-form" method="post" action="addonmodules.php?module=OpenNfse&amp;action=filaCheckNow">';
+                echo Ui::hidden($tokenField + ['queueid' => $id] + $returnFields);
+                echo Ui::button('Consultar agora', ['sm']);
                 echo '</form>';
             }
             $canRetry = QueueStatePolicy::manualRetryBlockReason((array) $r, time()) === null;
             if ($canRetry) {
-                echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=filaRetry"'
-                    . ' style="display:inline-block;margin:0;"'
+                echo '<form class="nfse-inline-form" method="post" action="addonmodules.php?module=OpenNfse&amp;action=filaRetry"'
                     . ' onsubmit="return confirm(\'Reiniciar as tentativas automáticas deste item?\');">';
-                if ($token !== '') {
-                    echo '<input type="hidden" name="token" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '" />';
-                }
-                echo '<input type="hidden" name="queueid" value="' . (int) $id . '" />';
-                if ($invoiceFilter !== '') {
-                    echo '<input type="hidden" name="return_invoiceid" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" />';
-                }
-                if ($statusFilter !== '') {
-                    echo '<input type="hidden" name="return_status" value="' . htmlspecialchars($statusFilter, ENT_QUOTES, 'UTF-8') . '" />';
-                }
-                echo '<input type="hidden" name="return_updated_from" value="' . htmlspecialchars($updatedFrom, ENT_QUOTES, 'UTF-8') . '" />';
-                echo '<input type="hidden" name="return_updated_to" value="' . htmlspecialchars($updatedTo, ENT_QUOTES, 'UTF-8') . '" />';
-                echo '<input type="hidden" name="return_page" value="' . $page . '" />';
-                echo '<input type="hidden" name="return_per_page" value="' . $perPage . '" />';
-                echo '<button type="submit" class="btn btn-xs btn-default">Reprocessar</button>';
+                echo Ui::hidden($tokenField + ['queueid' => $id] + $returnFields);
+                echo Ui::button('Reprocessar', ['sm']);
                 echo '</form>';
             }
-            echo '</div>';
-            echo '</td>';
+            echo '</div></td>';
             echo '</tr>';
         }
 
-        echo '</table>';
-        echo '<div style="margin-top:12px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
+        echo '</tbody></table></div>';
+
         $firstItem = $totalRows > 0 ? ($offset + 1) : 0;
         $lastItem = min($offset + $perPage, $totalRows);
-        echo '<div style="font-size:14px;color:#374151;">Exibindo <strong style="color:#111827;">' . $firstItem . '-' . $lastItem . '</strong> de <strong style="color:#111827;">' . $totalRows . '</strong> itens filtrados.</div>';
-        echo '<div style="display:inline-flex;align-items:center;padding:6px 10px;border:1px solid #d1d5db;border-radius:999px;background:#f9fafb;font-size:13px;font-weight:600;color:#374151;">Total filtrado: ' . $totalRows . '</div>';
-        echo '</div>';
-        echo '<div style="margin-top:12px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">';
-        echo '<div style="font-size:14px;color:#374151;">Navegação da fila</div>';
-        echo '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
-        if ($page > 1) {
-            $prevParams = $baseParams;
-            $prevParams['page'] = $page - 1;
-            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($prevParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Anterior</a>';
-        }
-        echo '<span style="display:inline-flex;align-items:center;padding:6px 10px;border:1px solid #d1d5db;border-radius:999px;background:#f9fafb;font-size:13px;font-weight:600;color:#374151;">Página ' . $page . ' / ' . $totalPages . '</span>';
-        if ($page < $totalPages) {
-            $nextParams = $baseParams;
-            $nextParams['page'] = $page + 1;
-            echo '<a class="btn btn-xs btn-default" style="min-width:82px;" href="addonmodules.php?' . htmlspecialchars(http_build_query($nextParams, '', '&', PHP_QUERY_RFC3986), ENT_QUOTES, 'UTF-8') . '">Próxima</a>';
-        }
-        echo '</div>';
-        echo '</div>';
-        echo '<div style="margin-top:12px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;">';
-        echo '<form method="get" action="addonmodules.php" style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin:0;">';
-        echo '<input type="hidden" name="module" value="OpenNfse" />';
-        echo '<input type="hidden" name="action" value="fila" />';
-        echo '<input type="hidden" name="invoiceid" value="' . htmlspecialchars($invoiceFilter, ENT_QUOTES, 'UTF-8') . '" />';
-        echo '<input type="hidden" name="status" value="' . htmlspecialchars($statusFilter, ENT_QUOTES, 'UTF-8') . '" />';
-        echo '<input type="hidden" name="updated_from" value="' . htmlspecialchars($updatedFrom, ENT_QUOTES, 'UTF-8') . '" />';
-        echo '<input type="hidden" name="updated_to" value="' . htmlspecialchars($updatedTo, ENT_QUOTES, 'UTF-8') . '" />';
-        echo '<div style="min-width:190px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Página</div>';
-        echo '<select name="page" style="min-width:190px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
-        for ($pageOption = 1; $pageOption <= $totalPages; $pageOption++) {
-            $selectedPage = $pageOption === $page ? ' selected' : '';
-            echo '<option value="' . $pageOption . '"' . $selectedPage . '>Página ' . $pageOption . ' de ' . $totalPages . '</option>';
-        }
-        echo '</select>';
-        echo '</div>';
-        echo '<div style="min-width:160px;">';
-        echo '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Registros</div>';
-        echo '<select name="per_page" style="min-width:160px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
-        foreach ([50, 100, 500] as $perPageOption) {
-            $selectedPerPage = $perPageOption === $perPage ? ' selected' : '';
-            echo '<option value="' . $perPageOption . '"' . $selectedPerPage . '>' . $perPageOption . ' por página</option>';
-        }
-        echo '</select>';
-        echo '</div>';
-        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Aplicar</button>';
-        echo '</form>';
-        echo '</div>';
-        echo '<script>(function(){function c(t){if(!t){return;}if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t);return;}var a=document.createElement(\'textarea\');a.value=t;a.style.position=\'fixed\';a.style.left=\'-9999px\';document.body.appendChild(a);a.focus();a.select();try{document.execCommand(\'copy\');}catch(e){}document.body.removeChild(a);}function g(){var r=[];for(var i=0;i<u.length;i++){if(u[i].checked){r.push(u[i].value);}}return r;}function h(v){for(var i=0;i<u.length;i++){u[i].checked=v.indexOf(u[i].value)!==-1;}}function a(){var v=g();for(var i=0;i<p.length;i++){var n=p[i].getAttribute(\'data-col\')||\'\';p[i].style.display=v.indexOf(n)!==-1?\'\':\'none\';}try{window.localStorage.setItem(\'opennfse_queue_visible_columns\',JSON.stringify(v));}catch(e){}}var b=document.querySelectorAll(\'.nfse-copy[data-copy]\');for(var i=0;i<b.length;i++){b[i].addEventListener(\'click\',function(){c(this.getAttribute(\'data-copy\')||\'\');});}var w=document.getElementById(\'nfse-fila-columns-wrap\');var t=document.getElementById(\'nfse-fila-columns-toggle\');var o=document.getElementById(\'nfse-fila-columns-popover\');var d=document.getElementById(\'nfse-fila-columns-default\');var l=document.getElementById(\'nfse-fila-columns-all\');var u=document.querySelectorAll(\'.nfse-fila-column-toggle\');var p=document.querySelectorAll(\'#nfse-fila-table [data-col]\');var f=[\'invoice\',\'queue_status\',\'tentativas\',\'erro\'];if(!u.length||!p.length){return;}try{var m=window.localStorage.getItem(\'opennfse_queue_visible_columns\');if(m){var x=JSON.parse(m);if(Array.isArray(x)&&x.length){h(x);}}}catch(e){}a();for(var j=0;j<u.length;j++){u[j].addEventListener(\'change\',a);}if(d){d.addEventListener(\'click\',function(){h(f);a();});}if(l){l.addEventListener(\'click\',function(){var v=[];for(var i=0;i<u.length;i++){v.push(u[i].value);}h(v);a();});}if(t&&o){t.addEventListener(\'click\',function(e){e.preventDefault();o.style.display=o.style.display===\'block\'?\'none\':\'block\';});document.addEventListener(\'click\',function(e){if(w&&w.contains(e.target)){return;}o.style.display=\'none\';});}})();</script>';
+        echo Ui::tableFooter(
+            Ui::rangeText($firstItem, $lastItem, $totalRows, 'itens filtrados'),
+            Ui::pager($baseParams, $page, $totalPages)
+            . Ui::pageForm(
+                ['module' => 'OpenNfse', 'action' => 'fila', 'invoiceid' => $invoiceFilter, 'status' => $statusFilter, 'updated_from' => $updatedFrom, 'updated_to' => $updatedTo],
+                $page,
+                $totalPages,
+                $perPage,
+                [50, 100, 500]
+            )
+        );
+        echo '</section>';
+        echo '<script>(function(){function c(t){if(!t){return;}if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t);return;}var a=document.createElement(\'textarea\');a.value=t;a.style.position=\'fixed\';a.style.left=\'-9999px\';document.body.appendChild(a);a.focus();a.select();try{document.execCommand(\'copy\');}catch(e){}document.body.removeChild(a);}function g(){var r=[];for(var i=0;i<u.length;i++){if(u[i].checked){r.push(u[i].value);}}return r;}function h(v){for(var i=0;i<u.length;i++){u[i].checked=v.indexOf(u[i].value)!==-1;}}function a(){var v=g();for(var i=0;i<p.length;i++){var n=p[i].getAttribute(\'data-col\')||\'\';p[i].style.display=v.indexOf(n)!==-1?\'\':\'none\';}try{window.localStorage.setItem(\'opennfse_queue_visible_columns\',JSON.stringify(v));}catch(e){}}var b=document.querySelectorAll(\'.nfse-copy[data-copy]\');for(var i=0;i<b.length;i++){b[i].addEventListener(\'click\',function(){c(this.getAttribute(\'data-copy\')||\'\');});}var w=document.getElementById(\'nfse-fila-columns-wrap\');var t=document.getElementById(\'nfse-fila-columns-toggle\');var o=document.getElementById(\'nfse-fila-columns-popover\');var d=document.getElementById(\'nfse-fila-columns-default\');var l=document.getElementById(\'nfse-fila-columns-all\');var u=document.querySelectorAll(\'.nfse-fila-column-toggle\');var p=document.querySelectorAll(\'#nfse-fila-table [data-col]\');var f=[\'invoice\',\'queue_status\',\'tentativas\',\'erro\'];if(!u.length||!p.length){return;}try{var m=window.localStorage.getItem(\'opennfse_queue_visible_columns\');if(m){var x=JSON.parse(m);if(Array.isArray(x)&&x.length){h(x);}}}catch(e){}a();for(var j=0;j<u.length;j++){u[j].addEventListener(\'change\',a);}if(d){d.addEventListener(\'click\',function(){h(f);a();});}if(l){l.addEventListener(\'click\',function(){var v=[];for(var i=0;i<u.length;i++){v.push(u[i].value);}h(v);a();});}if(t&&o){t.addEventListener(\'click\',function(e){e.preventDefault();o.hidden=!o.hidden;t.setAttribute(\'aria-expanded\',o.hidden?\'false\':\'true\');});document.addEventListener(\'click\',function(e){if(w&&w.contains(e.target)){return;}o.hidden=true;t.setAttribute(\'aria-expanded\',\'false\');});}})();</script>';
 
+        echo '</div>';
         Module::ui()->renderFooter();
     }
 
@@ -586,7 +438,7 @@ final class QueueController
 
         $invoiceId = (int) ($row['invoiceid'] ?? 0);
         if ($invoiceId <= 0) {
-            Module::ui()->renderError('Invoice inválida no item da fila.');
+            Module::ui()->renderError('Fatura inválida no item da fila.');
             return;
         }
 

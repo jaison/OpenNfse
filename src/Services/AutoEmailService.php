@@ -152,19 +152,6 @@ final class AutoEmailService
                 );
             } catch (\Throwable $ignored) {
             }
-            try {
-                $history = sprintf(
-                    'Falha no envio automático do e-mail da NFS-e (tentativa %d de %d). Motivo: %s',
-                    $attempt,
-                    AutomaticEmailPolicy::TOTAL_ATTEMPTS,
-                    $message
-                );
-                $history .= $nextRetryAt !== null
-                    ? ' Nova tentativa automática a partir de ' . $nextRetryAt . '.'
-                    : ' Tentativas automáticas encerradas; use o envio manual.';
-                (new InvoiceHistoryService())->append($invoiceId, $history);
-            } catch (\Throwable $ignored) {
-            }
         }
     }
 

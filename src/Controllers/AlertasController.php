@@ -10,6 +10,8 @@ use OpenNfse\Module;
 use OpenNfse\Repositories\AlertRepository;
 use OpenNfse\Services\AlertService;
 use OpenNfse\Services\TokenService;
+use OpenNfse\Views\ReportView;
+use OpenNfse\Views\Ui;
 
 /**
  * Lista de alertas de NFS-e e ação "Marcar como resolvido".
@@ -63,71 +65,37 @@ final class AlertasController
             $loadError = 'Não foi possível carregar os alertas: ' . $e->getMessage();
         }
 
-        $h = static function ($value): string {
-            return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-        };
-
         Module::ui()->renderHeader('Alertas de NFS-e - OpenNfse');
-        $this->renderTabs('dashboard');
+        $this->renderTabs('dashboard', 'Alertas de NFS-e', 'Notas que pedem revisão manual');
 
-        echo '<div style="margin-bottom:10px;"><a href="addonmodules.php?module=OpenNfse&action=dashboard">&larr; Voltar ao dashboard</a></div>';
-        echo '<h3 style="margin-top:0;">Alertas de NFS-e</h3>';
-        echo '<p style="color:#4b5563;max-width:900px;">Faturas canceladas, estornadas, reabertas, alteradas ou pagas só com crédito depois da emissão da NFS-e. O alerta não cancela a nota: avalie cada caso e, se for o caso, cancele a NFS-e manualmente dentro do prazo do município. Depois marque o alerta como resolvido.</p>';
+        echo '<div class="nfse-ui nfse-page">';
+        echo Ui::sectionHeader(
+            'Alertas registrados',
+            'Faturas canceladas, estornadas, reabertas, alteradas ou pagas só com crédito depois da emissão da NFS-e.',
+            Ui::button('Voltar ao dashboard', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=dashboard']),
+            'nfse-alertas-titulo'
+        );
+        echo Ui::callout('info', 'O alerta não cancela a nota', 'Avalie cada caso e, se for o caso, cancele a NFS-e manualmente dentro do prazo do município. Depois marque o alerta como resolvido.');
 
         $resolvedMsg = (string) ($_GET['resolvido'] ?? '');
         if ($resolvedMsg === '1') {
-            echo '<div class="successbox">Alerta marcado como resolvido.</div>';
+            echo Ui::callout('ok', 'Alerta marcado como resolvido.');
         } elseif ($resolvedMsg === '0') {
-            echo '<div class="errorbox">O alerta não foi encontrado ou já estava resolvido.</div>';
+            echo Ui::callout('danger', 'O alerta não foi encontrado ou já estava resolvido.');
         }
         if ($loadError !== '') {
-            echo '<div class="errorbox">' . $h($loadError) . '</div>';
+            echo Ui::callout('danger', $loadError);
         }
 
-        echo '<form method="get" action="addonmodules.php">';
-        echo '<input type="hidden" name="module" value="OpenNfse" />';
-        echo '<input type="hidden" name="action" value="alertas" />';
-        echo '<div style="margin-bottom:14px;padding:12px 14px;border:1px solid #dbe3ea;border-radius:8px;background:linear-gradient(180deg,#fafbfc 0%,#f4f6f8 100%);display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">';
-        echo '<div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Situação</div>';
-        echo '<select name="situacao" style="height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
-        foreach (self::SITUACOES as $key => $label) {
-            echo '<option value="' . $h($key) . '"' . ($key === $situacao ? ' selected' : '') . '>' . $h($label) . '</option>';
-        }
-        echo '</select></div>';
-        echo '<div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Tipo</div>';
-        echo '<select name="tipo" style="height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;">';
-        echo '<option value="">Todos</option>';
-        foreach (AlertService::LABELS as $key => $label) {
-            echo '<option value="' . $h($key) . '"' . ($key === $tipo ? ' selected' : '') . '>' . $h($label) . '</option>';
-        }
-        echo '</select></div>';
-        echo '<div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Fatura</div>';
-        echo '<input type="number" min="1" name="invoiceid" value="' . ($invoiceFilter > 0 ? $h((string) $invoiceFilter) : '') . '" style="width:130px;height:34px;border:1px solid #cfd8e3;border-radius:6px;background:#fff;" /></div>';
-        echo '<div style="display:flex;gap:8px;">';
-        echo '<button type="submit" class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;">Filtrar</button>';
-        echo '<a class="btn btn-xs btn-default" style="height:34px;padding:0 12px;line-height:32px;" href="addonmodules.php?module=OpenNfse&action=alertas">Limpar</a>';
-        echo '</div>';
-        echo '</div>';
-        echo '</form>';
-
-        if ($truncated) {
-            echo '<div class="alert alert-info" style="margin-bottom:10px;">Exibindo os ' . self::LIST_LIMIT . ' alertas mais recentes. Use os filtros para ver os demais.</div>';
-        }
-
-        echo '<table class="datatable" width="100%" cellspacing="0" cellpadding="3" style="font-size:12px;table-layout:fixed;width:100%;">';
-        echo '<tr>';
-        echo '<th style="width:10%;">Data</th>';
-        echo '<th style="width:7%;">Fatura</th>';
-        echo '<th style="width:14%;">Cliente</th>';
-        echo '<th style="width:15%;">NFS-e</th>';
-        echo '<th style="width:12%;">Tipo</th>';
-        echo '<th style="width:26%;">Detalhes</th>';
-        echo '<th style="width:16%;">Ações</th>';
-        echo '</tr>';
-
-        if (empty($rows)) {
-            echo '<tr><td colspan="7" style="text-align:center;color:#666;">Nenhum alerta encontrado para os filtros selecionados.</td></tr>';
-        }
+        $tipoOptions = ['' => 'Todos'] + AlertService::LABELS;
+        echo Ui::filterBar(
+            ['hidden' => ['module' => 'OpenNfse', 'action' => 'alertas']],
+            Ui::field('Situação', Ui::select('situacao', self::SITUACOES, $situacao, [], 'nfse-input--w-md'))
+            . Ui::field('Tipo', Ui::select('tipo', $tipoOptions, $tipo, [], 'nfse-input--w-md'))
+            . Ui::field('Fatura', Ui::input('invoiceid', $invoiceFilter > 0 ? (string) $invoiceFilter : '', 'number', ['min' => '1'], 'nfse-input--w-sm')),
+            Ui::button('Filtrar', ['primary']) . Ui::button('Limpar', ['ghost'], ['href' => 'addonmodules.php?module=OpenNfse&action=alertas']),
+            'Filtros dos alertas'
+        );
 
         $token = (new TokenService())->token();
         $returnQuery = http_build_query(array_filter([
@@ -136,6 +104,7 @@ final class AlertasController
             'invoiceid' => $invoiceFilter > 0 ? (string) $invoiceFilter : '',
         ], static fn ($v): bool => $v !== ''), '', '&', PHP_QUERY_RFC3986);
 
+        $rowsHtml = '';
         foreach ($rows as $row) {
             $alertId = (int) ($row['id'] ?? 0);
             $invoiceId = (int) ($row['invoiceid'] ?? 0);
@@ -149,51 +118,64 @@ final class AlertasController
             $resolvidoEm = trim((string) ($row['resolvido_em'] ?? ''));
             $invoiceStatus = trim((string) ($row['invoice_status'] ?? ''));
 
-            echo '<tr>';
-            echo '<td>' . $h($this->formatDate((string) ($row['criado_em'] ?? ''), 'd/m/Y H:i')) . '</td>';
-            echo '<td><a href="' . $h('invoices.php?action=edit&id=' . $invoiceId) . '">' . $h((string) $invoiceId) . '</a>'
-                . ($invoiceStatus !== '' ? '<div style="color:#6b7280;">' . $h($invoiceStatus) . '</div>' : '') . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . $h($this->resolveClientName($row)) . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">';
-            echo $numeroNf !== '' ? '<div><strong>Nº ' . $h($numeroNf) . '</strong></div>' : '';
-            echo $chave !== '' ? '<div title="' . $h($chave) . '">' . $h($chaveShort) . '</div>' : '<div>-</div>';
+            $nfse = '<div class="nfse-cell-stack">';
+            $nfse .= $numeroNf !== '' ? '<b>Nº ' . Ui::h($numeroNf) . '</b>' : '';
+            $nfse .= $chave !== '' ? '<span class="nfse-mono" title="' . Ui::h($chave) . '">' . Ui::h($chaveShort) . '</span>' : '<span class="nfse-muted">-</span>';
             if (!$sameNota) {
-                echo '<div style="color:#8a6d3b;">A nota atual da fatura é outra.</div>';
+                $nfse .= '<span class="nfse-cell-meta nfse-text-danger">A nota atual da fatura é outra.</span>';
             } elseif ($notaStatus !== '' && $notaStatus !== 'EMITIDA') {
-                echo '<div style="color:#6b7280;">Nota atual: ' . $h($notaStatus) . '</div>';
+                $nfse .= '<span class="nfse-cell-meta">Nota atual: ' . Ui::h($notaStatus) . '</span>';
             }
-            echo '</td>';
-            echo '<td>' . $h(AlertService::label((string) ($row['tipo'] ?? ''))) . '</td>';
-            echo '<td style="word-break:break-word;overflow-wrap:anywhere;">' . $h((string) ($row['detalhes'] ?? ''));
+            $nfse .= '</div>';
+
+            $details = Ui::h((string) ($row['detalhes'] ?? ''));
             if ($resolvidoEm !== '') {
                 $por = trim((string) ($row['resolvido_por_username'] ?? ''));
                 if ($por === '' && (int) ($row['resolvido_por'] ?? 0) > 0) {
                     $por = 'admin #' . (int) $row['resolvido_por'];
                 }
-                echo '<div style="margin-top:4px;color:#176b46;">Resolvido em ' . $h($this->formatDate($resolvidoEm, 'd/m/Y H:i')) . ($por !== '' ? ' por ' . $h($por) : '') . '</div>';
+                $details .= '<div class="nfse-cell-meta">' . Ui::badge('Resolvido', 'ok') . ' em ' . Ui::h($this->formatDate($resolvidoEm, 'd/m/Y H:i')) . ($por !== '' ? ' por ' . Ui::h($por) : '') . '</div>';
             }
-            echo '</td>';
-            echo '<td>';
+
+            $actions = '<div class="nfse-actions">';
             if ($sameNota && $notaStatus === 'EMITIDA' && $notaChave !== '') {
-                echo '<a class="btn btn-xs btn-danger" style="margin:0 4px 4px 0;" href="' . $h('addonmodules.php?module=OpenNfse&action=cancelForm&invoiceid=' . $invoiceId) . '">Cancelar NFS-e</a>';
+                $actions .= Ui::button('Cancelar NFS-e', ['sm', 'danger'], ['href' => 'addonmodules.php?module=OpenNfse&action=cancelForm&invoiceid=' . $invoiceId]);
             }
             if ($resolvidoEm === '' && $alertId > 0) {
-                echo ActionFormRenderer::render(
-                    'addonmodules.php?module=OpenNfse&action=alertaResolver',
-                    'display:inline-block;margin:0;',
-                    [
-                        ActionFormRenderer::tokenInput($token),
-                        '<input type="hidden" name="alerta_id" value="' . $h((string) $alertId) . '" />',
-                        '<input type="hidden" name="return" value="' . $h($returnQuery) . '" />',
-                    ],
-                    '<button type="submit" class="btn btn-xs btn-default" onclick="return confirm(\'Marcar este alerta como resolvido?\');">Marcar como resolvido</button>'
-                );
+                $actions .= '<form class="nfse-inline-form" method="post" action="addonmodules.php?module=OpenNfse&amp;action=alertaResolver">'
+                    . ActionFormRenderer::tokenInput($token)
+                    . Ui::hidden(['alerta_id' => (string) $alertId, 'return' => $returnQuery])
+                    . '<button type="submit" class="nfse-btn nfse-btn--sm" onclick="return confirm(\'Marcar este alerta como resolvido?\');">Marcar como resolvido</button>'
+                    . '</form>';
             }
-            echo '</td>';
-            echo '</tr>';
+            $actions .= '</div>';
+
+            $rowsHtml .= '<tr>'
+                . '<td class="nfse-nowrap">' . Ui::h($this->formatDate((string) ($row['criado_em'] ?? ''), 'd/m/Y H:i')) . '</td>'
+                . '<td><div class="nfse-cell-stack">' . ReportView::invoiceLink($invoiceId) . ($invoiceStatus !== '' ? '<span class="nfse-cell-meta">' . Ui::h($invoiceStatus) . '</span>' : '') . '</div></td>'
+                . '<td class="nfse-break">' . Ui::h($this->resolveClientName($row)) . '</td>'
+                . '<td class="nfse-break">' . $nfse . '</td>'
+                . '<td>' . Ui::h(AlertService::label((string) ($row['tipo'] ?? ''))) . '</td>'
+                . '<td class="nfse-break">' . $details . '</td>'
+                . '<td>' . $actions . '</td>'
+                . '</tr>';
         }
 
-        echo '</table>';
+        $shown = count($rows);
+        echo ReportView::tableCard(
+            ['Data', 'Fatura', 'Cliente', 'NFS-e', 'Tipo', 'Detalhes', 'Ações'],
+            $rowsHtml,
+            'Nenhum alerta encontrado para os filtros selecionados.',
+            '',
+            '',
+            Ui::tableFooter($shown === 0
+                ? 'Nenhum resultado'
+                : ($truncated
+                    ? 'Exibindo os <b>' . self::LIST_LIMIT . '</b> alertas mais recentes. Use os filtros para ver os demais.'
+                    : 'Exibindo <b>' . $shown . '</b> alertas')),
+            'nfse-alertas-titulo'
+        );
+        echo '</div>';
 
         Module::ui()->renderFooter();
     }

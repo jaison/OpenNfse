@@ -13,6 +13,7 @@ Tabelas e campos do WHMCS lidos pelo OpenNfse e como cada um entra na emissão, 
 | Moeda do tomador no exterior | `tblcurrencies` |
 | Gateways habilitados | `tblpaymentgateways` + `mod_opennfse_payment_gateway_settings` |
 | Política de emissão automática | `tblclients.groupid` + `tblclientgroups`, `tblcustomfields` + `tblcustomfieldsvalues`, `tblinvoiceitems.type` |
+| Pasta temporária e versão do WHMCS (atualizador) | `tblconfiguration` (`UpdateTempPath` e `Version`, lidos por `\WHMCS\Config\Setting`) |
 
 ## Tomador (`tblclients`)
 
@@ -26,7 +27,7 @@ Código: [`WhmcsCustomerRepository`](../src/Repositories/WhmcsCustomerRepository
 | `country` | Obrigatório. `BR` exige CPF/CNPJ. Outro país é tratado como exterior: `toma/cNaoNIF = 2` e `toma/end/endExt`. |
 | `address1`, `address2`, `city`, `state`, `postcode` | Endereço do tomador (ver regras abaixo). |
 | `groupid` | Escopo por grupo da emissão automática (`auto_emit_scope = grupos`): o cliente precisa estar num dos grupos de `auto_emit_group_ids` (IDs de `tblclientgroups`). Sem grupo (`0`), fica fora. |
-| `currency` | Só para tomador no exterior: `tblcurrencies.code` é convertido para o código BACEN em `serv/comExt/tpMoeda` (sem moeda, usa `986`, Real). |
+| `currency` | Só para tomador no exterior: `tblcurrencies.code` é convertido para o código da tabela de moedas do Banco Central em `serv/comExt/tpMoeda` (`BacenCurrency`: BRL `790`, USD `220`, EUR `978`…; não é o código ISO numérico). Sem moeda, usa `790` (Real). Código de três dígitos é enviado como está. Moeda fora da tabela bloqueia a emissão com mensagem própria. O valor não é convertido: o módulo parte de faturas em reais. |
 
 Tomador no Brasil:
 
@@ -80,7 +81,7 @@ Código: [`WhmcsInvoiceRepository`](../src/Repositories/WhmcsInvoiceRepository.p
 | `paymentmethod` | Regra de gateway e detecção de pagamento com crédito. |
 | `credit` | Detecção de pagamento só com crédito. |
 | `datepaid` | Data de pagamento exibida (e usada na ordenação) na auditoria de emissão. |
-| `notes` | O módulo acrescenta linhas com os eventos da NFS-e (`InvoiceHistoryService`). |
+| `notes` | Visível ao cliente. O módulo acrescenta só as linhas de emissão e de cancelamento da NFS-e (`InvoiceHistoryService`); os demais eventos vão para `mod_opennfse_logs`. |
 
 Pagamento só com crédito (`InvoiceFinancialsService::isCreditOnlyPayment()`): `paymentmethod = 'credit'`, ou `credit > 0` com `total` igual a zero. Nesses casos a emissão é bloqueada.
 
@@ -122,7 +123,7 @@ Criadas e atualizadas pelos arquivos de [`migrations/`](../migrations/):
 
 | Tabela | Conteúdo |
 |---|---|
-| `mod_opennfse_config` | Ambiente, leiaute da DPS (`dps_leiaute`: `auto`, `pre_nt009` ou `nt009`), certificado, prestador, tributação, padrões do tomador, fila, política de emissão automática (`auto_emit_trigger`, `auto_emit_scope`, `auto_emit_group_ids`, `auto_emit_customfield_id`), e-mail, DANFS-e, aviso da área do cliente, retenção e metadados de cron, IBGE e atualização. |
+| `mod_opennfse_config` | Ambiente, leiaute da DPS (`dps_leiaute`: `auto`, `pre_nt009` ou `nt009`), certificado, prestador, tributação, padrões do tomador, fila, política de emissão automática (`auto_emit_trigger`, `auto_emit_scope`, `auto_emit_group_ids`, `auto_emit_customfield_id`), e-mail, DANFS-e, aviso da área do cliente, retenção e metadados de cron, IBGE e atualização (`update_*`, inclusive `update_package_url`, `update_package_sha256` e `update_channel`). |
 | `mod_opennfse_notas` | Uma linha por fatura: status, `id_dps`, chave, número, competência, `xml_path`, dados de cancelamento, erro, contador de E2404 e controle do e-mail automático. |
 | `mod_opennfse_notas_history` | Histórico fiscal: cada emissão, cancelamento e snapshot. |
 | `mod_opennfse_queue` | Fila: status, tentativas, consultas, `next_check_at`, `last_error`, `correlation_id`, `allow_unpaid` e `origem` (`gerada`, `paga` ou `manual`). |
@@ -134,3 +135,7 @@ Criadas e atualizadas pelos arquivos de [`migrations/`](../migrations/):
 | `mod_opennfse_ibge_municipios` | Catálogo local de municípios IBGE. |
 | `mod_opennfse_nsu_sync`, `mod_opennfse_distribuicao_dfe` | Estado e documentos da sincronização por NSU (Auditoria API). |
 | `mod_opennfse_dps_audit_runs`, `mod_opennfse_dps_audit_results` | Execuções e resultados da Auditoria DPS > API. |
+| `mod_opennfse_alertas`, `mod_opennfse_alerta_checks` | Alertas de NFS-e e pedidos de conferência diferida do total. |
+| `mod_opennfse_geracao_checks` | Conferências de criação de fatura, tratadas pelo cron. |
+| `mod_opennfse_updater` | Estado do atualizador embutido (uma linha): pausa, etapa, versões de origem e destino e dados da etapa em JSON (backup, checagem final). Fica fora do backup das tabelas. |
+| `mod_opennfse_updater_events` | Eventos de hook de fatura guardados durante a pausa, processados na volta. Fica fora do backup das tabelas. |

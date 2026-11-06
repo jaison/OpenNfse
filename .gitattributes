@@ -1,0 +1,13 @@
+# Arquivos que não entram no pacote de instalação (git archive / zip do release).
+/.github export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/tests export-ignore
+/tools export-ignore
+/phpunit.xml export-ignore
+/phpcs.xml export-ignore
+/scoper.inc.php export-ignore
+/composer.json export-ignore
+/composer.lock export-ignore
+/update.json export-ignore
+/docs/screenshots export-ignore

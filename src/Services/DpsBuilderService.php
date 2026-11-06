@@ -6,6 +6,8 @@ namespace OpenNfse\Services;
 
 use OpenNfse\Exceptions\NfseModuleException;
 use OpenNfse\Exceptions\NfseValidationException;
+use OpenNfse\Helpers\AddonVersion;
+use OpenNfse\Helpers\BacenCurrency;
 use OpenNfse\Helpers\EnderecoParser;
 use WHMCS\Database\Capsule;
 
@@ -255,16 +257,25 @@ final class DpsBuilderService
                 throw new NfseValidationException('Para tomador no exterior, é obrigatório informar NBS.');
             }
 
-            $tpMoeda = '986';
+            // Código da tabela de moedas do Banco Central. Sem moeda no cliente, ou sem conseguir ler a moeda, vale o Real.
+            $tpMoeda = BacenCurrency::REAL;
             $currencyId = (int) ($client['currency'] ?? 0);
             if ($currencyId > 0) {
+                $currencyCode = '';
                 try {
                     $cur = Capsule::table('tblcurrencies')->where('id', $currencyId)->first();
                     $currencyCode = strtoupper(trim((string) ($cur->code ?? '')));
-                    $tpMoeda = $this->mapIsoCurrencyToBacen($currencyCode);
                 } catch (\Throwable $e) {
-                    $tpMoeda = '986';
+                    $currencyCode = '';
                 }
+                $bacenCode = BacenCurrency::fromIso($currencyCode);
+                if ($bacenCode === null) {
+                    throw new NfseValidationException(
+                        'Moeda do cliente (' . $currencyCode . ') sem código na tabela de moedas do Banco Central. '
+                        . 'Use uma moeda conhecida (BRL, USD, EUR…) ou informe o código numérico do Banco Central no código da moeda.'
+                    );
+                }
+                $tpMoeda = $bacenCode;
             }
 
             $comExt = [
@@ -288,7 +299,7 @@ final class DpsBuilderService
             '@attributes' => ['Id' => $idDps],
             'tpAmb' => $tpAmb,
             'dhEmi' => (new \DateTimeImmutable('now'))->format('Y-m-d\TH:i:sP'),
-            'verAplic' => 'whmcs-nfse/0.1.20',
+            'verAplic' => AddonVersion::verAplic(),
             'serie' => $serieDps,
             'nDPS' => (string) $numeroDps,
             'dCompet' => date('Y-m-d'),
@@ -329,38 +340,6 @@ final class DpsBuilderService
         return number_format($v, 2, '.', '');
     }
 
-    private function mapIsoCurrencyToBacen(string $iso): string
-    {
-        $iso = strtoupper(trim($iso));
-        if ($iso === '') {
-            return '986';
-        }
-        if (preg_match('/^\d{3}$/', $iso)) {
-            return $iso;
-        }
-
-        $map = [
-            'BRL' => '790',
-            'USD' => '220',
-            'EUR' => '978',
-            'GBP' => '826',
-            'ARS' => '032',
-            'CAD' => '124',
-            'AUD' => '036',
-            'CHF' => '756',
-            'JPY' => '392',
-            'CNY' => '156',
-            'MXN' => '484',
-            'CLP' => '152',
-            'COP' => '170',
-            'SEK' => '752',
-            'NOK' => '578',
-            'DKK' => '208',
-            'NZD' => '554',
-        ];
-
-        return $map[$iso] ?? '986';
-    }
 
     private function resolveCodigoServicoAndNbs(array $invoice, array $items, string $defaultCodigoServico, string $defaultNbsDigits): array
     {

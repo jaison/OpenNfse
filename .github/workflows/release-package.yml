@@ -1,0 +1,60 @@
+name: Pacote do release
+
+# Gera o zip de instalação e o SHA-256 quando um release é publicado
+# e anexa os dois ao release. O atualizador do módulo baixa este zip.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Conferir versão
+        id: version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${TAG#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9.]+)?$ ]]; then
+            echo "Tag fora do padrão: $TAG" >&2
+            exit 1
+          fi
+          declared=$(sed -n "s/.*'version' => '\([^']*\)'.*/\1/p" OpenNfse.php | head -n1)
+          if [ "$declared" != "$version" ]; then
+            echo "OpenNfse.php declara $declared, mas a tag é $TAG" >&2
+            exit 1
+          fi
+          test -f vendor-scoped/autoload.php
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Gerar zip e SHA-256
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          zip="OpenNfse-${VERSION}.zip"
+          git archive --format=zip --prefix=OpenNfse/ -o "$zip" HEAD
+          # Marcador de instalação por pacote: sem ele, o atualizador não roda
+          # (checkout git, cópia manual do código-fonte).
+          mkdir -p build/OpenNfse
+          printf '{"module":"OpenNfse","version":"%s","commit":"%s","built_at":"%s"}\n' \
+            "$VERSION" "$(git rev-parse HEAD)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > build/OpenNfse/build-info.json
+          (cd build && zip -q "../$zip" OpenNfse/build-info.json)
+          sha256sum "$zip" > "$zip.sha256"
+          cat "$zip.sha256"
+
+      - name: Anexar ao release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release upload "$TAG" "OpenNfse-${VERSION}.zip" "OpenNfse-${VERSION}.zip.sha256" --clobber
