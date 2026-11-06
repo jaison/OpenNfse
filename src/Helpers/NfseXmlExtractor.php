@@ -211,6 +211,24 @@ final class NfseXmlExtractor
     }
 
     /**
+     * CPF, CNPJ ou NIF do tomador (grupo toma da DPS). Null quando o tomador não é identificado.
+     */
+    public static function extractTomadorDocumento(string $xml): ?string
+    {
+        return self::withDocument($xml, static function (\DOMXPath $xp): ?string {
+            $nodes = $xp->query('//*[local-name()="toma"]/*[local-name()="CNPJ" or local-name()="CPF" or local-name()="NIF"]');
+            if ($nodes && $nodes->length > 0) {
+                $value = trim((string) $nodes->item(0)?->textContent);
+                if ($value !== '') {
+                    return $nodes->item(0)?->localName . ':' . $value;
+                }
+            }
+
+            return null;
+        });
+    }
+
+    /**
      * @param callable(\DOMXPath): ?string $callback
      */
     private static function withDocument(string $xml, callable $callback): ?string

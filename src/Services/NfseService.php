@@ -298,6 +298,17 @@ final class NfseService
             if ($layoutHint !== null) {
                 $erroApi = $layoutHint . ' Detalhe: ' . (string) $erroApi;
             }
+            $logRepo->insert($notaId, 'EMISSAO_RESPONSE', null, $result->rawResponse ?? $result->errorMessage, $correlationId);
+
+            if ($idDps !== null && DuplicateDpsRecovery::isDuplicateDpsError($result->errorMessage ?? $result->rawResponse ?? null)) {
+                $recovery = $this->recoverDuplicateDps($adapter, $sdkConfig, $logRepo, $notaId, $idDps, $requestPayload['_dpsXml'] ?? null, $correlationId);
+                if (isset($recovery['nfseXml'])) {
+                    $this->registrarEmissao($invoiceId, $userId, $config, $notaId, $idDps, $recovery['chave'], $recovery['nfseXml'], $logRepo, $correlationId, 'e0014');
+                    return;
+                }
+                $erroApi = DuplicateDpsRecovery::unresolvedMessage($idDps, $recovery['reason'], (string) $erroApi);
+            }
+
             $notaRepo->upsert([
                 'invoiceid' => $invoiceId,
                 'userid' => $userId,
@@ -306,21 +317,101 @@ final class NfseService
                 'id_dps' => $idDps,
                 'protocolo' => $idDps,
             ]);
-            $logRepo->insert($notaId, 'EMISSAO_RESPONSE', null, $result->rawResponse ?? $result->errorMessage, $correlationId);
             return;
         }
+
+        $logRepo->insert($notaId, 'EMISSAO_RESPONSE', null, $result->nfseXml ?? 'OK', $correlationId);
+        $this->registrarEmissao($invoiceId, $userId, $config, $notaId, $result->idDps, $result->chaveAcesso, $result->nfseXml, $logRepo, $correlationId, 'runtime');
+    }
+
+    /**
+     * E0014: procura a NFS-e já autorizada para esta DPS e confere se é desta fatura.
+     *
+     * @return array{chave: string, nfseXml: string}|array{reason: string}
+     */
+    private function recoverDuplicateDps(
+        NfsePhpSdkAdapter $adapter,
+        array $sdkConfig,
+        LogRepository $logRepo,
+        ?int $notaId,
+        string $idDps,
+        ?string $dpsXml,
+        string $correlationId
+    ): array {
+        $outcome = $this->findDuplicateDpsNfse($adapter, $sdkConfig, $idDps, $dpsXml);
+        $logRepo->insert(
+            $notaId,
+            DuplicateDpsRecovery::LOG_TYPE,
+            json_encode(['idDps' => $idDps], JSON_UNESCAPED_UNICODE),
+            json_encode(
+                isset($outcome['chave'])
+                    ? ['vinculada' => true, 'chaveAcesso' => $outcome['chave']]
+                    : ['vinculada' => false, 'motivo' => $outcome['reason']],
+                JSON_UNESCAPED_UNICODE
+            ),
+            $correlationId
+        );
+
+        return $outcome;
+    }
+
+    /**
+     * @return array{chave: string, nfseXml: string}|array{reason: string}
+     */
+    private function findDuplicateDpsNfse(NfsePhpSdkAdapter $adapter, array $sdkConfig, string $idDps, ?string $dpsXml): array
+    {
+        if ($dpsXml === null || trim($dpsXml) === '') {
+            return ['reason' => 'não foi possível montar o XML da DPS para comparar'];
+        }
+
+        $dpsResp = $adapter->consultarDps($sdkConfig, $idDps);
+        $chave = trim((string) ($dpsResp->chaveAcesso ?? ''));
+        if (!$dpsResp->found || $chave === '') {
+            return ['reason' => 'a consulta da DPS na SEFIN não retornou a chave de acesso' . ($dpsResp->errorMessage ? ' (' . $dpsResp->errorMessage . ')' : '')];
+        }
+
+        $nfseResp = $adapter->consultarNfse($sdkConfig, $chave);
+        $nfseXml = (string) ($nfseResp->nfseXml ?? '');
+        if (!$nfseResp->found || trim($nfseXml) === '') {
+            return ['reason' => 'a consulta da NFS-e na SEFIN não retornou o XML' . ($nfseResp->errorMessage ? ' (' . $nfseResp->errorMessage . ')' : '')];
+        }
+
+        $mismatch = DuplicateDpsRecovery::mismatchReason($nfseXml, $idDps, $dpsXml);
+        if ($mismatch !== null) {
+            return ['reason' => $mismatch];
+        }
+
+        return ['chave' => $chave, 'nfseXml' => $nfseXml];
+    }
+
+    /**
+     * Grava a NFS-e autorizada: XML, nota EMITIDA, histórico fiscal e observação na fatura.
+     */
+    private function registrarEmissao(
+        int $invoiceId,
+        int $userId,
+        array $config,
+        ?int $notaId,
+        ?string $idDps,
+        ?string $chaveAcesso,
+        ?string $nfseXml,
+        LogRepository $logRepo,
+        string $correlationId,
+        string $origem
+    ): void {
+        $notaRepo = new NotaRepository();
 
         $xmlPath = null;
         $numeroNf = null;
         $competencia = null;
         $emitidaEm = null;
-        if ($result->nfseXml) {
-            $numeroNf = NfseXmlExtractor::extractNumeroNfse($result->nfseXml);
-            $competencia = NfseXmlExtractor::extractCompetencia($result->nfseXml);
-            $emitidaEm = NfseXmlExtractor::extractEmitidaEm($result->nfseXml);
+        if ($nfseXml) {
+            $numeroNf = NfseXmlExtractor::extractNumeroNfse($nfseXml);
+            $competencia = NfseXmlExtractor::extractCompetencia($nfseXml);
+            $emitidaEm = NfseXmlExtractor::extractEmitidaEm($nfseXml);
             $xmlPath = (new StorageService())->saveXml(
                 $invoiceId,
-                $result->nfseXml,
+                $nfseXml,
                 $numeroNf,
                 $emitidaEm,
                 (string) ($config['environment'] ?? ''),
@@ -332,8 +423,8 @@ final class NfseService
             'invoiceid' => $invoiceId,
             'userid' => $userId,
             'status' => 'EMITIDA',
-            'protocolo' => $result->idDps,
-            'chave_acesso' => $result->chaveAcesso,
+            'protocolo' => $idDps,
+            'chave_acesso' => $chaveAcesso,
             'xml_path' => $xmlPath,
             'numero_nf' => $numeroNf,
             'competencia' => $competencia,
@@ -343,15 +434,14 @@ final class NfseService
         ]);
         $notaAtual = $notaRepo->findByInvoiceId($invoiceId);
         if ($notaAtual !== null) {
-            (new FiscalHistoryRepository())->recordEmission($notaAtual, 'runtime');
+            (new FiscalHistoryRepository())->recordEmission($notaAtual, $origem);
         }
         $this->resolvePreviousQueueErrors($invoiceId, $notaId, $logRepo, $correlationId);
 
- $logRepo->insert($notaId, 'EMISSAO_RESPONSE', null, $result->nfseXml ?? 'OK', $correlationId);
         (new InvoiceHistoryService())->appendEmission(
             $invoiceId,
             $numeroNf,
-            $result->chaveAcesso !== null ? (string) $result->chaveAcesso : null
+            $chaveAcesso !== null ? (string) $chaveAcesso : null
         );
     }
 
