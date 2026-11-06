@@ -4,6 +4,10 @@
 
 Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emissão automática quando a fatura é paga ou gerada, controle de automação por gateway de pagamento, configuração de NBS e código de serviço, geração de DANFS-e em PDF, armazenamento de XML organizado por ambiente e série, consulta de status, fila de processamento, envio de XML/PDF por e-mail ao cliente e atualização do próprio módulo pelo admin do WHMCS.
 
+## Manifesto
+
+O OpenNfse surgiu com o intuito de não se pagar por algo que deveria ser gratuito. Procurei outras opções no mercado, e elas eram caras, isso já depois de o Emissor Nacional existir. Antes dele, todas as opções eram mais caras ainda e cobravam por nota emitida, o que é ruim. Então o OpenNfse nasceu para enxugar um custo desnecessário: já temos a infraestrutura para rodar o WHMCS, e o OpenNfse se encaixa muito bem no mesmo ambiente.
+
 ## Notas do Autor
 
 **Atualizado em 6 de novembro de 2026.**
