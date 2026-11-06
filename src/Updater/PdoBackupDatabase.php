@@ -17,8 +17,11 @@ final class PdoBackupDatabase implements BackupDatabase
 
     public function tablesWithPrefix(string $prefix): array
     {
+        // SHOW TABLES não aceita parâmetro no MariaDB; o information_schema aceita.
         $like = str_replace(['\\', '_', '%'], ['\\\\', '\\_', '\\%'], $prefix) . '%';
-        $stmt = $this->pdo->prepare('SHOW TABLES LIKE ?');
+        $stmt = $this->pdo->prepare(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' AND table_name LIKE ?"
+        );
         $stmt->execute([$like]);
         $tables = array_map('strval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
         sort($tables);
@@ -33,19 +36,35 @@ final class PdoBackupDatabase implements BackupDatabase
         return (string) ($row[1] ?? '');
     }
 
+    /**
+     * Lê sem buffer no cliente: a tabela de logs pode ser grande demais para a memória do PHP.
+     * Enquanto o lote é lido, nenhuma outra consulta roda nesta conexão.
+     */
     public function rowBatches(string $table, int $batchSize): iterable
     {
-        $stmt = $this->pdo->query('SELECT * FROM ' . self::ident($table));
-        $batch = [];
-        while (($row = $stmt->fetch(\PDO::FETCH_ASSOC)) !== false) {
-            $batch[] = $row;
-            if (count($batch) >= $batchSize) {
-                yield $batch;
-                $batch = [];
-            }
+        $buffered = null;
+        if (defined('PDO::MYSQL_ATTR_USE_BUFFERED_QUERY') && $this->pdo->getAttribute(\PDO::ATTR_DRIVER_NAME) === 'mysql') {
+            $buffered = $this->pdo->getAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY);
+            $this->pdo->setAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
         }
-        if ($batch !== []) {
-            yield $batch;
+        try {
+            $stmt = $this->pdo->query('SELECT * FROM ' . self::ident($table));
+            $batch = [];
+            while (($row = $stmt->fetch(\PDO::FETCH_ASSOC)) !== false) {
+                $batch[] = $row;
+                if (count($batch) >= $batchSize) {
+                    yield $batch;
+                    $batch = [];
+                }
+            }
+            $stmt->closeCursor();
+            if ($batch !== []) {
+                yield $batch;
+            }
+        } finally {
+            if ($buffered !== null) {
+                $this->pdo->setAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, $buffered);
+            }
         }
     }
 

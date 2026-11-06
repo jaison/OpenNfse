@@ -157,9 +157,13 @@ final class UpdaterController
             $info = (new TableBackup(new PdoBackupDatabase()))->dump($file, (string) ($state['from_version'] ?? ''));
         } catch (\Throwable $e) {
             $this->log('UPDATER_BACKUP_ERROR', [], $e->getMessage());
+            // Durante a pausa os relatórios não abrem: o erro fica visível na etapa 3.
+            $data['backup_error'] = $e->getMessage();
+            $this->saveData($data);
             $this->redirect('backup_failed');
         }
 
+        unset($data['backup_error']);
         $data['backup'] = [
             'file' => $file,
             'sha256' => $info['sha256'],
@@ -568,7 +572,11 @@ final class UpdaterController
             $form = '<form method="post" action="' . Ui::h(self::URL . 'Backup') . '">' . $hidden
                 . Ui::button('Gerar backup', ['primary', 'sm']) . '</form>';
             $this->renderConfigSectionStart($title, $description, $form);
-            $this->renderConfigBlock('<p class="nfse-cfg-text">O arquivo traz a configuração do módulo, inclusive dados sensíveis. Guarde-o em local seguro.</p>');
+            $error = (string) ($this->data()['backup_error'] ?? '');
+            $this->renderConfigBlock(
+                ($error !== '' ? Ui::callout('danger', 'O backup não foi gerado', $error) : '')
+                . '<p class="nfse-cfg-text">O arquivo traz a configuração do módulo, inclusive dados sensíveis. Guarde-o em local seguro.</p>'
+            );
             $this->renderConfigSectionEnd();
 
             return;
@@ -721,7 +729,7 @@ final class UpdaterController
             'preflight_failed' => ['danger', 'A checagem encontrou itens que bloqueiam a atualização.'],
             'not_settled' => ['warn', 'Aguarde a pausa ficar ativa antes de gerar o backup.'],
             'backup_ready' => ['ok', 'Backup gerado. Baixe o arquivo para continuar.'],
-            'backup_failed' => ['danger', 'Não foi possível gerar o backup. Veja o log UPDATER_BACKUP_ERROR.'],
+            'backup_failed' => ['danger', 'Não foi possível gerar o backup. O erro aparece na etapa 3.'],
             'backup_missing' => ['danger', 'O arquivo de backup não está mais disponível.'],
             'backup_required' => ['warn', 'Baixe o backup antes de instalar.'],
             'ack_required' => ['warn', 'Marque que leu como voltar à mão.'],
