@@ -1,10 +1,12 @@
 {
   "module": "OpenNfse",
-  "latest_version": "0.1.28",
-  "release_date": "2026-11-05",
-  "download_url": "https://github.com/jaison/OpenNfse/releases",
-  "changelog_url": "https://github.com/jaison/OpenNfse/releases",
+  "latest_version": "1.0.0",
+  "release_date": "2026-11-06",
+  "download_url": "https://github.com/jaison/OpenNfse/releases/tag/v1.0.0",
+  "changelog_url": "https://github.com/jaison/OpenNfse/releases/tag/v1.0.0",
+  "package_url": "https://github.com/jaison/OpenNfse/releases/download/v1.0.0/OpenNfse-1.0.0.zip",
+  "package_sha256": "fd10c0d371163a7dbb485eb02000bcb528c497be10322049d54a9c112f99b4ba",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Correção em Configurações: quando o Código de Serviço não começa com 0 (ex.: 14.01.01), a aba Tributação abria em \"Selecione\" em vez do código salvo, e salvar as configurações apagava o código de serviço padrão. Com um código assim no catálogo, a tela de Configurações também podia parar de carregar. Agora o código salvo aparece selecionado e a tela carrega normalmente. Se você salvou as configurações na v0.1.27 ou antes com um código assim, confira o Código de Serviço Padrão e o mapeamento por grupo depois de atualizar. IMPORTANTE: antes de atualizar, apague a pasta modules/addons/OpenNfse e envie a nova (a pasta não guarda dados: a configuração fica no banco, os XML/PDF ficam em attachments/ e o certificado fica obrigatoriamente fora do webroot)."
+  "message": "Versão 1.0.0: visual novo do admin (Dashboard, Fila, Relatórios e Configurações) e atualizador embutido. A partir desta versão, as próximas atualizações são instaladas pelo botão Atualizar agora, em Configurações > Atualizações, com checagem prévia, pausa, cópia de segurança das tabelas e volta à versão anterior. IMPORTANTE: a instalação da 1.0.0 ainda é manual. Apague a pasta modules/addons/OpenNfse e envie a nova, do arquivo OpenNfse-1.0.0.zip do release (não use o Source code). A pasta não guarda dados: a configuração fica no banco, os XML/PDF ficam em attachments/ e o certificado fica obrigatoriamente fora do webroot."
 }
