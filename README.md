@@ -6,13 +6,15 @@ Addon para WHMCS com emissão de NFS-e Nacional integrada à API oficial, emiss�
 
 ## Manifesto
 
-O OpenNfse surgiu com o intuito de não se pagar por algo que deveria ser gratuito. Procurei outras opções no mercado, e elas eram caras, isso já depois de o Emissor Nacional existir. Antes dele, todas as opções eram mais caras ainda e cobravam por nota emitida, o que é ruim. Então o OpenNfse nasceu para enxugar um custo desnecessário: já temos a infraestrutura para rodar o WHMCS, e o OpenNfse se encaixa muito bem no mesmo ambiente.
+Emitir nota fiscal de serviço é uma obrigação de toda empresa, e cumprir essa obrigação não deveria custar caro. O OpenNfse nasceu dessa ideia: não pagar por algo que deveria ser gratuito.
+
+Antes do Emissor Nacional, as opções do mercado eram caras e cobravam por nota emitida. Quanto mais a empresa crescia, mais pagava por um serviço que continuava o mesmo. Quando procurei alternativas, já com o Emissor Nacional disponível gratuitamente, as soluções continuavam caras.
+
+Quem usa o WHMCS já mantém o servidor, o banco de dados e o cron. O OpenNfse aproveita essa mesma estrutura para emitir as notas direto na API oficial, sem intermediário e sem custo por nota. É um custo desnecessário a menos.
 
 ## Notas do Autor
 
 **Atualizado em 6 de novembro de 2026.**
-
-O addon está em uso em produção há mais de dois meses. Nesse período, o uso real revelou diversos problemas inesperados, que foram corrigidos versão a versão.
 
 A versão 1.0.0 traz duas mudanças grandes: o visual novo do admin (Dashboard, Fila, Relatórios e Configurações) e o **atualizador embutido**.
 
