@@ -19,3 +19,6 @@
 
 # macOS
 .DS_Store
+
+# Marcador gerado no pacote do release (nunca versionar)
+/build-info.json

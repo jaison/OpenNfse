@@ -42,6 +42,12 @@ jobs:
         run: |
           zip="OpenNfse-${VERSION}.zip"
           git archive --format=zip --prefix=OpenNfse/ -o "$zip" HEAD
+          # Marcador de instalação por pacote: sem ele, o atualizador não roda
+          # (checkout git, cópia manual do código-fonte).
+          mkdir -p build/OpenNfse
+          printf '{"module":"OpenNfse","version":"%s","commit":"%s","built_at":"%s"}\n' \
+            "$VERSION" "$(git rev-parse HEAD)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > build/OpenNfse/build-info.json
+          (cd build && zip -q "../$zip" OpenNfse/build-info.json)
           sha256sum "$zip" > "$zip.sha256"
           cat "$zip.sha256"
 

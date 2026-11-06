@@ -16,6 +16,7 @@ final class PreflightCheckTest extends TestCase
         $this->root = sys_get_temp_dir() . '/opennfse-preflight-' . bin2hex(random_bytes(4));
         mkdir($this->root . '/public_html/modules/addons/OpenNfse/src', 0755, true);
         file_put_contents($this->root . '/public_html/modules/addons/OpenNfse/OpenNfse.php', '<?php');
+        file_put_contents($this->root . '/public_html/modules/addons/OpenNfse/build-info.json', '{"module":"OpenNfse","version":"1.0.0"}');
         mkdir($this->root . '/tmp', 0755);
     }
 
@@ -65,7 +66,25 @@ final class PreflightCheckTest extends TestCase
 
         $result = (new PreflightCheck($this->env()))->run($this->manifest(), '1.0.0');
 
-        $this->assertContains('git', $this->failures($result));
+        $this->assertContains('package_install', $this->failures($result));
+    }
+
+    public function testBlocksInstallWithoutPackageMarker(): void
+    {
+        // Ex.: checkout com git-dir fora da pasta, ou zip do código-fonte.
+        unlink($this->root . '/public_html/modules/addons/OpenNfse/build-info.json');
+
+        $result = (new PreflightCheck($this->env()))->run($this->manifest(), '1.0.0');
+
+        $this->assertContains('package_install', $this->failures($result));
+    }
+
+    public function testBlocksMarkerFromAnotherVersion(): void
+    {
+        // Ex.: arquivos de outra versão copiados por cima de uma instalação por pacote.
+        $result = (new PreflightCheck($this->env()))->run($this->manifest(), '0.9.0');
+
+        $this->assertContains('package_install', $this->failures($result));
     }
 
     public function testBlocksWithoutPackageOrNewerVersion(): void

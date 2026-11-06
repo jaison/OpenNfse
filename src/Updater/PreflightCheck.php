@@ -22,6 +22,9 @@ final class PreflightCheck
     private const REQUIRED_EXTENSIONS = ['zip' => 'ZipArchive', 'curl' => null, 'openssl' => null, 'json' => null];
     private const MIN_FREE_BYTES = 100 * 1024 * 1024;
 
+    /** Marcador que o workflow do release põe no zip. */
+    public const BUILD_INFO_FILE = 'build-info.json';
+
     private UpdaterEnvironment $env;
 
     public function __construct(?UpdaterEnvironment $env = null)
@@ -43,7 +46,7 @@ final class PreflightCheck
         $items[] = $this->checkPhp($manifest);
         $items[] = $this->checkWhmcs($manifest);
         $items[] = $this->checkExtensions();
-        $items[] = $this->checkNotGitCheckout($moduleDir);
+        $items[] = $this->checkInstalledFromPackage($moduleDir, $currentVersion);
         $items[] = $this->checkTempPath($tempPath);
         $tempOutsideWebRoot = $tempPath !== '' && is_dir($tempPath) && !WebRoot::contains($tempPath, $this->env->webRoots());
         $items[] = $this->checkTempLocation($tempPath, $tempOutsideWebRoot);
@@ -129,14 +132,31 @@ final class PreflightCheck
         return $this->item('extensions', $label, self::OK, implode(', ', array_keys(self::REQUIRED_EXTENSIONS)) . '.');
     }
 
-    private function checkNotGitCheckout(string $moduleDir): array
+    /**
+     * Só atualiza instalação feita com o zip do release: ele traz o build-info.json da mesma versão.
+     * Checkout git (inclusive com git-dir fora da pasta) e cópia do código-fonte não têm o marcador.
+     */
+    private function checkInstalledFromPackage(string $moduleDir, string $currentVersion): array
     {
         $label = 'Instalação a partir de pacote';
+        $manual = 'Atualize do mesmo jeito que instalou (git ou cópia manual). Para usar a atualização automática, '
+            . 'instale uma vez o arquivo OpenNfse-<versão>.zip anexado ao release.';
         if (file_exists($moduleDir . '/.git')) {
-            return $this->item('git', $label, self::FAIL, 'A pasta do módulo é um checkout do git. Atualize com o git.');
+            return $this->item('package_install', $label, self::FAIL, 'A pasta do módulo é um checkout do git. ' . $manual);
+        }
+        $info = json_decode((string) @file_get_contents($moduleDir . '/' . self::BUILD_INFO_FILE), true);
+        if (!is_array($info) || ($info['module'] ?? '') !== 'OpenNfse') {
+            return $this->item('package_install', $label, self::FAIL, 'A instalação não veio do pacote do release. ' . $manual);
+        }
+        if ((string) ($info['version'] ?? '') !== $currentVersion) {
+            return $this->item('package_install', $label, self::FAIL, sprintf(
+                'O marcador do pacote é da versão %s, mas a instalada é %s. ' . $manual,
+                (string) ($info['version'] ?? '?'),
+                $currentVersion
+            ));
         }
 
-        return $this->item('git', $label, self::OK, 'A pasta do módulo não é um checkout do git.');
+        return $this->item('package_install', $label, self::OK, 'Instalado com o pacote do release ' . $currentVersion . '.');
     }
 
     private function checkTempPath(string $tempPath): array
