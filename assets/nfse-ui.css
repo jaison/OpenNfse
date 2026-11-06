@@ -699,6 +699,9 @@
   .nfse-filterbar__actions { margin-left: 0; }
 }
 
+/* Fila: blocos com o mesmo respiro das telas com submenu. */
+.nfse-ui.nfse-page.nfse-fila { gap: var(--space-6); }
+
 /* Relatórios */
 
 /* Cards de informação: título, pares rótulo/valor (nfse-dl) e nota curta. */

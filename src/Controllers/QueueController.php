@@ -47,7 +47,7 @@ final class QueueController
         $this->renderTabs('fila');
 
         $token = (new TokenService())->token();
-        echo '<div class="nfse-ui nfse-page">';
+        echo '<div class="nfse-ui nfse-page nfse-fila">';
 
         $msg = (string) ($_REQUEST['msg'] ?? '');
         if ($msg === 'check_done') {
