@@ -32,6 +32,35 @@ final class NfseValueResolverTest extends TestCase
         ];
     }
 
+    public function testWhmcs9PartialCreditUsesGatewayAmount(): void
+    {
+        Capsule::$columns['tblaccounts']['type'] = true;
+        Capsule::$rows['tblaccounts'] = [
+            (object) [
+                'invoiceid' => 139715,
+                'type' => 'invoice_credit_applied',
+                'amountin' => '4.00',
+                'amountout' => '0',
+            ],
+            (object) [
+                'invoiceid' => 139715,
+                'type' => 'gateway_funds_in',
+                'amountin' => '6.00',
+                'amountout' => '0',
+            ],
+        ];
+        $items = [['type' => 'Hosting', 'relid' => 5, 'amount' => '10.00', 'description' => 'Serviço']];
+
+        $result = R::compute(
+            ['id' => 139715, 'total' => '10.00', 'credit' => '0.00'],
+            $items,
+            []
+        );
+
+        $this->assertSame(6.0, $result['value']);
+        $this->assertSame($items, $result['items']);
+    }
+
     public function testCommonInvoiceKeepsValueAndItems(): void
     {
         $items = [['type' => 'Hosting', 'relid' => 5, 'amount' => '99.90', 'description' => 'Hospedagem']];
