@@ -21,10 +21,29 @@ final class Capsule
     /** @var array<int, string> statements recebidos por Capsule::statement() */
     public static array $statements = [];
 
+    /** @var array<string, array<string, bool>> colunas que Capsule::schema()->hasColumn enxerga */
+    public static array $columns = [];
+
+    public static ?\Throwable $schemaError = null;
+
+    public static ?\Throwable $getError = null;
+
+    public static int $schemaCalls = 0;
+
     public static function statement(string $sql): bool
     {
         self::$statements[] = $sql;
         return true;
+    }
+
+    public static function schema(): CapsuleSchemaStub
+    {
+        self::$schemaCalls++;
+        if (self::$schemaError !== null) {
+            throw self::$schemaError;
+        }
+
+        return new CapsuleSchemaStub();
     }
 
     /** @var array<string, array<int, array>> linhas recebidas por insert(), por tabela */
@@ -43,6 +62,13 @@ final class Capsule
         self::$updates = [];
         self::$rows = [];
         self::$statements = [];
+        self::$columns = [];
+        self::$schemaError = null;
+        self::$getError = null;
+        self::$schemaCalls = 0;
+        if (class_exists(\OpenNfse\Repositories\LedgerCreditRepository::class)) {
+            \OpenNfse\Repositories\LedgerCreditRepository::forgetColumnCache();
+        }
     }
 }
 
@@ -89,6 +115,10 @@ final class CapsuleQueryStub
 
     public function get(): array
     {
+        if (Capsule::$getError !== null) {
+            throw Capsule::$getError;
+        }
+
         return Capsule::$rows[$this->table] ?? [];
     }
 
@@ -128,5 +158,13 @@ final class CapsuleQueryStub
     {
         Capsule::$inserts[$this->table][] = $data;
         return true;
+    }
+}
+
+final class CapsuleSchemaStub
+{
+    public function hasColumn(string $table, string $column): bool
+    {
+        return (bool) (Capsule::$columns[$table][$column] ?? false);
     }
 }
