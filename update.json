@@ -1,12 +1,12 @@
 {
   "module": "OpenNfse",
-  "latest_version": "1.0.1",
-  "release_date": "2026-11-06",
-  "download_url": "https://github.com/jaison/OpenNfse/releases/tag/v1.0.1",
-  "changelog_url": "https://github.com/jaison/OpenNfse/releases/tag/v1.0.1",
-  "package_url": "https://github.com/jaison/OpenNfse/releases/download/v1.0.1/OpenNfse-1.0.1.zip",
-  "package_sha256": "bd297a509c93bb21e60546abc245f2d3bc13b37e8ec313adb548bb0cbdd77ab1",
+  "latest_version": "1.0.2",
+  "release_date": "2026-11-10",
+  "download_url": "https://github.com/jaison/OpenNfse/releases/tag/v1.0.2",
+  "changelog_url": "https://github.com/jaison/OpenNfse/releases/tag/v1.0.2",
+  "package_url": "https://github.com/jaison/OpenNfse/releases/download/v1.0.2/OpenNfse-1.0.2.zip",
+  "package_sha256": "189a01769bda5c07d24f945bc1df2ad0bcb4f73056cb4137daa697ff8d88cbef",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Correção: quando a SEFIN responde E0014 (DPS já existente) porque o primeiro envio foi autorizado mas a resposta não chegou, a nota já emitida passa a ser localizada e vinculada à fatura automaticamente, depois de conferir DPS, tomador e valor. Antes, ela ficava como REJEITADA. Notas que já estão rejeitadas por E0014: use Consultar Status na fatura, não Reemitir. Na 1.0.0, atualize por Configurações > Atualizações > Atualizar agora. Em versões anteriores, apague a pasta modules/addons/OpenNfse e envie a nova, do arquivo OpenNfse-1.0.1.zip do release."
+  "message": "Correção para WHMCS 9: o crédito do cliente aplicado na fatura passa a ser reconhecido. Fatura paga só com crédito não emite NFS-e (o valor já teve nota no Add Funds), e fatura paga em parte com crédito emite só a parte do gateway. Mark Paid continua emitindo. No WHMCS 8.13 nada muda. Na 1.0.x, atualize por Configurações > Atualizações > Atualizar agora. Em versões anteriores, apague a pasta modules/addons/OpenNfse e envie a nova, do arquivo OpenNfse-1.0.2.zip do release."
 }
