@@ -1,12 +1,12 @@
 {
   "module": "OpenNfse",
-  "latest_version": "1.0.3",
+  "latest_version": "1.0.4",
   "release_date": "2026-11-16",
-  "download_url": "https://github.com/jaison/OpenNfse/releases/tag/v1.0.3",
-  "changelog_url": "https://github.com/jaison/OpenNfse/releases/tag/v1.0.3",
-  "package_url": "https://github.com/jaison/OpenNfse/releases/download/v1.0.3/OpenNfse-1.0.3.zip",
-  "package_sha256": "e2095969973dfd1a8a8ca9b42bf37b96ffdabb2ec5826938a93f164a826c27ce",
+  "download_url": "https://github.com/jaison/OpenNfse/releases/tag/v1.0.4",
+  "changelog_url": "https://github.com/jaison/OpenNfse/releases/tag/v1.0.4",
+  "package_url": "https://github.com/jaison/OpenNfse/releases/download/v1.0.4/OpenNfse-1.0.4.zip",
+  "package_sha256": "6290191c8f1f39b80446610ec2f865eac9a079cc7dc6d302e357d0316717be18",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "Auditoria de emissão no WHMCS 9 deixa de listar faturas pagas só com crédito. Erro E999/HTTP 500 da SEFIN passa a consultar a DPS e vincular a NFS-e já autorizada. O atualizador avança sozinho depois do download do backup. Nova opção para não emitir NFS-e em fatura marcada como paga manualmente (WHMCS 9); vem ligada, sem mudar o comportamento atual. Na 1.0.x, atualize por Configurações > Atualizações > Atualizar agora. Em versões anteriores, apague a pasta modules/addons/OpenNfse e envie a nova, do arquivo OpenNfse-1.0.3.zip do release."
+  "message": "O atualizador passa a avançar sozinho depois da pausa da operação, sem recarregar a página à mão. Inclui as correções da 1.0.3 (auditoria com crédito no WHMCS 9, recuperação de E999/HTTP 500, opção de Mark Paid). Na ida para a 1.0.4, recarregue a página cerca de 1 minuto depois de pausar. Na 1.0.x, atualize por Configurações > Atualizações > Atualizar agora. Em versões anteriores, apague a pasta modules/addons/OpenNfse e envie a nova, do arquivo OpenNfse-1.0.4.zip do release."
 }
