@@ -941,10 +941,11 @@ final class ReportRepository
      * para a query manter where('i.total', '>', 0). No WHMCS 9 o total vem
      * cheio e o crédito aplicado está no ledger: desconta essa soma e trata
      * valor negativo como zero. Fatura com valor de gateway até 0,005 fica de fora.
+     * Com $deductManualPaid, o ajuste de Mark Paid entra na mesma soma.
      *
      * @return array{amount: string, filter: ?string, invoice_total: string, total_valor: string}
      */
-    public static function auditoriaGatewaySql(bool $hasLedgerTypeColumn): array
+    public static function auditoriaGatewaySql(bool $hasLedgerTypeColumn, bool $deductManualPaid = false): array
     {
         if (!$hasLedgerTypeColumn) {
             return [
@@ -955,8 +956,11 @@ final class ReportRepository
             ];
         }
 
+        $typePredicate = $deductManualPaid
+            ? "type IN ('invoice_credit_applied', 'invoice_billing_adjustment_credit')"
+            : "type = 'invoice_credit_applied'";
         $amount = '(i.total - GREATEST(COALESCE((SELECT SUM(amountin - amountout) FROM tblaccounts'
-            . " WHERE invoiceid = i.id AND type = 'invoice_credit_applied'), 0), 0))";
+            . ' WHERE invoiceid = i.id AND ' . $typePredicate . '), 0), 0))';
 
         return [
             'amount' => $amount,
@@ -969,7 +973,10 @@ final class ReportRepository
     public function listAuditoriaInvoices(array $filters, int $limit): array
     {
         $limit = max(1, min(5000, $limit));
-        $gateway = self::auditoriaGatewaySql(LedgerCreditRepository::hasLedgerTypeColumn());
+        $gateway = self::auditoriaGatewaySql(
+            LedgerCreditRepository::hasLedgerTypeColumn(),
+            LedgerCreditRepository::deductsManualPaidFromGateway()
+        );
         $invoiceTotal = $gateway['filter'] === null
             ? $gateway['invoice_total']
             : Capsule::raw($gateway['invoice_total']);
@@ -1002,7 +1009,10 @@ final class ReportRepository
 
     public function summaryAuditoriaInvoices(array $filters): array
     {
-        $gateway = self::auditoriaGatewaySql(LedgerCreditRepository::hasLedgerTypeColumn());
+        $gateway = self::auditoriaGatewaySql(
+            LedgerCreditRepository::hasLedgerTypeColumn(),
+            LedgerCreditRepository::deductsManualPaidFromGateway()
+        );
         $row = $this->buildAuditoriaInvoicesQuery($filters, $gateway)
             ->select([
                 Capsule::raw('COUNT(*) as total_invoices'),
@@ -1048,7 +1058,10 @@ final class ReportRepository
     private function buildAuditoriaInvoicesQuery(array $filters, ?array $gateway = null)
     {
         if ($gateway === null) {
-            $gateway = self::auditoriaGatewaySql(LedgerCreditRepository::hasLedgerTypeColumn());
+            $gateway = self::auditoriaGatewaySql(
+                LedgerCreditRepository::hasLedgerTypeColumn(),
+                LedgerCreditRepository::deductsManualPaidFromGateway()
+            );
         }
 
         $q = Capsule::table('tblinvoices as i')

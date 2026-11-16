@@ -36,4 +36,26 @@ final class ReportRepositoryAuditoriaSqlTest extends TestCase
         $this->assertSame($amount . ' as invoice_total', $sql['invoice_total']);
         $this->assertSame('SUM(' . $amount . ') as total_valor', $sql['total_valor']);
     }
+
+    public function testWhmcs8IgnoresTheManualPaidFlag(): void
+    {
+        $this->assertSame(
+            ReportRepository::auditoriaGatewaySql(false),
+            ReportRepository::auditoriaGatewaySql(false, true)
+        );
+    }
+
+    public function testWhmcs9CanAlsoDeductManualPaid(): void
+    {
+        $sql = ReportRepository::auditoriaGatewaySql(true, true);
+
+        $this->assertStringContainsString(
+            "type IN ('invoice_credit_applied', 'invoice_billing_adjustment_credit')",
+            $sql['amount']
+        );
+        $this->assertStringNotContainsString("type = 'invoice_credit_applied'", $sql['amount']);
+        $this->assertSame($sql['amount'] . ' > 0.005', $sql['filter']);
+        $this->assertSame($sql['amount'] . ' as invoice_total', $sql['invoice_total']);
+        $this->assertSame('SUM(' . $sql['amount'] . ') as total_valor', $sql['total_valor']);
+    }
 }

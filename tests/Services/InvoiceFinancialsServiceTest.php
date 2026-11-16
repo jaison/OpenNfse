@@ -186,6 +186,60 @@ final class InvoiceFinancialsServiceTest extends TestCase
 
                 return $this->amount;
             }
+
+            public function appliedNonGatewayAmount(int $invoiceId): float
+            {
+                return $this->appliedClientCredit($invoiceId);
+            }
+        };
+    }
+
+    public function testMarkPaidOnlyIsNotEmittedWhenTheAdjustmentIsNonGateway(): void
+    {
+        $service = new InvoiceFinancialsService($this->splitLedger(0.0, 10.0));
+        $invoice = [
+            'id' => 139719,
+            'paymentmethod' => 'pix',
+            'total' => '10.00',
+            'credit' => '0.00',
+        ];
+
+        $this->assertTrue($service->isCreditOnlyPayment($invoice));
+        $this->assertSame(0.0, $service->getGatewayPaidAmount($invoice));
+        $this->assertSame(0.0, $service->getAppliedCredit($invoice));
+    }
+
+    public function testPartialMarkPaidLeavesTheGatewayAmount(): void
+    {
+        $service = new InvoiceFinancialsService($this->splitLedger(4.0, 7.0));
+        $invoice = [
+            'id' => 139720,
+            'paymentmethod' => 'pix',
+            'total' => '10.00',
+            'credit' => '0.00',
+        ];
+
+        $this->assertSame(3.0, $service->getGatewayPaidAmount($invoice));
+        $this->assertSame(4.0, $service->getAppliedCredit($invoice));
+        $this->assertFalse($service->isCreditOnlyPayment($invoice));
+    }
+
+    private function splitLedger(float $clientCredit, float $nonGateway): LedgerCreditSource
+    {
+        return new class ($clientCredit, $nonGateway) implements LedgerCreditSource {
+            public function __construct(private float $clientCredit, private float $nonGateway)
+            {
+            }
+
+            public function appliedClientCredit(int $invoiceId): float
+            {
+                return $this->clientCredit;
+            }
+
+            public function appliedNonGatewayAmount(int $invoiceId): float
+            {
+                return $this->nonGateway;
+            }
         };
     }
 }
