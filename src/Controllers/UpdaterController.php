@@ -35,6 +35,7 @@ final class UpdaterController
     /** Ações do admin que continuam abrindo durante a pausa. */
     public const ACTIONS = [
         'updater', 'updaterPause', 'updaterResume', 'updaterBackup', 'updaterBackupDownload',
+        'updaterBackupStatus',
         'updaterInstall', 'updaterVerify', 'updaterRollback', 'updaterConfirm',
     ];
 
@@ -219,6 +220,32 @@ final class UpdaterController
             $this->log('UPDATER_BACKUP_DOWNLOAD', ['admin' => $this->adminId(), 'on_server' => !empty($backup['on_server'])]);
         }
         exit;
+    }
+
+    /**
+     * Estado do download, para a página avançar depois que downloaded_at foi gravado.
+     */
+    public function backupDownloadStatus(): void
+    {
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        header('Content-Type: application/json; charset=UTF-8');
+        header('Cache-Control: no-store');
+        echo json_encode(self::backupDownloadStatusPayload($this->data()), JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array{downloaded_at: ?string}
+     */
+    public static function backupDownloadStatusPayload(array $data): array
+    {
+        $backup = $data['backup'] ?? null;
+        $downloadedAt = is_array($backup) ? trim((string) ($backup['downloaded_at'] ?? '')) : '';
+
+        return ['downloaded_at' => $downloadedAt !== '' ? $downloadedAt : null];
     }
 
     /**
@@ -582,12 +609,15 @@ final class UpdaterController
             return;
         }
 
-        $downloaded = !empty($backup['downloaded_at']);
+        $downloadedAt = trim((string) ($backup['downloaded_at'] ?? ''));
+        $downloaded = $downloadedAt !== '';
         $fileAvailable = (string) ($backup['file'] ?? '') !== '' && is_file((string) $backup['file']);
         $actions = '';
         if ($fileAvailable) {
-            $actions = '<form method="post" action="' . Ui::h(self::URL . 'BackupDownload') . '">' . $hidden
-                . Ui::button($downloaded ? 'Baixar de novo' : 'Baixar backup', $downloaded ? ['sm'] : ['primary', 'sm']) . '</form>';
+            $actions = '<iframe name="nfse-backup-download" hidden style="display:none;width:0;height:0;border:0" title="Download do backup"></iframe>'
+                . '<form method="post" id="nfse-backup-download-form" data-downloaded-at="' . Ui::h($downloadedAt) . '" action="' . Ui::h(self::URL . 'BackupDownload') . '">' . $hidden
+                . Ui::button($downloaded ? 'Baixar de novo' : 'Baixar backup', $downloaded ? ['sm'] : ['primary', 'sm']) . '</form>'
+                . self::backupDownloadAdvanceScript();
         }
         $this->renderConfigSectionStart($title, $description, $actions);
         $facts = [
@@ -712,6 +742,37 @@ final class UpdaterController
         return '<details class="nfse-form__more"><summary>Como voltar à mão</summary><div class="nfse-form__more-body">'
             . Ui::h('Se o WHMCS não abrir depois da troca: pelo FTP ou gerenciador de arquivos, em modules/addons/, renomeie a pasta OpenNfse para OpenNfse.falhou e a pasta OpenNfse.old para OpenNfse. Depois importe no banco o arquivo de backup baixado na etapa 3 (por exemplo, pelo phpMyAdmin). Com a versão anterior de volta, a tela de atualização libera o botão Retomar operação.')
             . '</div></details>';
+    }
+
+    /**
+     * Com JS, o download vai para um iframe e a página recarrega quando downloaded_at muda.
+     * Sem JS o formulário segue na mesma janela e o usuário recarrega.
+     */
+    private static function backupDownloadAdvanceScript(): string
+    {
+        $url = json_encode('addonmodules.php?module=OpenNfse&action=updaterBackupStatus');
+
+        return '<script>(function(){'
+            . 'var form=document.getElementById("nfse-backup-download-form");'
+            . 'if(!form||form.getAttribute("data-nfse-bound")==="1"){return;}'
+            . 'form.setAttribute("data-nfse-bound","1");'
+            . 'form.addEventListener("submit",function(){'
+            . 'form.target="nfse-backup-download";'
+            . 'var before=form.getAttribute("data-downloaded-at")||"";'
+            . 'if(form._nfseTimer){window.clearInterval(form._nfseTimer);}'
+            . 'var tries=0;'
+            . 'form._nfseTimer=window.setInterval(function(){'
+            . 'tries+=1;'
+            . 'if(tries>90){window.clearInterval(form._nfseTimer);return;}'
+            . 'fetch(' . $url . ',{credentials:"same-origin",cache:"no-store"})'
+            . '.then(function(r){return r.json();})'
+            . '.then(function(data){'
+            . 'var at=data&&data.downloaded_at?String(data.downloaded_at):"";'
+            . 'if(at!==""&&at!==before){window.clearInterval(form._nfseTimer);window.location.reload();}'
+            . '}).catch(function(){});'
+            . '},2000);'
+            . '});'
+            . '})();</script>';
     }
 
     private function renderPendingStep(string $title, string $description, string $text = 'Disponível depois da pausa.'): void
