@@ -35,7 +35,7 @@ final class UpdaterController
     /** Ações do admin que continuam abrindo durante a pausa. */
     public const ACTIONS = [
         'updater', 'updaterPause', 'updaterResume', 'updaterBackup', 'updaterBackupDownload',
-        'updaterBackupStatus',
+        'updaterBackupStatus', 'updaterSettleStatus',
         'updaterInstall', 'updaterVerify', 'updaterRollback', 'updaterConfirm',
     ];
 
@@ -81,10 +81,6 @@ final class UpdaterController
         $this->renderInstallStep($paused, $state);
 
         echo '</div></div>';
-        if ($paused && !$settled) {
-            // Atualiza sozinha até o processamento em andamento terminar.
-            echo '<meta http-equiv="refresh" content="15">';
-        }
         Module::ui()->renderFooter();
     }
 
@@ -234,6 +230,46 @@ final class UpdaterController
         header('Cache-Control: no-store');
         echo json_encode(self::backupDownloadStatusPayload($this->data()), JSON_UNESCAPED_UNICODE);
         exit;
+    }
+
+    /**
+     * A pausa já pode seguir para o backup? A página consulta isto em vez de recarregar às cegas.
+     */
+    public function settleStatus(): void
+    {
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        header('Content-Type: application/json; charset=UTF-8');
+        header('Cache-Control: no-store');
+        $settled = MaintenanceMode::isPaused() && MaintenanceMode::isSettled([$this, 'cronIdle']);
+        echo json_encode(self::settleStatusPayload($settled), JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    /**
+     * @return array{settled: bool}
+     */
+    public static function settleStatusPayload(bool $settled): array
+    {
+        return ['settled' => $settled];
+    }
+
+    /**
+     * Texto da etapa 2 enquanto a pausa não assentou, com contagem e link sem JS.
+     */
+    public static function pauseWaitingHtml(bool $settled): string
+    {
+        if ($settled) {
+            return '<p class="nfse-cfg-text">' . Ui::h('Pausa ativa. Nenhum processamento em andamento.') . '</p>';
+        }
+
+        return '<p class="nfse-cfg-text">'
+            . Ui::h('Aguardando o processamento em andamento terminar. ')
+            . '<span id="nfse-pause-countdown">' . Ui::h('Atualizando em 10 s…') . '</span> '
+            . '<a href="' . Ui::h(self::URL) . '">' . Ui::h('Atualizar agora') . '</a>'
+            . '</p>'
+            . self::pauseSettleScript();
     }
 
     /**
@@ -570,9 +606,7 @@ final class UpdaterController
             'De → para' => Ui::h(trim((string) ($state['from_version'] ?? '')) . ' → ' . trim((string) ($state['to_version'] ?? ''))),
             'Eventos guardados' => Ui::h((string) MaintenanceMode::store()->countPendingEvents()),
         ];
-        $html = '<p class="nfse-cfg-text">' . Ui::h($settled
-            ? 'Pausa ativa. Nenhum processamento em andamento.'
-            : 'Aguardando o processamento em andamento terminar. A página atualiza sozinha.') . '</p>';
+        $html = self::pauseWaitingHtml($settled);
         $html .= '<dl class="nfse-cfg-facts">';
         foreach ($facts as $label => $value) {
             $html .= '<dt>' . Ui::h($label) . '</dt><dd>' . $value . '</dd>';
@@ -745,7 +779,34 @@ final class UpdaterController
     }
 
     /**
-     * Com JS, o download vai para um iframe e a página recarrega quando downloaded_at muda.
+     * Enquanto a pausa não assenta, consulta settled a cada 10 s e só então abre a URL limpa.
+     */
+    private static function pauseSettleScript(): string
+    {
+        $page = json_encode(self::URL);
+        $status = json_encode('addonmodules.php?module=OpenNfse&action=updaterSettleStatus');
+
+        return '<script>(function(){'
+            . 'var left=10,label=document.getElementById("nfse-pause-countdown");'
+            . 'function show(){if(label){label.textContent="Atualizando em "+left+" s…";}}'
+            . 'function tick(){'
+            . 'if(left<=0){'
+            . 'fetch(' . $status . ',{credentials:"same-origin",cache:"no-store"})'
+            . '.then(function(r){return r.json();})'
+            . '.then(function(data){'
+            . 'if(data&&data.settled===true){window.location.assign(' . $page . ');return;}'
+            . 'left=10;show();window.setTimeout(tick,1000);'
+            . '})'
+            . '.catch(function(){left=10;show();window.setTimeout(tick,1000);});'
+            . 'return;}'
+            . 'show();left-=1;window.setTimeout(tick,1000);'
+            . '}'
+            . 'tick();'
+            . '})();</script>';
+    }
+
+    /**
+     * Com JS, o download vai para um iframe e a página abre de novo quando downloaded_at muda.
      * Sem JS o formulário segue na mesma janela e o usuário recarrega.
      */
     private static function backupDownloadAdvanceScript(): string
@@ -768,7 +829,7 @@ final class UpdaterController
             . '.then(function(r){return r.json();})'
             . '.then(function(data){'
             . 'var at=data&&data.downloaded_at?String(data.downloaded_at):"";'
-            . 'if(at!==""&&at!==before){window.clearInterval(form._nfseTimer);window.location.reload();}'
+            . 'if(at!==""&&at!==before){window.clearInterval(form._nfseTimer);window.location.assign(' . json_encode(self::URL) . ');}'
             . '}).catch(function(){});'
             . '},2000);'
             . '});'

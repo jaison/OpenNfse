@@ -371,6 +371,11 @@ final class AdminController
                 'requiresToken' => false,
                 'handler' => [$this->updaterController, 'backupDownloadStatus'],
             ],
+            'updaterSettleStatus' => [
+                'method' => 'GET',
+                'requiresToken' => false,
+                'handler' => [$this->updaterController, 'settleStatus'],
+            ],
             'updaterInstall' => [
                 'method' => 'POST',
                 'requiresToken' => true,
