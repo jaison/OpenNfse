@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenNfse\Repositories;
 
+use OpenNfse\Services\ClosedInvoiceQueuePolicy;
 use WHMCS\Database\Capsule;
 
 final class QueueRepository
@@ -392,5 +393,77 @@ final class QueueRepository
         }
 
         return $resolved;
+    }
+
+    /**
+     * @return list<array{id: int, invoiceid: int, correlation_id: string}>
+     */
+    public function listErrorItemsByInvoice(int $invoiceId): array
+    {
+        if ($invoiceId <= 0) {
+            return [];
+        }
+
+        $out = [];
+        foreach (Capsule::table('mod_opennfse_queue')
+            ->where('invoiceid', $invoiceId)
+            ->where('status', 'ERROR')
+            ->orderBy('id', 'asc')
+            ->get() as $row) {
+            $arr = (array) $row;
+            $out[] = [
+                'id' => (int) ($arr['id'] ?? 0),
+                'invoiceid' => (int) ($arr['invoiceid'] ?? 0),
+                'correlation_id' => (string) ($arr['correlation_id'] ?? ''),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Itens ERROR cuja fatura está Cancelled/Refunded e não tem NFS-e com chave.
+     *
+     * @return list<array{id: int, invoiceid: int, correlation_id: string, invoice_status: string}>
+     */
+    public function listErrorItemsForClosedInvoices(int $limit): array
+    {
+        $limit = max(1, $limit);
+        $out = [];
+        foreach (Capsule::table('mod_opennfse_queue as q')
+            ->join('tblinvoices as i', 'i.id', '=', 'q.invoiceid')
+            ->where('q.status', 'ERROR')
+            ->whereRaw(ClosedInvoiceQueuePolicy::closedWithoutIssuedNfseSql('q.invoiceid'))
+            ->orderBy('q.id', 'asc')
+            ->limit($limit)
+            ->select(['q.id', 'q.invoiceid', 'q.correlation_id', 'i.status as invoice_status'])
+            ->get() as $row) {
+            $arr = (array) $row;
+            $out[] = [
+                'id' => (int) ($arr['id'] ?? 0),
+                'invoiceid' => (int) ($arr['invoiceid'] ?? 0),
+                'correlation_id' => (string) ($arr['correlation_id'] ?? ''),
+                'invoice_status' => (string) ($arr['invoice_status'] ?? ''),
+            ];
+        }
+
+        return $out;
+    }
+
+    public function markErrorResolved(int $id): bool
+    {
+        if ($id <= 0) {
+            return false;
+        }
+
+        $updated = Capsule::table('mod_opennfse_queue')
+            ->where('id', $id)
+            ->where('status', 'ERROR')
+            ->update([
+                'status' => 'RESOLVIDO',
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+
+        return (int) $updated > 0;
     }
 }

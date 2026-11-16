@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenNfse\Repositories;
 
+use OpenNfse\Services\ClosedInvoiceQueuePolicy;
 use OpenNfse\Services\FiscalDocumentReportService;
 use WHMCS\Database\Capsule;
 
@@ -294,7 +295,8 @@ final class ReportRepository
                 'c.firstname',
                 'c.lastname',
             ])
-            ->whereIn('n.status', ['ERRO', 'REJEITADA']);
+            ->whereIn('n.status', ['ERRO', 'REJEITADA'])
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid'));
 
         $this->applyClientFilter($notaQ, (string) ($filters['cliente'] ?? ''), 'c');
         $this->applyDateFilter($notaQ, (string) ($filters['data_inicial'] ?? ''), (string) ($filters['data_final'] ?? ''), 'n.updated_at');
@@ -316,7 +318,8 @@ final class ReportRepository
                 'c.firstname',
                 'c.lastname',
             ])
-            ->where('q.status', 'ERROR');
+            ->where('q.status', 'ERROR')
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('q.invoiceid'));
 
         $this->applyClientFilter($queueQ, (string) ($filters['cliente'] ?? ''), 'c');
         $this->applyDateFilter($queueQ, (string) ($filters['data_inicial'] ?? ''), (string) ($filters['data_final'] ?? ''), 'q.updated_at');
@@ -444,6 +447,7 @@ final class ReportRepository
 
         $rejeitadas = (int) Capsule::table('mod_opennfse_notas as n')
             ->where('n.status', 'REJEITADA')
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid'))
             ->whereBetween('n.updated_at', [$start, $end])
             ->count();
 
@@ -487,10 +491,17 @@ final class ReportRepository
         $aguardandoStatus = count($waitStatusSet);
 
         $erroSet = [];
-        foreach (Capsule::table('mod_opennfse_notas as n')->select(['n.invoiceid'])->whereIn('n.status', ['ERRO', 'REJEITADA'])->get() as $r) {
+        foreach (Capsule::table('mod_opennfse_notas as n')->select(['n.invoiceid'])
+            ->whereIn('n.status', ['ERRO', 'REJEITADA'])
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid'))
+            ->get() as $r) {
             $erroSet[(int) ($r->invoiceid ?? 0)] = true;
         }
-        foreach (Capsule::table('mod_opennfse_queue as q')->select(['q.invoiceid'])->where('q.status', 'ERROR')->distinct()->get() as $r) {
+        foreach (Capsule::table('mod_opennfse_queue as q')->select(['q.invoiceid'])
+            ->where('q.status', 'ERROR')
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('q.invoiceid'))
+            ->distinct()
+            ->get() as $r) {
             $erroSet[(int) ($r->invoiceid ?? 0)] = true;
         }
         unset($erroSet[0]);
@@ -500,6 +511,7 @@ final class ReportRepository
         foreach (Capsule::table('mod_opennfse_notas as n')
             ->select(['n.invoiceid'])
             ->whereIn('n.status', ['ERRO', 'REJEITADA'])
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid'))
             ->whereBetween('n.updated_at', [$start, $end])
             ->get() as $r) {
             $erroPeriodoSet[(int) ($r->invoiceid ?? 0)] = true;
@@ -507,6 +519,7 @@ final class ReportRepository
         foreach (Capsule::table('mod_opennfse_queue as q')
             ->select(['q.invoiceid'])
             ->where('q.status', 'ERROR')
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('q.invoiceid'))
             ->whereBetween('q.updated_at', [$start, $end])
             ->distinct()
             ->get() as $r) {
@@ -578,6 +591,7 @@ final class ReportRepository
                 'c.lastname',
             ])
             ->whereIn('n.status', ['ERRO', 'REJEITADA'])
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid'))
             ->whereBetween('n.updated_at', [$start, $end])
             ->orderBy('n.updated_at', 'desc')
             ->first();
@@ -595,6 +609,7 @@ final class ReportRepository
                 'c.lastname',
             ])
             ->where('q.status', 'ERROR')
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('q.invoiceid'))
             ->whereBetween('q.updated_at', [$start, $end])
             ->orderBy('q.updated_at', 'desc')
             ->first();
@@ -893,6 +908,7 @@ final class ReportRepository
                 'c.lastname',
             ])
             ->whereIn('n.status', ['ERRO', 'REJEITADA'])
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid'))
             ->whereBetween('n.updated_at', [$start, $end])
             ->orderBy('n.updated_at', 'desc')
             ->limit(max(1, min(20, $limit)))
@@ -914,6 +930,7 @@ final class ReportRepository
                 'c.lastname',
             ])
             ->whereIn('q.status', ['ERROR', 'RESOLVIDO'])
+            ->whereRaw(ClosedInvoiceQueuePolicy::feedQueueSql('q.status', 'q.invoiceid'))
             ->whereBetween('q.updated_at', [$start, $end])
             ->orderBy('q.updated_at', 'desc')
             ->limit(max(1, min(20, $limit)))
@@ -1121,6 +1138,9 @@ final class ReportRepository
             } else {
                 $q->where('n.status', $status);
             }
+            if (self::isOnlyFailureStatusFilter($status)) {
+                $q->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid'));
+            }
         }
 
         $dateField = (string) ($filters['date_field'] ?? '');
@@ -1132,6 +1152,22 @@ final class ReportRepository
         }
 
         $this->applyClientFilter($q, (string) ($filters['cliente'] ?? ''), 'c');
+    }
+
+    /** Filtro só de falha (ERRO e/ou REJEITADA): esconde fatura encerrada sem NFS-e. */
+    private static function isOnlyFailureStatusFilter(string $status): bool
+    {
+        $parts = array_values(array_filter(array_map('trim', explode(',', $status)), static fn (string $v): bool => $v !== ''));
+        if ($parts === []) {
+            return false;
+        }
+        foreach ($parts as $part) {
+            if (!in_array(strtoupper($part), ['ERRO', 'REJEITADA'], true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function applyClientFilter($q, string $cliente, string $clientAlias): void
