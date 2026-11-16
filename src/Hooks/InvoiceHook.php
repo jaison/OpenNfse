@@ -10,6 +10,7 @@ use OpenNfse\Repositories\NotaRepository;
 use OpenNfse\Repositories\PaymentGatewaySettingsRepository;
 use OpenNfse\Repositories\QueueRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
+use OpenNfse\Services\ManualQueueResolveService;
 use OpenNfse\Services\NfseService;
 use OpenNfse\Services\TokenService;
 
@@ -76,6 +77,13 @@ $invoiceTotal = $financials->getGatewayPaidAmount($invoice);
             $queueActive = (new QueueRepository())->hasActive($invoiceId);
         } catch (\Throwable $e) {
             $queueActive = false;
+        }
+
+        $errorItems = [];
+        try {
+            $errorItems = (new QueueRepository())->listErrorItemsByInvoice($invoiceId);
+        } catch (\Throwable $e) {
+            $errorItems = [];
         }
 
         $statusAtual = $nota ? (string) ($nota['status'] ?? '') : '';
@@ -164,6 +172,12 @@ $invoiceTotal = $financials->getGatewayPaidAmount($invoice);
         } elseif ($emailMsg === 'error') {
             $html .= '<div class="errorbox">Erro ao enviar e-mail da NFS-e. Verifique os logs do módulo.</div>';
         }
+        $resolveMsg = (string) ($_REQUEST['nfse_resolve'] ?? '');
+        if ($resolveMsg === 'done') {
+            $html .= '<div class="successbox">O erro saiu da lista de pendências. Nenhuma NFS-e foi emitida ou cancelada.</div>';
+        } elseif ($resolveMsg === 'none') {
+            $html .= '<div class="errorbox">Não há item em ERROR nesta fatura.</div>';
+        }
         $reemitMsg = (string) ($_REQUEST['nfse_reemit'] ?? '');
         if ($reemitMsg === 'enqueued') {
             $html .= '<div class="successbox">Reemissão manual enfileirada. O cron processará em breve e a ação foi registrada no histórico da invoice.</div>';
@@ -200,6 +214,16 @@ $invoiceTotal = $financials->getGatewayPaidAmount($invoice);
                 $actionFormStyle,
                 [$tokenInput, ActionFormRenderer::invoiceIdInput($invoiceId)],
                 '<button type="submit" class="btn btn-success" style="' . $primaryButtonStyle . '">Consultar Status</button>'
+            ));
+        }
+        if ($errorItems !== []) {
+            $primaryActions .= $wrapAction(ActionFormRenderer::render(
+                $base . '&action=filaResolveInvoice',
+                $actionFormStyle,
+                [$tokenInput, ActionFormRenderer::invoiceIdInput($invoiceId)],
+                '<button type="submit" class="btn btn-default" style="' . $primaryButtonStyle . '"'
+                    . ' onclick="return confirm(\'' . ManualQueueResolveService::CONFIRM_MESSAGE . '\');">'
+                    . 'Marcar como resolvido</button>'
             ));
         }
         if ($nota && $statusAtual === 'EMITIDA' && (string) ($nota['chave_acesso'] ?? '') !== '') {
