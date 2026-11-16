@@ -87,13 +87,40 @@ final class PreflightCheckTest extends TestCase
         $this->assertContains('package_install', $this->failures($result));
     }
 
-    public function testBlocksWithoutPackageOrNewerVersion(): void
+    public function testBlocksWithoutPackageWhenANewerVersionExists(): void
     {
         $manifest = $this->manifest();
         unset($manifest['package_sha256']);
-        $this->assertContains('package', $this->failures((new PreflightCheck($this->env()))->run($manifest, '1.0.0')));
 
-        $this->assertContains('package', $this->failures((new PreflightCheck($this->env()))->run($this->manifest(), '1.0.1')));
+        $result = (new PreflightCheck($this->env()))->run($manifest, '1.0.0');
+
+        $this->assertFalse($result['up_to_date']);
+        $this->assertContains('package', $this->failures($result));
+        $this->assertSame(PreflightCheck::FAIL, $this->itemStatus($result, 'package'));
+    }
+
+    public function testInstalledVersionIsCurrentAndDoesNotBlockAsFailure(): void
+    {
+        $result = (new PreflightCheck($this->env()))->run($this->manifest(), '1.0.1');
+
+        $this->assertTrue($result['up_to_date']);
+        $this->assertFalse($result['can_update']);
+        $this->assertSame([], $this->failures($result));
+        $this->assertSame(PreflightCheck::CURRENT, $this->itemStatus($result, 'package'));
+        $this->assertSame('Última versão já instalada (1.0.1).', $result['items'][0]['detail']);
+        $this->assertCount(1, $result['items']);
+    }
+
+    public function testEmptyLatestVersionIsCurrent(): void
+    {
+        $manifest = $this->manifest();
+        $manifest['latest_version'] = '';
+
+        $result = (new PreflightCheck($this->env()))->run($manifest, '1.0.6');
+
+        $this->assertTrue($result['up_to_date']);
+        $this->assertFalse($result['can_update']);
+        $this->assertSame('Última versão já instalada (1.0.6).', $result['items'][0]['detail']);
     }
 
     public function testBlocksOldWhmcsAndPhp(): void
