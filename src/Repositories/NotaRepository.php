@@ -194,6 +194,10 @@ final class NotaRepository
         if ($touchLastStatusCheckedAt && !array_key_exists('last_status_checked_at', $data)) {
             $data['last_status_checked_at'] = $now;
         }
+        if ($this->shouldClearResolvedFailure($existing, $data)) {
+            $data['falha_resolvida_em'] = null;
+            $data['falha_resolvida_por'] = null;
+        }
 
         $hasSubstantiveChange = false;
         foreach ($data as $field => $value) {
@@ -215,6 +219,50 @@ final class NotaRepository
         }
 
         Capsule::table('mod_opennfse_notas')->where('id', (int) $existing['id'])->update($data);
+    }
+
+    /**
+     * Marca a falha REJEITADA/ERRO como resolvida sem mudar o status da nota.
+     * Só grava se ainda não houver marca.
+     */
+    public function markFailureResolved(int $invoiceId, int $adminId, string $resolvedAt): bool
+    {
+        if ($invoiceId <= 0) {
+            return false;
+        }
+
+        $updated = Capsule::table('mod_opennfse_notas')
+            ->where('invoiceid', $invoiceId)
+            ->whereIn('status', ['ERRO', 'REJEITADA'])
+            ->whereNull('falha_resolvida_em')
+            ->update([
+                'falha_resolvida_em' => $resolvedAt,
+                'falha_resolvida_por' => $adminId > 0 ? $adminId : null,
+                'updated_at' => $resolvedAt,
+            ]);
+
+        return (int) $updated > 0;
+    }
+
+    /**
+     * Emissão, reemissão (PROCESSANDO) ou uma falha de outro status limpam a marca.
+     * Regravar a mesma REJEITADA/ERRO (consulta) não reabre a pendência.
+     *
+     * @param array<string, mixed> $existing
+     * @param array<string, mixed> $data
+     */
+    private function shouldClearResolvedFailure(array $existing, array $data): bool
+    {
+        if (!array_key_exists('status', $data) || array_key_exists('falha_resolvida_em', $data)) {
+            return false;
+        }
+        $next = strtoupper(trim((string) $data['status']));
+        $current = strtoupper(trim((string) ($existing['status'] ?? '')));
+        if ($next === 'EMITIDA' || $next === 'PROCESSANDO') {
+            return true;
+        }
+
+        return in_array($next, ['ERRO', 'REJEITADA'], true) && $next !== $current;
     }
 
     private function valuesAreEquivalent($current, $next): bool

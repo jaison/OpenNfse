@@ -76,6 +76,27 @@ final class ClosedInvoiceQueuePolicyTest extends TestCase
 
         $this->assertStringStartsWith('NOT (', $sql);
         $this->assertStringContainsString('n.invoiceid IN (SELECT closed_inv.id', $sql);
+        $this->assertStringNotContainsString('falha_resolvida_em', $sql);
+    }
+
+    public function testPendingFailureSqlHidesResolvedNoteFailure(): void
+    {
+        $sql = ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid', 'n');
+
+        $this->assertStringContainsString('n.falha_resolvida_em IS NULL', $sql);
+        $this->assertStringStartsWith('NOT (', $sql);
+    }
+
+    public function testUnresolvedFailureOnlyForOpenRejection(): void
+    {
+        $this->assertFalse(ClosedInvoiceQueuePolicy::isUnresolvedFailure(null));
+        $this->assertFalse(ClosedInvoiceQueuePolicy::isUnresolvedFailure(['status' => 'EMITIDA']));
+        $this->assertTrue(ClosedInvoiceQueuePolicy::isUnresolvedFailure(['status' => 'REJEITADA', 'falha_resolvida_em' => null]));
+        $this->assertTrue(ClosedInvoiceQueuePolicy::isUnresolvedFailure(['status' => 'erro', 'falha_resolvida_em' => '']));
+        $this->assertFalse(ClosedInvoiceQueuePolicy::isUnresolvedFailure([
+            'status' => 'REJEITADA',
+            'falha_resolvida_em' => '2026-11-16 13:00:00',
+        ]));
     }
 
     public function testFeedKeepsResolvedItemsAndDropsClosedErrors(): void

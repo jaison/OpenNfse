@@ -10,6 +10,7 @@ use OpenNfse\Repositories\NotaRepository;
 use OpenNfse\Repositories\PaymentGatewaySettingsRepository;
 use OpenNfse\Repositories\QueueRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
+use OpenNfse\Services\ClosedInvoiceQueuePolicy;
 use OpenNfse\Services\ManualQueueResolveService;
 use OpenNfse\Services\NfseService;
 use OpenNfse\Services\TokenService;
@@ -216,7 +217,7 @@ $invoiceTotal = $financials->getGatewayPaidAmount($invoice);
                 '<button type="submit" class="btn btn-success" style="' . $primaryButtonStyle . '">Consultar Status</button>'
             ));
         }
-        if ($errorItems !== []) {
+        if ($errorItems !== [] || ClosedInvoiceQueuePolicy::isUnresolvedFailure($nota)) {
             $primaryActions .= $wrapAction(ActionFormRenderer::render(
                 $base . '&action=filaResolveInvoice',
                 $actionFormStyle,
@@ -252,9 +253,24 @@ $invoiceTotal = $financials->getGatewayPaidAmount($invoice);
             $idDps = trim((string) ($nota['id_dps'] ?? ''));
             $chave = trim((string) ($nota['chave_acesso'] ?? ''));
 
+            $failureResolvedAt = trim((string) ($nota['falha_resolvida_em'] ?? ''));
+            $failureResolved = in_array($statusAtual, ['REJEITADA', 'ERRO'], true) && $failureResolvedAt !== '';
+            $failureResolvedFmt = $failureResolvedAt;
+            if ($failureResolved) {
+                try {
+                    $failureResolvedFmt = (new \DateTimeImmutable($failureResolvedAt))->format('d/m/Y H:i');
+                } catch (\Throwable $e) {
+                    $failureResolvedFmt = $failureResolvedAt;
+                }
+            }
+
             $statusLabel = $statusAtual !== '' ? $statusAtual : '-';
             $statusHtml = '<strong>' . htmlspecialchars($statusLabel, ENT_QUOTES, 'UTF-8') . '</strong>';
-            if ($statusAtual === 'EMITIDA') {
+            if ($failureResolved) {
+                $statusHtml = '<strong class="nfse-status-ok">'
+                    . htmlspecialchars('não emitida — erro marcado como resolvido em ' . $failureResolvedFmt, ENT_QUOTES, 'UTF-8')
+                    . '</strong>';
+            } elseif ($statusAtual === 'EMITIDA') {
                 $statusHtml = '<strong class="nfse-status-ok">' . htmlspecialchars($statusLabel, ENT_QUOTES, 'UTF-8') . '</strong>';
             } elseif ($statusAtual === 'CANCELADA') {
                 $statusHtml = '<strong class="nfse-status-error">' . htmlspecialchars($statusLabel, ENT_QUOTES, 'UTF-8') . '</strong>';
@@ -277,10 +293,16 @@ $invoiceTotal = $financials->getGatewayPaidAmount($invoice);
             }
 
             if (in_array($statusAtual, ['ERRO', 'REJEITADA'], true) && !empty($nota['erro_api'])) {
-                $err = (string) $nota['erro_api'];
-                $html .= '<div class="nfse-mt-6">';
-                $html .= '<textarea readonly class="nfse-error-textarea">' . htmlspecialchars($err, ENT_QUOTES, 'UTF-8') . '</textarea>';
-                $html .= '</div>';
+                $err = htmlspecialchars((string) $nota['erro_api'], ENT_QUOTES, 'UTF-8');
+                if ($failureResolved) {
+                    $html .= '<details class="nfse-mt-6"><summary>Ver erro original</summary>';
+                    $html .= '<div class="nfse-mt-6"><textarea readonly class="nfse-error-textarea">' . $err . '</textarea></div>';
+                    $html .= '</details>';
+                } else {
+                    $html .= '<div class="nfse-mt-6">';
+                    $html .= '<textarea readonly class="nfse-error-textarea">' . $err . '</textarea>';
+                    $html .= '</div>';
+                }
             }
             $hasXml = !empty($nota['xml_path']);
             $canUsePdf = $statusAtual === 'EMITIDA' && !empty($nota['xml_path']);

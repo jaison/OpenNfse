@@ -296,7 +296,7 @@ final class ReportRepository
                 'c.lastname',
             ])
             ->whereIn('n.status', ['ERRO', 'REJEITADA'])
-            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid'));
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid', 'n'));
 
         $this->applyClientFilter($notaQ, (string) ($filters['cliente'] ?? ''), 'c');
         $this->applyDateFilter($notaQ, (string) ($filters['data_inicial'] ?? ''), (string) ($filters['data_final'] ?? ''), 'n.updated_at');
@@ -447,7 +447,7 @@ final class ReportRepository
 
         $rejeitadas = (int) Capsule::table('mod_opennfse_notas as n')
             ->where('n.status', 'REJEITADA')
-            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid'))
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid', 'n'))
             ->whereBetween('n.updated_at', [$start, $end])
             ->count();
 
@@ -493,7 +493,7 @@ final class ReportRepository
         $erroSet = [];
         foreach (Capsule::table('mod_opennfse_notas as n')->select(['n.invoiceid'])
             ->whereIn('n.status', ['ERRO', 'REJEITADA'])
-            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid'))
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid', 'n'))
             ->get() as $r) {
             $erroSet[(int) ($r->invoiceid ?? 0)] = true;
         }
@@ -511,7 +511,7 @@ final class ReportRepository
         foreach (Capsule::table('mod_opennfse_notas as n')
             ->select(['n.invoiceid'])
             ->whereIn('n.status', ['ERRO', 'REJEITADA'])
-            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid'))
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid', 'n'))
             ->whereBetween('n.updated_at', [$start, $end])
             ->get() as $r) {
             $erroPeriodoSet[(int) ($r->invoiceid ?? 0)] = true;
@@ -591,7 +591,7 @@ final class ReportRepository
                 'c.lastname',
             ])
             ->whereIn('n.status', ['ERRO', 'REJEITADA'])
-            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid'))
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid', 'n'))
             ->whereBetween('n.updated_at', [$start, $end])
             ->orderBy('n.updated_at', 'desc')
             ->first();
@@ -908,7 +908,7 @@ final class ReportRepository
                 'c.lastname',
             ])
             ->whereIn('n.status', ['ERRO', 'REJEITADA'])
-            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid'))
+            ->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid', 'n'))
             ->whereBetween('n.updated_at', [$start, $end])
             ->orderBy('n.updated_at', 'desc')
             ->limit(max(1, min(20, $limit)))
@@ -1139,7 +1139,7 @@ final class ReportRepository
                 $q->where('n.status', $status);
             }
             if (self::isOnlyFailureStatusFilter($status)) {
-                $q->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid'));
+                $q->whereRaw(ClosedInvoiceQueuePolicy::pendingFailureSql('n.invoiceid', 'n'));
             }
         }
 

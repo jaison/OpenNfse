@@ -5,15 +5,18 @@ declare(strict_types=1);
 namespace OpenNfse\Services;
 
 use OpenNfse\Repositories\LogRepository;
+use OpenNfse\Repositories\NotaRepository;
 use OpenNfse\Repositories\QueueRepository;
 
 /**
- * Marca item ERROR da fila como RESOLVIDO, na fila ou na fatura.
- * Não emite, não cancela e não altera nota nem fatura.
+ * Marca item ERROR da fila como RESOLVIDO e, se a nota está REJEITADA/ERRO,
+ * grava que a falha foi resolvida. Não emite, não cancela e não muda o status da nota.
  */
 final class ManualQueueResolveService
 {
     public const CONFIRM_MESSAGE = 'O erro sai da lista de pendências. Nenhuma NFS-e é emitida ou cancelada.';
+
+    public const NOTA_LOG_TYPE = 'NOTA_FALHA_RESOLVIDA';
 
     public const ORIGEM_FILA = 'fila';
 
@@ -43,6 +46,43 @@ final class ManualQueueResolveService
             return false;
         }
 
+        if (!$this->resolveQueueRow($row, $adminId, $origem)) {
+            return false;
+        }
+        $this->markNotaFailure((int) ($row['invoiceid'] ?? 0), $adminId, $origem);
+
+        return true;
+    }
+
+    public function resolveInvoice(int $invoiceId, int $adminId): int
+    {
+        if ($invoiceId <= 0) {
+            return 0;
+        }
+
+        $resolved = 0;
+        foreach ((new QueueRepository())->listErrorItemsByInvoice($invoiceId) as $item) {
+            $item['status'] = 'ERROR';
+            if ($this->resolveQueueRow($item, $adminId, self::ORIGEM_FATURA)) {
+                $resolved++;
+            }
+        }
+        if ($this->markNotaFailure($invoiceId, $adminId, self::ORIGEM_FATURA)) {
+            $resolved++;
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function resolveQueueRow(array $row, int $adminId, string $origem): bool
+    {
+        if (!QueueStatePolicy::canMarkResolved((string) ($row['status'] ?? ''))) {
+            return false;
+        }
+
         $id = (int) ($row['id'] ?? 0);
         if ($id <= 0 || !(new QueueRepository())->markErrorResolved($id)) {
             return false;
@@ -60,20 +100,30 @@ final class ManualQueueResolveService
         return true;
     }
 
-    public function resolveInvoice(int $invoiceId, int $adminId): int
+    private function markNotaFailure(int $invoiceId, int $adminId, string $origem): bool
     {
-        if ($invoiceId <= 0) {
-            return 0;
+        $nota = (new NotaRepository())->findByInvoiceId($invoiceId);
+        if (!ClosedInvoiceQueuePolicy::isUnresolvedFailure($nota)) {
+            return false;
         }
-
-        $resolved = 0;
-        foreach ((new QueueRepository())->listErrorItemsByInvoice($invoiceId) as $item) {
-            $item['status'] = 'ERROR';
-            if ($this->resolveItem($item, $adminId, self::ORIGEM_FATURA)) {
-                $resolved++;
-            }
+        $resolvedAt = date('Y-m-d H:i:s');
+        if (!(new NotaRepository())->markFailureResolved($invoiceId, $adminId, $resolvedAt)) {
+            return false;
         }
+        (new LogRepository())->insert(
+            isset($nota['id']) ? (int) $nota['id'] : null,
+            self::NOTA_LOG_TYPE,
+            json_encode([
+                'invoiceid' => $invoiceId,
+                'nota_status' => (string) ($nota['status'] ?? ''),
+                'admin_id' => $adminId > 0 ? $adminId : null,
+                'resolvido_em' => $resolvedAt,
+                'origem' => $origem,
+            ], JSON_UNESCAPED_UNICODE),
+            null,
+            null
+        );
 
-        return $resolved;
+        return true;
     }
 }

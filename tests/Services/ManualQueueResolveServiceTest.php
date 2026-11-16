@@ -123,4 +123,66 @@ final class ManualQueueResolveServiceTest extends TestCase
             ManualQueueResolveService::CONFIRM_MESSAGE
         );
     }
+
+    public function testResolveInvoiceMarksRejectedNoteWithoutQueueItem(): void
+    {
+        Capsule::$updateResult = 1;
+        Capsule::$rows['mod_opennfse_notas'] = [
+            (object) [
+                'id' => 4,
+                'invoiceid' => 152233,
+                'status' => 'REJEITADA',
+                'falha_resolvida_em' => null,
+                'erro_api' => 'rejeitada',
+            ],
+        ];
+
+        $resolved = (new ManualQueueResolveService())->resolveInvoice(152233, 9);
+
+        $this->assertSame(1, $resolved);
+        $noteUpdates = Capsule::$updates['mod_opennfse_notas'] ?? [];
+        $this->assertCount(1, $noteUpdates);
+        $this->assertSame(9, $noteUpdates[0]['falha_resolvida_por']);
+        $this->assertNotSame('', (string) $noteUpdates[0]['falha_resolvida_em']);
+        $this->assertArrayNotHasKey('status', $noteUpdates[0]);
+        $this->assertArrayNotHasKey('tblinvoices', Capsule::$updates);
+        $logs = Capsule::$inserts['mod_opennfse_logs'] ?? [];
+        $this->assertCount(1, $logs);
+        $this->assertSame(ManualQueueResolveService::NOTA_LOG_TYPE, $logs[0]['tipo']);
+        $this->assertSame(4, $logs[0]['nota_id']);
+        $payload = json_decode((string) $logs[0]['request'], true);
+        $this->assertSame('fatura', $payload['origem']);
+        $this->assertSame('REJEITADA', $payload['nota_status']);
+        $this->assertSame(9, $payload['admin_id']);
+    }
+
+    public function testInvoicePanelOffersResolveForOpenRejectionAndFoldsResolvedError(): void
+    {
+        $_SESSION['token'] = 'tokenteste';
+        $hook = new InvoiceHook();
+        Capsule::$rows['mod_opennfse_notas'] = [
+            (object) [
+                'id' => 4,
+                'invoiceid' => 7,
+                'status' => 'REJEITADA',
+                'erro_api' => 'erro antigo',
+                'id_dps' => 'DPS1',
+                'falha_resolvida_em' => null,
+            ],
+        ];
+
+        $open = $hook->renderControls(['filename' => 'invoices.php', 'invoiceid' => 7]);
+        $this->assertStringContainsString('Marcar como resolvido', $open);
+        $this->assertStringContainsString('Reemitir NFS-e', $open);
+        $this->assertStringContainsString('erro antigo', $open);
+        $this->assertStringNotContainsString('Ver erro original', $open);
+
+        Capsule::$rows['mod_opennfse_notas'][0]->falha_resolvida_em = '2026-11-16 13:05:00';
+        $done = $hook->renderControls(['filename' => 'invoices.php', 'invoiceid' => 7]);
+        $this->assertStringContainsString('não emitida — erro marcado como resolvido em 16/11/2026 13:05', $done);
+        $this->assertStringContainsString('Ver erro original', $done);
+        $this->assertStringContainsString('erro antigo', $done);
+        $this->assertStringContainsString('Reemitir NFS-e', $done);
+        $this->assertStringNotContainsString('Marcar como resolvido', $done);
+    }
 }

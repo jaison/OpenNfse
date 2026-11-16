@@ -106,6 +106,11 @@ final class CapsuleQueryStub
         return $this;
     }
 
+    public function whereNull(...$args): self
+    {
+        return $this;
+    }
+
     public function select(...$args): self
     {
         return $this;
