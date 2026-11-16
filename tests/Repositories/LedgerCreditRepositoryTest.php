@@ -124,4 +124,30 @@ final class LedgerCreditRepositoryTest extends TestCase
 
         $this->assertSame(2.0, $repository->appliedClientCredit(1));
     }
+
+    public function testHasLedgerTypeColumnIsFalseWithoutTheColumn(): void
+    {
+        $this->assertFalse(LedgerCreditRepository::hasLedgerTypeColumn());
+    }
+
+    public function testHasLedgerTypeColumnIsTrueWhenTheColumnExistsAndStaysCached(): void
+    {
+        Capsule::$columns['tblaccounts']['type'] = true;
+
+        $this->assertTrue(LedgerCreditRepository::hasLedgerTypeColumn());
+        $this->assertTrue(LedgerCreditRepository::hasLedgerTypeColumn());
+        $this->assertSame(1, Capsule::$schemaCalls);
+    }
+
+    public function testHasLedgerTypeColumnIsFalseWhenSchemaThrowsAndDoesNotCache(): void
+    {
+        Capsule::$schemaError = new RuntimeException('schema indisponível');
+
+        $this->assertFalse(LedgerCreditRepository::hasLedgerTypeColumn());
+
+        Capsule::$schemaError = null;
+        Capsule::$columns['tblaccounts']['type'] = true;
+
+        $this->assertTrue(LedgerCreditRepository::hasLedgerTypeColumn());
+    }
 }

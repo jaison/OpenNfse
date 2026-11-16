@@ -28,6 +28,25 @@ final class LedgerCreditRepository implements LedgerCreditSource
         self::$typeColumnExists = null;
     }
 
+    /**
+     * WHMCS 9 tem tblaccounts.type. No 8.x a coluna não existe e o retorno é false.
+     * Falha ao consultar o schema não entra no cache: a próxima leitura tenta de novo.
+     */
+    public static function hasLedgerTypeColumn(): bool
+    {
+        if (self::$typeColumnExists !== null) {
+            return self::$typeColumnExists;
+        }
+
+        try {
+            self::$typeColumnExists = Capsule::schema()->hasColumn(self::TABLE, 'type');
+        } catch (Throwable) {
+            return false;
+        }
+
+        return self::$typeColumnExists;
+    }
+
     public function appliedClientCredit(int $invoiceId): float
     {
         if ($invoiceId <= 0) {
@@ -35,7 +54,7 @@ final class LedgerCreditRepository implements LedgerCreditSource
         }
 
         try {
-            if (!$this->hasTypeColumn()) {
+            if (!self::hasLedgerTypeColumn()) {
                 return 0.0;
             }
 
@@ -59,14 +78,5 @@ final class LedgerCreditRepository implements LedgerCreditSource
         } catch (Throwable) {
             return 0.0;
         }
-    }
-
-    private function hasTypeColumn(): bool
-    {
-        if (self::$typeColumnExists === null) {
-            self::$typeColumnExists = Capsule::schema()->hasColumn(self::TABLE, 'type');
-        }
-
-        return self::$typeColumnExists;
     }
 }
