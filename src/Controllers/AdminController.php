@@ -275,6 +275,12 @@ final class AdminController
                 'requiresTokenMessage' => 'Método inválido para marcar item da fila como resolvido.',
                 'handler' => [$this->queueController, 'filaResolve'],
             ],
+            'filaResolveInvoice' => [
+                'method' => 'POST',
+                'requiresToken' => true,
+                'requiresTokenMessage' => 'Método inválido para marcar os erros da fatura como resolvidos.',
+                'handler' => [$this->queueController, 'filaResolveInvoice'],
+            ],
             'reemitir' => [
                 'method' => 'POST',
                 'requiresToken' => true,

@@ -21,7 +21,7 @@ use OpenNfse\Services\CryptoService;
 use OpenNfse\Services\InvoiceEmailService;
 use OpenNfse\Services\InvoiceLockService;
 use OpenNfse\Services\NfseService;
-use OpenNfse\Services\ClosedInvoiceQueuePolicy;
+use OpenNfse\Services\ManualQueueResolveService;
 use OpenNfse\Services\QueueErrorClassifierService;
 use OpenNfse\Services\QueueService;
 use OpenNfse\Services\QueueStatePolicy;
@@ -404,7 +404,7 @@ final class QueueController
             }
             if (QueueStatePolicy::canMarkResolved($status)) {
                 echo '<form class="nfse-inline-form" method="post" action="addonmodules.php?module=OpenNfse&amp;action=filaResolve"'
-                    . ' onsubmit="return confirm(\'O erro sai da lista de pendências. Nenhuma NFS-e é emitida ou cancelada.\');">';
+                    . ' onsubmit="return confirm(\'' . ManualQueueResolveService::CONFIRM_MESSAGE . '\');">';
                 echo Ui::hidden($tokenField + ['queueid' => $id] + $returnFields);
                 echo Ui::button('Marcar como resolvido', ['sm']);
                 echo '</form>';
@@ -516,27 +516,26 @@ final class QueueController
             Module::ui()->renderError('Só é possível marcar como resolvido um item em ERROR.');
             return;
         }
-        if (!$queueRepo->markErrorResolved($queueId)) {
+        $adminId = (int) ($_SESSION['adminid'] ?? 0);
+        if (!(new ManualQueueResolveService())->resolveItem($row, $adminId, ManualQueueResolveService::ORIGEM_FILA)) {
             Module::ui()->renderError('O status do item mudou durante a operação. Atualize a tela da fila e tente de novo.');
             return;
         }
 
-        $adminId = (int) ($_SESSION['adminid'] ?? 0);
-        $correlationId = trim((string) ($row['correlation_id'] ?? ''));
-        (new LogRepository())->insert(
-            null,
-            ClosedInvoiceQueuePolicy::MANUAL_LOG_TYPE,
-            json_encode([
-                'queue_id' => $queueId,
-                'invoiceid' => (int) ($row['invoiceid'] ?? 0),
-                'admin_id' => $adminId > 0 ? $adminId : null,
-                'resolvido_em' => date('Y-m-d H:i:s'),
-            ], JSON_UNESCAPED_UNICODE),
-            null,
-            $correlationId !== '' ? $correlationId : null
-        );
-
         $this->redirectFila(['msg' => 'resolved'], true);
+    }
+
+    public function filaResolveInvoice(): void
+    {
+        $invoiceId = (int) ($_REQUEST['invoiceid'] ?? 0);
+        if ($invoiceId <= 0) {
+            Module::ui()->renderError('Fatura inválida.');
+            return;
+        }
+
+        $adminId = (int) ($_SESSION['adminid'] ?? 0);
+        $resolved = (new ManualQueueResolveService())->resolveInvoice($invoiceId, $adminId);
+        $this->redirectInvoice($invoiceId, ['nfse_resolve' => $resolved > 0 ? 'done' : 'none']);
     }
 
     public function filaRetry(): void

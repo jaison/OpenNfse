@@ -55,11 +55,15 @@ final class Capsule
     /** @var array<string, array<int, array>> dados recebidos por update(), por tabela */
     public static array $updates = [];
 
+    /** Retorno de update(). 0 mantém o padrão dos testes que não simulam linha alterada. */
+    public static int $updateResult = 0;
+
     public static function reset(): void
     {
         self::$inserts = [];
         self::$deletes = [];
         self::$updates = [];
+        self::$updateResult = 0;
         self::$rows = [];
         self::$statements = [];
         self::$columns = [];
@@ -145,7 +149,7 @@ final class CapsuleQueryStub
     public function update(array $data): int
     {
         Capsule::$updates[$this->table][] = $data;
-        return 0;
+        return Capsule::$updateResult;
     }
 
     public function delete(): int
