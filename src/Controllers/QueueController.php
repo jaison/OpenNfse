@@ -21,6 +21,7 @@ use OpenNfse\Services\CryptoService;
 use OpenNfse\Services\InvoiceEmailService;
 use OpenNfse\Services\InvoiceLockService;
 use OpenNfse\Services\NfseService;
+use OpenNfse\Services\ClosedInvoiceQueuePolicy;
 use OpenNfse\Services\QueueErrorClassifierService;
 use OpenNfse\Services\QueueService;
 use OpenNfse\Services\QueueStatePolicy;
@@ -60,6 +61,12 @@ final class QueueController
             echo Ui::callout('danger', 'Erro ao processar a fila manualmente', 'Verifique os logs do módulo.');
         } elseif ($msg === 'process_busy') {
             echo Ui::callout('warn', 'Processamento já em andamento', 'O cron ou outro administrador está processando a fila. Aguarde alguns instantes e atualize a tela.');
+        } elseif ($msg === 'resolved') {
+            echo Ui::callout(
+                'ok',
+                'Item marcado como resolvido',
+                'O erro saiu da lista de pendências. Nenhuma NFS-e foi emitida ou cancelada.'
+            );
         }
 
         $statusFilter = trim((string) ($_REQUEST['status'] ?? ''));
@@ -395,6 +402,13 @@ final class QueueController
                 echo Ui::button('Reprocessar', ['sm']);
                 echo '</form>';
             }
+            if (QueueStatePolicy::canMarkResolved($status)) {
+                echo '<form class="nfse-inline-form" method="post" action="addonmodules.php?module=OpenNfse&amp;action=filaResolve"'
+                    . ' onsubmit="return confirm(\'O erro sai da lista de pendências. Nenhuma NFS-e é emitida ou cancelada.\');">';
+                echo Ui::hidden($tokenField + ['queueid' => $id] + $returnFields);
+                echo Ui::button('Marcar como resolvido', ['sm']);
+                echo '</form>';
+            }
             echo '</div></td>';
             echo '</tr>';
         }
@@ -487,6 +501,42 @@ final class QueueController
             }
             $this->redirectFila(['msg' => 'check_error'], true);
         }
+    }
+
+    public function filaResolve(): void
+    {
+        $queueId = (int) ($_REQUEST['queueid'] ?? 0);
+        $queueRepo = new QueueRepository();
+        $row = $queueRepo->findById($queueId);
+        if (!$row) {
+            Module::ui()->renderError('Item da fila não encontrado.');
+            return;
+        }
+        if (!QueueStatePolicy::canMarkResolved((string) ($row['status'] ?? ''))) {
+            Module::ui()->renderError('Só é possível marcar como resolvido um item em ERROR.');
+            return;
+        }
+        if (!$queueRepo->markErrorResolved($queueId)) {
+            Module::ui()->renderError('O status do item mudou durante a operação. Atualize a tela da fila e tente de novo.');
+            return;
+        }
+
+        $adminId = (int) ($_SESSION['adminid'] ?? 0);
+        $correlationId = trim((string) ($row['correlation_id'] ?? ''));
+        (new LogRepository())->insert(
+            null,
+            ClosedInvoiceQueuePolicy::MANUAL_LOG_TYPE,
+            json_encode([
+                'queue_id' => $queueId,
+                'invoiceid' => (int) ($row['invoiceid'] ?? 0),
+                'admin_id' => $adminId > 0 ? $adminId : null,
+                'resolvido_em' => date('Y-m-d H:i:s'),
+            ], JSON_UNESCAPED_UNICODE),
+            null,
+            $correlationId !== '' ? $correlationId : null
+        );
+
+        $this->redirectFila(['msg' => 'resolved'], true);
     }
 
     public function filaRetry(): void

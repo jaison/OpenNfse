@@ -76,6 +76,9 @@ if (empty($config)) {
             );
         }
 
+        // Faturas já canceladas ou estornadas, sem NFS-e: o erro antigo sai da pendência.
+        (new ClosedInvoiceErrorResolver())->resolveBatch(100);
+
         $waitInterval = (int) ($config['queue_wait_status_interval_seconds'] ?? 120);
         if ($waitInterval < 30) {
             $waitInterval = 30;

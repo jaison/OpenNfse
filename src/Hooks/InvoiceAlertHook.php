@@ -10,6 +10,7 @@ use OpenNfse\Repositories\NotaRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
 use OpenNfse\Services\AlertCheckService;
 use OpenNfse\Services\AlertService;
+use OpenNfse\Services\ClosedInvoiceErrorResolver;
 use OpenNfse\Services\InvoiceAlertPolicy;
 use OpenNfse\Services\NfseValueResolver;
 use OpenNfse\Services\StorageService;
@@ -26,6 +27,7 @@ final class InvoiceAlertHook
 
     public function onCancelled(array $vars): void
     {
+        $this->resolveClosedInvoiceQueue($vars, 'Cancelled');
         $this->run('InvoiceCancelled', (int) ($vars['invoiceid'] ?? 0), static function (array $nota): ?array {
             return InvoiceAlertPolicy::onCancelled($nota);
         });
@@ -33,9 +35,43 @@ final class InvoiceAlertHook
 
     public function onRefunded(array $vars): void
     {
+        $this->resolveClosedInvoiceQueue($vars, 'Refunded');
         $this->run('InvoiceRefunded', (int) ($vars['invoiceid'] ?? 0), static function (array $nota): ?array {
             return InvoiceAlertPolicy::onRefunded($nota);
         });
+    }
+
+    /**
+     * Sem NFS-e emitida, o alerta não abre (run() sai cedo). O erro da fila dessa fatura
+     * encerrada mesmo assim deixa de ser pendência. Falha aqui não impede o alerta.
+     */
+    private function resolveClosedInvoiceQueue(array $vars, string $fallbackStatus): void
+    {
+        $invoiceId = (int) ($vars['invoiceid'] ?? 0);
+        if ($invoiceId <= 0) {
+            return;
+        }
+
+        try {
+            $status = (new WhmcsInvoiceRepository())->getStatus($invoiceId);
+            if ($status === null || trim($status) === '') {
+                $status = $fallbackStatus;
+            }
+            (new ClosedInvoiceErrorResolver())->resolveInvoice($invoiceId, $status, 'hook');
+        } catch (\Throwable $e) {
+            try {
+                (new LogRepository())->insert(
+                    null,
+                    'FILA_RESOLVER_ERRO',
+                    json_encode([
+                        'invoiceid' => $invoiceId,
+                        'erro' => $e->getMessage(),
+                    ], JSON_UNESCAPED_UNICODE),
+                    null
+                );
+            } catch (\Throwable) {
+            }
+        }
     }
 
     public function onUnpaid(array $vars): void

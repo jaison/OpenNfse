@@ -269,6 +269,12 @@ final class AdminController
                 'requiresTokenMessage' => 'Método inválido para reprocessar item da fila.',
                 'handler' => [$this->queueController, 'filaRetry'],
             ],
+            'filaResolve' => [
+                'method' => 'POST',
+                'requiresToken' => true,
+                'requiresTokenMessage' => 'Método inválido para marcar item da fila como resolvido.',
+                'handler' => [$this->queueController, 'filaResolve'],
+            ],
             'reemitir' => [
                 'method' => 'POST',
                 'requiresToken' => true,

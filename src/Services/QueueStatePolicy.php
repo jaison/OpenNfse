@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace OpenNfse\Services;
 
 /**
- * Regras puras de estado da fila (sem banco), usadas pelo reprocessar manual
- * e pela recuperação automática de itens presos em RUNNING.
+ * Regras puras de estado da fila (sem banco), usadas pelo reprocessar manual,
+ * pelo botão "Marcar como resolvido" e pela recuperação de itens presos em RUNNING.
  */
 final class QueueStatePolicy
 {
@@ -51,6 +51,12 @@ final class QueueStatePolicy
         }
 
         return ($now - $sinceTs) > $threshold;
+    }
+
+    /** "Marcar como resolvido" só existe para item em ERROR. RESOLVIDO continua terminal. */
+    public static function canMarkResolved(string $status): bool
+    {
+        return trim($status) === 'ERROR';
     }
 
     /**
