@@ -49,6 +49,18 @@ final class DuplicateDpsRecovery
     }
 
     /**
+     * A NFS-e foi encontrada, mas não é desta DPS, deste tomador ou deste valor.
+     */
+    public static function isBindingMismatch(string $reason): bool
+    {
+        return in_array($reason, [
+            'a NFS-e encontrada é de outra DPS',
+            'o tomador da NFS-e encontrada é outro',
+            'o valor do serviço da NFS-e encontrada é outro',
+        ], true);
+    }
+
+    /**
      * Mensagem da nota quando a recuperação automática não pôde confirmar a NFS-e existente.
      */
     public static function unresolvedMessage(string $idDps, string $reason, string $apiError): string

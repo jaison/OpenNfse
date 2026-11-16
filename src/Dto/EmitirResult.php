@@ -14,6 +14,7 @@ final class EmitirResult
         public ?string $nfseXml = null,
         public ?string $errorMessage = null,
         public ?string $rawResponse = null,
+        public ?int $httpStatus = null,
     ) {
     }
 }

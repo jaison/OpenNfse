@@ -43,11 +43,14 @@ final class NfsePhpSdkAdapter implements SdkAdapterInterface
                 nfseXml: $xml
             );
         } catch (\Nfse\Http\Exceptions\NfseApiException $e) {
+            $httpStatus = $e->getCode();
+
             return new EmitirResult(
                 success: false,
                 errorType: 'api',
                 errorMessage: $e->getMessage(),
-                rawResponse: $e->getRawResponse()
+                rawResponse: $e->getRawResponse(),
+                httpStatus: $httpStatus >= 100 && $httpStatus <= 599 ? $httpStatus : null
             );
         } catch (\Throwable $e) {
             return new EmitirResult(
