@@ -13,7 +13,8 @@ use OpenNfse\Repositories\LedgerCreditSource;
  * WHMCS 8.x grava o crédito em tblinvoices.credit e já reduz tblinvoices.total.
  * WHMCS 9.x deixa credit em 0 e o total cheio; o saldo do cliente aplicado entra
  * em tblaccounts. O valor do gateway é o total menos esse ledger (nunca o credit
- * da tabela de novo, senão o 8.x descontaria duas vezes).
+ * da tabela de novo, senão o 8.x descontaria duas vezes). Com a opção de Mark Paid
+ * desligada, o ajuste invoice_billing_adjustment_credit também sai do gateway.
  */
 final class InvoiceFinancialsService
 {
@@ -36,7 +37,7 @@ final class InvoiceFinancialsService
 
     public function getGatewayPaidAmount(array $invoice): float
     {
-        return $this->gatewayPaid($invoice, $this->ledgerCreditFor($invoice));
+        return $this->gatewayPaid($invoice, $this->nonGatewayLedgerFor($invoice));
     }
 
     public function isCreditOnlyPayment(array $invoice): bool
@@ -46,7 +47,7 @@ final class InvoiceFinancialsService
             return true;
         }
 
-        $ledger = $this->ledgerCreditFor($invoice);
+        $ledger = $this->nonGatewayLedgerFor($invoice);
         if ($this->appliedCredit($invoice, $ledger) <= 0.00001) {
             return false;
         }
@@ -87,6 +88,21 @@ final class InvoiceFinancialsService
         }
 
         $amount = $this->ledgerCredit->appliedClientCredit($id);
+
+        return $amount > 0 ? round($amount, 2) : 0.0;
+    }
+
+    /**
+     * Crédito do cliente e, se a opção pedir, o Mark Paid. Valor negativo não aumenta a NFS-e.
+     */
+    private function nonGatewayLedgerFor(array $invoice): float
+    {
+        $id = (int) ($invoice['id'] ?? 0);
+        if ($id <= 0) {
+            return 0.0;
+        }
+
+        $amount = $this->ledgerCredit->appliedNonGatewayAmount($id);
 
         return $amount > 0 ? round($amount, 2) : 0.0;
     }

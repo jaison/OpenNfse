@@ -538,6 +538,10 @@ final class ConfigController
             '1' => 'Sim',
             '0' => 'Não',
         ], (string) ($config['allow_manual_unpaid'] ?? '0'));
+        $this->renderSelectRow('emit_on_manual_paid', 'Emitir NFS-e quando a fatura for marcada como paga manualmente (WHMCS 9)', [
+            '1' => 'Sim',
+            '0' => 'Não',
+        ], (string) ($config['emit_on_manual_paid'] ?? '1'));
         $this->renderTextRow('queue_wait_status_interval_seconds', 'Intervalo de consulta (segundos)', $config['queue_wait_status_interval_seconds'] ?? '120');
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
@@ -872,6 +876,10 @@ final class ConfigController
         $prestadorRegEspTrib = (string) ($_POST['prestador_reg_esp_trib'] ?? '');
         $queueEnabled = (string) ($_POST['queue_enabled'] ?? '0');
 $allowManualUnpaid = (string) ($_POST['allow_manual_unpaid'] ?? '0');
+        $emitOnManualPaid = (string) ($_POST['emit_on_manual_paid'] ?? '1');
+        if ($emitOnManualPaid !== '0' && $emitOnManualPaid !== '1') {
+            $emitOnManualPaid = '1';
+        }
 $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '120');
  $autoSendNfseEmail = (string) ($_POST['auto_send_nfse_email'] ?? '0');
  $queueDoneRetentionDays = (string) ($_POST['queue_done_retention_days'] ?? '30');
@@ -1125,6 +1133,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
             'auto_emit_group_ids' => implode(',', $autoEmitGroupIds),
             'auto_emit_customfield_id' => (int) $autoEmitCustomFieldId,
 'allow_manual_unpaid' => (int) $allowManualUnpaid,
+            'emit_on_manual_paid' => (int) $emitOnManualPaid,
 'auto_send_nfse_email' => (int) $autoSendNfseEmail,
 'queue_wait_status_interval_seconds' => (int) $queueWaitInterval,
             'queue_done_retention_days' => (int) $queueDoneRetentionDays,

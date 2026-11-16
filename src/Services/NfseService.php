@@ -300,13 +300,31 @@ final class NfseService
             }
             $logRepo->insert($notaId, 'EMISSAO_RESPONSE', null, $result->rawResponse ?? $result->errorMessage, $correlationId);
 
-            if ($idDps !== null && DuplicateDpsRecovery::isDuplicateDpsError($result->errorMessage ?? $result->rawResponse ?? null)) {
+            $apiText = $result->errorMessage ?? $result->rawResponse ?? null;
+            if ($idDps !== null && DuplicateDpsRecovery::isDuplicateDpsError($apiText)) {
                 $recovery = $this->recoverDuplicateDps($adapter, $sdkConfig, $logRepo, $notaId, $idDps, $requestPayload['_dpsXml'] ?? null, $correlationId);
                 if (isset($recovery['nfseXml'])) {
                     $this->registrarEmissao($invoiceId, $userId, $config, $notaId, $idDps, $recovery['chave'], $recovery['nfseXml'], $logRepo, $correlationId, 'e0014');
                     return;
                 }
                 $erroApi = DuplicateDpsRecovery::unresolvedMessage($idDps, $recovery['reason'], (string) $erroApi);
+            } elseif ($idDps !== null && UncertainEmissionRecovery::isUncertain($result->errorMessage, $result->rawResponse, $result->httpStatus)) {
+                $recovery = $this->recoverUncertainEmission(
+                    $adapter,
+                    $sdkConfig,
+                    $logRepo,
+                    $notaId,
+                    $idDps,
+                    $requestPayload['_dpsXml'] ?? null,
+                    $correlationId,
+                    (string) $erroApi
+                );
+                if ($recovery['decision'] === UncertainEmissionRecovery::STATUS_EMITIDA) {
+                    $this->registrarEmissao($invoiceId, $userId, $config, $notaId, $idDps, $recovery['chave'], $recovery['nfseXml'], $logRepo, $correlationId, 'e999');
+                    return;
+                }
+                $status = $recovery['decision'] === UncertainEmissionRecovery::STATUS_REJEITADA ? 'REJEITADA' : 'PROCESSANDO';
+                $erroApi = $recovery['erroApi'];
             }
 
             $notaRepo->upsert([
@@ -353,6 +371,52 @@ final class NfseService
         );
 
         return $outcome;
+    }
+
+    /**
+     * E999 ou HTTP 500: a NFS-e pode já existir. Confere como no E0014.
+     *
+     * @return array{decision: string, chave?: string, nfseXml?: string, erroApi?: string}
+     */
+    private function recoverUncertainEmission(
+        NfsePhpSdkAdapter $adapter,
+        array $sdkConfig,
+        LogRepository $logRepo,
+        ?int $notaId,
+        string $idDps,
+        ?string $dpsXml,
+        string $correlationId,
+        string $apiError
+    ): array {
+        $outcome = $this->findDuplicateDpsNfse($adapter, $sdkConfig, $idDps, $dpsXml);
+        $decision = UncertainEmissionRecovery::statusFor($outcome);
+        $logRepo->insert(
+            $notaId,
+            UncertainEmissionRecovery::LOG_TYPE,
+            json_encode(['idDps' => $idDps], JSON_UNESCAPED_UNICODE),
+            json_encode(
+                $decision === UncertainEmissionRecovery::STATUS_EMITIDA
+                    ? ['vinculada' => true, 'chaveAcesso' => $outcome['chave']]
+                    : ['vinculada' => false, 'decisao' => $decision, 'motivo' => $outcome['reason'] ?? null],
+                JSON_UNESCAPED_UNICODE
+            ),
+            $correlationId
+        );
+
+        if ($decision === UncertainEmissionRecovery::STATUS_EMITIDA) {
+            return [
+                'decision' => $decision,
+                'chave' => (string) $outcome['chave'],
+                'nfseXml' => (string) $outcome['nfseXml'],
+            ];
+        }
+
+        return [
+            'decision' => $decision,
+            'erroApi' => $decision === UncertainEmissionRecovery::STATUS_REJEITADA
+                ? DuplicateDpsRecovery::unresolvedMessage($idDps, (string) ($outcome['reason'] ?? ''), $apiError)
+                : UncertainEmissionRecovery::PENDING_MESSAGE,
+        ];
     }
 
     /**

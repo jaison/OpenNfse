@@ -466,6 +466,7 @@ trait AdminHelpersTrait
             'auto_emit_trigger' => ['Nunca, quando a fatura for paga ou quando for gerada.', 'Nunca: sem emissão automática. Paga: enfileira quando a fatura é paga. Gerada: enfileira quando a fatura Unpaid é publicada (só nos gateways marcados para emitir ao gerar) e, se ainda não houver NFS-e, também no pagamento.'],
             'auto_emit_scope' => 'Com "Só os grupos selecionados", a regra acima vale apenas para clientes dos grupos marcados abaixo.',
             'allow_manual_unpaid' => ['Vale para o botão Emitir NFS-e na fatura. Exige a fila ligada.', 'A regra vale independente do gatilho automático, do grupo e do custom field do cliente.'],
+            'emit_on_manual_paid' => ['No WHMCS 8 não há como distinguir a marcação manual, e esta opção não tem efeito.', 'No WHMCS 9, marcar como paga grava um ajuste em vez de um pagamento. Com Não, esse valor não entra na NFS-e.'],
             'queue_wait_status_interval_seconds' => 'Intervalo entre consultas de status quando a nota fica aguardando retorno do ambiente nacional.',
             'queue_done_retention_days' => 'Quantidade de dias para manter registros da fila concluídos ou resolvidos antes da limpeza.',
             'logs_retention_days' => 'Quantidade de dias para manter logs de request/response antes da limpeza.',

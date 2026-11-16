@@ -366,6 +366,11 @@ final class AdminController
                 'requiresTokenMessage' => 'Método inválido para baixar o backup.',
                 'handler' => [$this->updaterController, 'downloadBackup'],
             ],
+            'updaterBackupStatus' => [
+                'method' => 'GET',
+                'requiresToken' => false,
+                'handler' => [$this->updaterController, 'backupDownloadStatus'],
+            ],
             'updaterInstall' => [
                 'method' => 'POST',
                 'requiresToken' => true,

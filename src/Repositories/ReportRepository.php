@@ -934,18 +934,61 @@ final class ReportRepository
         return array_slice($all, 0, max(1, min(20, $limit)));
     }
 
+    /**
+     * SQL do valor pago via gateway na auditoria de emissão.
+     *
+     * Sem tblaccounts.type (WHMCS 8) o valor é i.total e filter fica null,
+     * para a query manter where('i.total', '>', 0). No WHMCS 9 o total vem
+     * cheio e o crédito aplicado está no ledger: desconta essa soma e trata
+     * valor negativo como zero. Fatura com valor de gateway até 0,005 fica de fora.
+     * Com $deductManualPaid, o ajuste de Mark Paid entra na mesma soma.
+     *
+     * @return array{amount: string, filter: ?string, invoice_total: string, total_valor: string}
+     */
+    public static function auditoriaGatewaySql(bool $hasLedgerTypeColumn, bool $deductManualPaid = false): array
+    {
+        if (!$hasLedgerTypeColumn) {
+            return [
+                'amount' => 'i.total',
+                'filter' => null,
+                'invoice_total' => 'i.total as invoice_total',
+                'total_valor' => 'SUM(i.total) as total_valor',
+            ];
+        }
+
+        $typePredicate = $deductManualPaid
+            ? "type IN ('invoice_credit_applied', 'invoice_billing_adjustment_credit')"
+            : "type = 'invoice_credit_applied'";
+        $amount = '(i.total - GREATEST(COALESCE((SELECT SUM(amountin - amountout) FROM tblaccounts'
+            . ' WHERE invoiceid = i.id AND ' . $typePredicate . '), 0), 0))';
+
+        return [
+            'amount' => $amount,
+            'filter' => $amount . ' > 0.005',
+            'invoice_total' => $amount . ' as invoice_total',
+            'total_valor' => 'SUM(' . $amount . ') as total_valor',
+        ];
+    }
+
     public function listAuditoriaInvoices(array $filters, int $limit): array
     {
         $limit = max(1, min(5000, $limit));
+        $gateway = self::auditoriaGatewaySql(
+            LedgerCreditRepository::hasLedgerTypeColumn(),
+            LedgerCreditRepository::deductsManualPaidFromGateway()
+        );
+        $invoiceTotal = $gateway['filter'] === null
+            ? $gateway['invoice_total']
+            : Capsule::raw($gateway['invoice_total']);
 
-        $q = $this->buildAuditoriaInvoicesQuery($filters)
+        $q = $this->buildAuditoriaInvoicesQuery($filters, $gateway)
             ->leftJoin('tblcurrencies as cur', 'cur.id', '=', 'c.currency')
             ->select([
                 'i.id as invoice_id',
                 'i.userid',
                 'i.datepaid as paid_at',
                 'i.paymentmethod',
-                'i.total as invoice_total',
+                $invoiceTotal,
                 'i.credit as applied_credit',
                 'c.companyname',
                 'c.firstname',
@@ -966,10 +1009,14 @@ final class ReportRepository
 
     public function summaryAuditoriaInvoices(array $filters): array
     {
-        $row = $this->buildAuditoriaInvoicesQuery($filters)
+        $gateway = self::auditoriaGatewaySql(
+            LedgerCreditRepository::hasLedgerTypeColumn(),
+            LedgerCreditRepository::deductsManualPaidFromGateway()
+        );
+        $row = $this->buildAuditoriaInvoicesQuery($filters, $gateway)
             ->select([
                 Capsule::raw('COUNT(*) as total_invoices'),
-                Capsule::raw('SUM(i.total) as total_valor'),
+                Capsule::raw($gateway['total_valor']),
             ])
             ->first();
 
@@ -1005,13 +1052,29 @@ final class ReportRepository
         ];
     }
 
-    private function buildAuditoriaInvoicesQuery(array $filters)
+    /**
+     * @param array{amount: string, filter: ?string, invoice_total: string, total_valor: string}|null $gateway
+     */
+    private function buildAuditoriaInvoicesQuery(array $filters, ?array $gateway = null)
     {
+        if ($gateway === null) {
+            $gateway = self::auditoriaGatewaySql(
+                LedgerCreditRepository::hasLedgerTypeColumn(),
+                LedgerCreditRepository::deductsManualPaidFromGateway()
+            );
+        }
+
         $q = Capsule::table('tblinvoices as i')
             ->join('tblclients as c', 'c.id', '=', 'i.userid')
-            ->where('i.status', 'Paid')
-            ->where('i.total', '>', 0)
-            ->whereNotNull('i.datepaid')
+            ->where('i.status', 'Paid');
+
+        if ($gateway['filter'] === null) {
+            $q->where('i.total', '>', 0);
+        } else {
+            $q->whereRaw($gateway['filter']);
+        }
+
+        $q->whereNotNull('i.datepaid')
             ->where('i.datepaid', '<>', '0000-00-00 00:00:00')
             ->whereNotExists(static function ($sub) {
                 $sub->select(Capsule::raw('1'))
