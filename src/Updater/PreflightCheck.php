@@ -9,7 +9,8 @@ use OpenNfse\Helpers\WebRoot;
 /**
  * Etapa 1 do atualizador: confere se dá para atualizar sem mexer em nada.
  *
- * Cada item volta com status ok, warn (segue, mas avisa) ou fail (bloqueia).
+ * Cada item volta com status ok, warn (segue, mas avisa), current (já está na última
+ * versão: verde, mas não libera a pausa) ou fail (bloqueia).
  * As provas de escrita criam e apagam arquivos de teste de verdade, porque
  * is_writable() engana em alguns servidores (ACL, open_basedir, NFS).
  */
@@ -18,6 +19,9 @@ final class PreflightCheck
     public const OK = 'ok';
     public const WARN = 'warn';
     public const FAIL = 'fail';
+
+    /** Sem versão mais nova: estado normal, não é falha. Não libera pausar nem instalar. */
+    public const CURRENT = 'current';
 
     private const REQUIRED_EXTENSIONS = ['zip' => 'ZipArchive', 'curl' => null, 'openssl' => null, 'json' => null];
     private const MIN_FREE_BYTES = 100 * 1024 * 1024;
@@ -34,15 +38,24 @@ final class PreflightCheck
 
     /**
      * @param array<string, string> $manifest latest_version, package_url, package_sha256, minimum_php, minimum_whmcs
-     * @return array{can_update: bool, backup_copy_on_server: bool, items: list<array{key: string, label: string, status: string, detail: string}>}
+     * @return array{can_update: bool, up_to_date: bool, backup_copy_on_server: bool, items: list<array{key: string, label: string, status: string, detail: string}>}
      */
     public function run(array $manifest, string $currentVersion): array
     {
-        $items = [];
+        $package = $this->checkPackage($manifest, $currentVersion);
+        if ($package['status'] === self::CURRENT) {
+            return [
+                'can_update' => false,
+                'up_to_date' => true,
+                'backup_copy_on_server' => false,
+                'items' => [$package],
+            ];
+        }
+
+        $items = [$package];
         $moduleDir = rtrim($this->env->moduleDir(), '/\\');
         $tempPath = $this->env->tempPath();
 
-        $items[] = $this->checkPackage($manifest, $currentVersion);
         $items[] = $this->checkPhp($manifest);
         $items[] = $this->checkWhmcs($manifest);
         $items[] = $this->checkExtensions();
@@ -65,6 +78,7 @@ final class PreflightCheck
 
         return [
             'can_update' => $canUpdate,
+            'up_to_date' => false,
             'backup_copy_on_server' => $tempOutsideWebRoot,
             'items' => $items,
         ];
@@ -78,7 +92,16 @@ final class PreflightCheck
         $label = 'Pacote da nova versão';
 
         if ($latest === '' || !version_compare($latest, $currentVersion, '>')) {
-            return $this->item('package', $label, self::FAIL, 'Não há versão mais nova que a instalada. Clique em "Verificar agora" para consultar de novo.');
+            $installed = trim($currentVersion) !== '' ? trim($currentVersion) : $latest;
+
+            return $this->item(
+                'package',
+                $label,
+                self::CURRENT,
+                $installed !== ''
+                    ? sprintf('Última versão já instalada (%s).', $installed)
+                    : 'Última versão já instalada.'
+            );
         }
         if ($url === '' || !preg_match('/^[0-9a-f]{64}$/', $sha)) {
             return $this->item('package', $label, self::FAIL, sprintf('A versão %s não tem pacote para atualização automática. Atualize à mão pelo GitHub.', $latest));

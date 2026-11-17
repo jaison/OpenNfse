@@ -76,9 +76,11 @@ final class UpdaterController
         }
 
         $this->renderPreflightStep($preflight, $paused);
-        $this->renderPauseStep($preflight, $paused, $settled, $state);
-        $this->renderBackupStep($paused, $settled);
-        $this->renderInstallStep($paused, $state);
+        if ($preflight === null || empty($preflight['up_to_date'])) {
+            $this->renderPauseStep($preflight, $paused, $settled, $state);
+            $this->renderBackupStep($paused, $settled);
+            $this->renderInstallStep($paused, $state);
+        }
 
         echo '</div></div>';
         Module::ui()->renderFooter();
@@ -550,6 +552,29 @@ final class UpdaterController
         }
 
         $actions = Ui::button('Verificar de novo', ['sm'], ['href' => self::URL]);
+        if (!empty($preflight['up_to_date'])) {
+            $detail = '';
+            foreach ($preflight['items'] as $item) {
+                if (($item['key'] ?? '') === 'package') {
+                    $detail = (string) ($item['detail'] ?? '');
+                    break;
+                }
+            }
+            $this->renderConfigSectionStart(
+                '1. Checagem',
+                'Nada a atualizar.',
+                $actions
+            );
+            $this->renderConfigBlock(Ui::callout(
+                'ok',
+                $detail !== '' ? $detail : 'Última versão já instalada.',
+                'Use Verificar de novo para consultar outra vez.'
+            ));
+            $this->renderConfigSectionEnd();
+
+            return;
+        }
+
         $this->renderConfigSectionStart(
             '1. Checagem',
             'Confere se o servidor permite atualizar. Nada é alterado nesta etapa.',
@@ -558,7 +583,7 @@ final class UpdaterController
         $html = '<ul class="nfse-upd-checks">';
         foreach ($preflight['items'] as $item) {
             [$text, $tone] = match ($item['status']) {
-                PreflightCheck::OK => ['OK', 'ok'],
+                PreflightCheck::OK, PreflightCheck::CURRENT => ['OK', 'ok'],
                 PreflightCheck::WARN => ['Atenção', 'warn'],
                 default => ['Bloqueia', 'danger'],
             };

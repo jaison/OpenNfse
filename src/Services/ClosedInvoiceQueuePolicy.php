@@ -67,10 +67,33 @@ final class ClosedInvoiceQueuePolicy
             . " AND issued_nf.chave_acesso IS NOT NULL AND issued_nf.chave_acesso <> '')";
     }
 
-    /** Pendência de falha: fora o caso da fatura encerrada sem NFS-e. */
-    public static function pendingFailureSql(string $invoiceIdColumn): string
+    /** Nota REJEITADA/ERRO que o admin ainda não marcou como resolvida. */
+    public static function isUnresolvedFailure(?array $nota): bool
     {
-        return 'NOT (' . self::closedWithoutIssuedNfseSql($invoiceIdColumn) . ')';
+        if ($nota === null) {
+            return false;
+        }
+        $status = strtoupper(trim((string) ($nota['status'] ?? '')));
+        if (!in_array($status, ['ERRO', 'REJEITADA'], true)) {
+            return false;
+        }
+
+        return trim((string) ($nota['falha_resolvida_em'] ?? '')) === '';
+    }
+
+    /**
+     * Pendência de falha: fora fatura encerrada sem NFS-e.
+     * Com $notaAlias, também fora a nota cuja falha já foi marcada como resolvida.
+     */
+    public static function pendingFailureSql(string $invoiceIdColumn, ?string $notaAlias = null): string
+    {
+        $sql = 'NOT (' . self::closedWithoutIssuedNfseSql($invoiceIdColumn) . ')';
+        if ($notaAlias !== null) {
+            self::assertAlias($notaAlias);
+            $sql .= ' AND ' . $notaAlias . '.falha_resolvida_em IS NULL';
+        }
+
+        return $sql;
     }
 
     /**
@@ -87,6 +110,13 @@ final class ClosedInvoiceQueuePolicy
     {
         if (!preg_match('/^[A-Za-z][A-Za-z0-9_]*\.[A-Za-z][A-Za-z0-9_]*$/', $column)) {
             throw new \InvalidArgumentException('Coluna SQL inválida.');
+        }
+    }
+
+    private static function assertAlias(string $alias): void
+    {
+        if (!preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $alias)) {
+            throw new \InvalidArgumentException('Alias SQL inválido.');
         }
     }
 
