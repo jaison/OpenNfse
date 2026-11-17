@@ -124,12 +124,6 @@ final class AdminController
                 'requiresTokenMessage' => 'Método inválido para exclusão do catálogo de código de serviço e NBS.',
                 'handler' => [$this->configController, 'deleteServiceNbsCatalog'],
             ],
-            'saveDanfseConfig' => [
-                'method' => 'POST',
-                'requiresToken' => true,
-                'requiresTokenMessage' => 'Método inválido para configuração do DANFS-e.',
-                'handler' => [$this->configController, 'saveDanfseConfig'],
-            ],
             'validateCertificate' => [
                 'method' => 'POST',
                 'requiresToken' => true,

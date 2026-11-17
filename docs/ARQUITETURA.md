@@ -213,7 +213,7 @@ Status da fila (`mod_opennfse_queue.status`): `PENDING`, `RUNNING`, `WAIT_STATUS
 - Arquivos persistidos só são servidos depois de o caminho ser validado pelo `StorageService`.
 - O caminho do certificado A1 precisa ficar fora do webroot.
 - Os anexos de e-mail são montados pelo serviço de e-mail a partir dos arquivos do módulo.
-- O SVG do cabeçalho do DANFS-e é sanitizado, e o XML é lido com `LIBXML_NONET`.
+- O XML da NFS-e é lido com `LIBXML_NONET` para gerar o DANFS-e.
 - Os `.htaccess` da raiz e de `assets/` bloqueiam o acesso web direto aos arquivos do addon.
 - O atualizador só baixa pacotes do GitHub por HTTPS, confere o SHA-256 publicado antes de extrair e recusa pacotes com caminhos fora da pasta do módulo ou links simbólicos.
 

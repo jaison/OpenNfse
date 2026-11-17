@@ -5,7 +5,6 @@ declare(strict_types=1);
 spl_autoload_register(static function (string $class): void {
     $prefixes = [
         'OpenNfse\\' => __DIR__ . '/',
-        'NfsePdf\\' => __DIR__ . '/PasetoOverrides/',
     ];
 
     foreach ($prefixes as $prefix => $baseDir) {

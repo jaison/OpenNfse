@@ -128,12 +128,6 @@ final class ConfigController
                 'title' => 'Fila e processamento',
                 'description' => 'Automação de emissão, fila, cron e intervalo de consulta de status.',
             ],
-            'danfse' => [
-                'group' => 'Documentos',
-                'label' => 'PDF DANFS-e',
-                'title' => 'PDF DANFS-e',
-                'description' => 'Cabeçalho do PDF e dados institucionais exibidos no DANFS-e.',
-            ],
             'atualizacoes' => [
                 'group' => 'Sistema',
                 'label' => 'Atualizações',
@@ -155,7 +149,7 @@ final class ConfigController
             $activeTab = 'ambiente';
         }
         // Seções com formulário próprio: a barra "Salvar alterações" do formulário principal fica oculta nelas.
-        $standaloneTabs = ['codigos', 'sequenciais', 'servicosnbs', 'danfse', 'atualizacoes'];
+        $standaloneTabs = ['codigos', 'sequenciais', 'servicosnbs', 'atualizacoes'];
 
         $msg = (string) ($_GET['msg'] ?? '');
         if ($msg === 'ibge_sync_ok') {
@@ -612,10 +606,6 @@ final class ConfigController
 
         $paneStart('codigos');
         $this->renderCodigosProdutosServicosContent();
-        $paneEnd();
-
-        $paneStart('danfse');
-        $this->renderDanfseConfigContent($config);
         $paneEnd();
 
         echo '<script>';
@@ -1607,235 +1597,6 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
                     ? 'Certificado válido, mas em prazo crítico para renovação.'
                     : ($status === 'expiring' ? 'Certificado válido, mas próximo de expirar.' : 'Certificado expirado.')),
         ];
-    }
-
-
-    public function renderDanfseConfigContent(array $config): void
-    {
-        $msg = (string) ($_REQUEST['msg'] ?? '');
-        if ($msg === 'danfse_saved') {
-            echo Ui::callout('ok', 'Configuração do DANFS-e salva.');
-        } elseif ($msg === 'danfse_invalid') {
-            $detail = trim((string) ($_REQUEST['detail'] ?? ''));
-            echo Ui::callout('danger', 'Revise os campos da configuração do DANFS-e.', $detail);
-        } elseif ($msg === 'danfse_error') {
-            echo Ui::callout('danger', 'Erro ao salvar a configuração do DANFS-e.');
-        }
-
-        $defaults = $this->getDefaultDanfseConfig();
-        $token = (new TokenService())->token();
-        $previewLogoSvg = $this->prepareSvgPreviewMarkup((string) (($config['danfse_logo_svg'] ?? '') !== '' ? $config['danfse_logo_svg'] : $defaults['danfse_logo_svg']));
-        $preview = [
-            'logo_svg' => $previewLogoSvg,
-            'municipio_nome' => (string) (($config['danfse_municipio_nome'] ?? '') !== '' ? $config['danfse_municipio_nome'] : $defaults['danfse_municipio_nome']),
-            'secretaria_nome' => (string) (($config['danfse_secretaria_nome'] ?? '') !== '' ? $config['danfse_secretaria_nome'] : $defaults['danfse_secretaria_nome']),
-            'telefone' => (string) (($config['danfse_telefone'] ?? '') !== '' ? $config['danfse_telefone'] : $defaults['danfse_telefone']),
-            'email' => (string) (($config['danfse_email'] ?? '') !== '' ? $config['danfse_email'] : $defaults['danfse_email']),
-            'environment' => (string) ($config['environment'] ?? 'homologacao'),
-        ];
-
-        $this->renderConfigSectionStart('Cabeçalho do DANFS-e', 'Logotipo e dados institucionais do cabeçalho do PDF.');
-        echo '<form method="post" action="addonmodules.php?module=OpenNfse&action=saveDanfseConfig" class="nfse-cfg-cardform">';
-        if ($token !== '') {
-            echo '<input type="hidden" name="token" value="' . Ui::h($token) . '" />';
-        }
-        $this->renderConfigFormTableStart();
-        $this->renderTextareaRow('danfse_logo_svg', 'Logo SVG', (string) (($config['danfse_logo_svg'] ?? '') !== '' ? $config['danfse_logo_svg'] : $defaults['danfse_logo_svg']));
-        $this->renderTextRow('danfse_municipio_nome', 'Nome', (string) (($config['danfse_municipio_nome'] ?? '') !== '' ? $config['danfse_municipio_nome'] : $defaults['danfse_municipio_nome']));
-        $this->renderTextRow('danfse_secretaria_nome', 'Secretaria', (string) (($config['danfse_secretaria_nome'] ?? '') !== '' ? $config['danfse_secretaria_nome'] : $defaults['danfse_secretaria_nome']));
-        $this->renderTextRow('danfse_telefone', 'Telefone', (string) (($config['danfse_telefone'] ?? '') !== '' ? $config['danfse_telefone'] : $defaults['danfse_telefone']));
-        $this->renderTextRow('danfse_email', 'E-mail', (string) (($config['danfse_email'] ?? '') !== '' ? $config['danfse_email'] : $defaults['danfse_email']));
-        $this->renderConfigFormTableEnd();
-        echo Ui::saveBar(Ui::button('Salvar configuração DANFS-e', ['primary']));
-        echo '</form>';
-        $this->renderConfigSectionEnd();
-
-        $this->renderConfigSectionStart('Pré-visualização', 'Como o cabeçalho do PDF fica com as configurações atuais.', '', true);
-        $html = '<div class="nfse-cfg-preview">';
-        $html .= '<div class="nfse-cfg-preview__title"><div>DANFSe v1.0</div><div>Documento Auxiliar da NFS-e</div>';
-        if ($preview['environment'] === 'homologacao') {
-            $html .= '<div class="nfse-text-danger">NFS-e SEM VALIDADE JURÍDICA</div>';
-        }
-        $html .= '</div>';
-        $html .= '<div class="nfse-cfg-preview__org">';
-        if (trim((string) $preview['logo_svg']) !== '' && stripos((string) $preview['logo_svg'], '<svg') !== false) {
-            $html .= '<div class="nfse-cfg-logo">' . $preview['logo_svg'] . '</div>';
-        }
-        $html .= '<div class="nfse-cfg-preview__org-text">';
-        $html .= '<div class="nfse-cfg-preview__org-name">' . Ui::h((string) $preview['municipio_nome']) . '</div>';
-        $html .= '<div>' . Ui::h((string) $preview['secretaria_nome']) . '</div>';
-        $html .= '<div>' . Ui::h((string) $preview['telefone']) . '</div>';
-        $html .= '<div>' . Ui::h((string) $preview['email']) . '</div>';
-        $html .= '</div></div></div>';
-        $this->renderConfigBlock($html);
-        $this->renderConfigBlock('A pré-visualização é ilustrativa e reflete o cabeçalho configurado. O PDF final continua aplicando automaticamente o aviso em homologação.', 'nfse-cfg-note');
-        $this->renderConfigSectionEnd();
-    }
-
-
-    public function saveDanfseConfig(): void
-    {
-        $defaults = $this->getDefaultDanfseConfig();
-        $logoSvgRaw = (string) ($_POST['danfse_logo_svg'] ?? '');
-        $logoSvgRaw = str_replace("\0", '', $logoSvgRaw);
-        $logoSvgRaw = preg_replace('/^\xEF\xBB\xBF/', '', $logoSvgRaw) ?? $logoSvgRaw;
-        $logoSvgRaw = preg_replace('/\p{Cf}+/u', '', $logoSvgRaw) ?? $logoSvgRaw;
-        $logoSvgRaw = trim($logoSvgRaw);
-        for ($i = 0; $i < 3; $i++) {
-            $decoded = html_entity_decode($logoSvgRaw, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            if ($decoded === $logoSvgRaw) {
-                break;
-            }
-            $logoSvgRaw = $decoded;
-        }
-        $logoSvgRawTrim = trim($logoSvgRaw);
-        if ($logoSvgRawTrim === '' || preg_match('/<\s*svg\b/i', $logoSvgRawTrim) !== 1) {
-            header('Location: addonmodules.php?module=OpenNfse&action=config&tab=danfse&msg=danfse_invalid&detail=' . rawurlencode(' Cole o SVG completo no campo Logo SVG.'));
-            exit;
-        }
-        if (preg_match('/<\/\s*svg\s*>/i', $logoSvgRawTrim) !== 1) {
-            header('Location: addonmodules.php?module=OpenNfse&action=config&tab=danfse&msg=danfse_invalid&detail=' . rawurlencode(' O SVG parece incompleto (não foi encontrado </svg>).'));
-            exit;
-        }
-        $logoSvg = $this->normalizeSvgMarkup($logoSvgRawTrim);
-        if ($logoSvg === '') {
-            header('Location: addonmodules.php?module=OpenNfse&action=config&tab=danfse&msg=danfse_invalid&detail=' . rawurlencode(' Não foi possível normalizar o SVG. Tente colar apenas o bloco <svg>...</svg>.'));
-            exit;
-        }
-        $municipioNome = trim((string) ($_POST['danfse_municipio_nome'] ?? ''));
-        $secretariaNome = trim((string) ($_POST['danfse_secretaria_nome'] ?? ''));
-        $telefone = trim((string) ($_POST['danfse_telefone'] ?? ''));
-        $email = trim((string) ($_POST['danfse_email'] ?? ''));
-
-        if ($municipioNome === '' || $secretariaNome === '' || $telefone === '' || $email === '') {
-            header('Location: addonmodules.php?module=OpenNfse&action=config&tab=danfse&msg=danfse_invalid&detail=' . rawurlencode(' Preencha Nome, Secretaria, Telefone e E-mail.'));
-            exit;
-        }
-
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            header('Location: addonmodules.php?module=OpenNfse&action=config&tab=danfse&msg=danfse_invalid&detail=' . rawurlencode(' O e-mail informado é inválido.'));
-            exit;
-        }
-
-        try {
-            (new ConfigRepository())->save([
-                'danfse_logo_svg' => $logoSvg,
-                'danfse_municipio_nome' => $municipioNome,
-                'danfse_secretaria_nome' => $secretariaNome,
-                'danfse_telefone' => $telefone,
-                'danfse_email' => $email,
-            ]);
-            header('Location: addonmodules.php?module=OpenNfse&action=config&tab=danfse&msg=danfse_saved');
-            exit;
-        } catch (\Throwable $e) {
-            header('Location: addonmodules.php?module=OpenNfse&action=config&tab=danfse&msg=danfse_error');
-            exit;
-        }
-    }
-
-
-    public function getDefaultDanfseConfig(): array
-    {
-        $logoSvg = '';
-        $defaultLogoPath = dirname(__DIR__, 3) . '/assets/brasao_itajai.svg';
-        if (is_file($defaultLogoPath)) {
-            $svg = file_get_contents($defaultLogoPath);
-            if (is_string($svg) && trim($svg) !== '') {
-                $logoSvg = $svg;
-            }
-        }
-
-        return [
-            'danfse_logo_svg' => $logoSvg,
-            'danfse_municipio_nome' => 'MUNICÍPIO DE ITAJAÍ',
-            'danfse_secretaria_nome' => 'SECRETARIA MUNICIPAL DA FAZENDA',
-            'danfse_telefone' => '(47)3241-7400',
-            'danfse_email' => 'plantaofiscal@itajai.sc.gov.br',
-        ];
-    }
-
-
-    public function normalizeSvgMarkup(string $svg): string
-    {
-        $svg = str_replace("\0", '', $svg);
-        $svg = preg_replace('/^\xEF\xBB\xBF/', '', $svg) ?? $svg;
-        $svg = preg_replace('/\p{Cf}+/u', '', $svg) ?? $svg;
-        $svg = trim($svg);
-        for ($i = 0; $i < 3; $i++) {
-            $decoded = html_entity_decode($svg, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            if ($decoded === $svg) {
-                break;
-            }
-            $svg = $decoded;
-        }
-        $svg = trim($svg);
-        if ($svg === '' || preg_match('/<\s*svg\b/i', $svg) !== 1) {
-            return '';
-        }
-
-        $svg = preg_replace('/<\?xml.*?\?>/is', '', $svg) ?? $svg;
-        $svg = preg_replace('/<!DOCTYPE.*?>/is', '', $svg) ?? $svg;
-        $svg = trim($svg);
-
-        if (preg_match('/<\s*svg\b[\s\S]*<\/\s*svg\s*>/i', $svg, $m) !== 1) {
-            return '';
-        }
-        $svg = trim((string) ($m[0] ?? ''));
-        if ($svg === '') {
-            return '';
-        }
-
-        $svg = preg_replace('/<script\b[\s\S]*?<\/script>/i', '', $svg) ?? $svg;
-        $svg = preg_replace('/<foreignObject\b[\s\S]*?<\/foreignObject>/i', '', $svg) ?? $svg;
-        $svg = preg_replace('/<\s*(?:image|use)\b[\s\S]*?\/\s*>/i', '', $svg) ?? $svg;
-        $svg = preg_replace('/<\s*(?:image|use)\b[\s\S]*?<\/\s*(?:image|use)\s*>/i', '', $svg) ?? $svg;
-        $svg = preg_replace('/\s(?:xlink:)?href\s*=\s*([\'"])\s*(?:https?:|file:|data:)[^\'"]*\1/i', '', $svg) ?? $svg;
-        $svg = trim($svg);
-
-        $prev = libxml_use_internal_errors(true);
-        try {
-            $doc = new \DOMDocument();
-            $ok = $doc->loadXML($svg, LIBXML_NONET);
-            if (!$ok) {
-                return $svg;
-            }
-
-            $root = $doc->documentElement;
-            if (!$root || strtolower((string) $root->localName) !== 'svg') {
-                return $svg;
-            }
-
-            if (!$root->hasAttribute('xmlns')) {
-                $root->setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-            }
-
-            return trim((string) $doc->saveXML($root));
-        } catch (\Throwable $e) {
-            return $svg;
-        } finally {
-            libxml_clear_errors();
-            libxml_use_internal_errors($prev);
-        }
-    }
-
-
-    public function prepareSvgPreviewMarkup(string $svg): string
-    {
-        $svg = $this->normalizeSvgMarkup($svg);
-        if ($svg === '') {
-            return '';
-        }
-
-        if (preg_match('/<svg\b/i', $svg) === 1) {
-            $svg = preg_replace(
-                '/<svg\b/i',
-                '<svg preserveAspectRatio="xMidYMid meet"',
-                $svg,
-                1
-            ) ?? $svg;
-        }
-
-        return $svg;
     }
 
 

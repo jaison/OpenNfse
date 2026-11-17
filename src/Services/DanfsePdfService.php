@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace OpenNfse\Services;
 
 use OpenNfse\Exceptions\NfseModuleException;
-use OpenNfse\Repositories\ConfigRepository;
 use OpenNfse\Repositories\LogRepository;
 use OpenNfse\Repositories\NotaRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
@@ -70,21 +69,6 @@ final class DanfsePdfService
 
         try {
             $generator = new LocalNfsePdfGenerator();
-            $danfseConfig = $this->getDanfseConfig();
-            if (!empty($danfseConfig['logoSvg']) && method_exists($generator, 'setLogoSvg')) {
-                $generator->setLogoSvg((string) $danfseConfig['logoSvg']);
-            }
-            if (method_exists($generator, 'setHeaderInfo')) {
-                $generator->setHeaderInfo([
-                    'municipalityLine' => $danfseConfig['municipioNome'] ?? null,
-                    'secretariatLine' => $danfseConfig['secretariaNome'] ?? null,
-                    'phoneLine' => $danfseConfig['telefone'] ?? null,
-                    'emailLine' => $danfseConfig['email'] ?? null,
-                ]);
-            }
-            if (method_exists($generator, 'setHomologationWarning')) {
-                $generator->setHomologationWarning(((string) ($danfseConfig['environment'] ?? 'homologacao')) === 'homologacao');
-            }
             $pdf = $generator->parseXml($xmlAbsPath)->generate();
             $pdfBytes = (string) $pdf->Output('', 'S');
         } catch (\Throwable $e) {
@@ -137,29 +121,5 @@ final class DanfsePdfService
         }
 
         return 'danfse_invoice_' . $invoiceId . '.pdf';
-    }
-
-    private function getDanfseConfig(): array
-    {
-        $config = (new ConfigRepository())->get();
-        $logoSvg = trim((string) ($config['danfse_logo_svg'] ?? ''));
-        if ($logoSvg === '') {
-            $defaultLogoPath = dirname(__DIR__, 3) . '/assets/brasao_itajai.svg';
-            if (is_file($defaultLogoPath)) {
-                $svg = file_get_contents($defaultLogoPath);
-                if (is_string($svg) && trim($svg) !== '') {
-                    $logoSvg = $svg;
-                }
-            }
-        }
-
-        return [
-            'environment' => (string) ($config['environment'] ?? 'homologacao'),
-            'logoSvg' => $logoSvg,
-            'municipioNome' => trim((string) ($config['danfse_municipio_nome'] ?? '')) ?: 'MUNICÍPIO DE ITAJAÍ',
-            'secretariaNome' => trim((string) ($config['danfse_secretaria_nome'] ?? '')) ?: 'SECRETARIA MUNICIPAL DA FAZENDA',
-            'telefone' => trim((string) ($config['danfse_telefone'] ?? '')) ?: '(47)3241-7400',
-            'email' => trim((string) ($config['danfse_email'] ?? '')) ?: 'plantaofiscal@itajai.sc.gov.br',
-        ];
     }
 }

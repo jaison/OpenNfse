@@ -45,6 +45,7 @@ namespace OpenNfseVendor;
  * @package com.tecnick.tcpdf
  * @version 1.0.004
  * @author Nicola Asuni - info@tecnick.com
+ * @deprecated TCPDF is deprecated: migrate to tecnickcom/tc-lib-pdf.
  */
 class TCPDF_COLORS
 {
@@ -379,6 +380,7 @@ class TCPDF_COLORS
  * @package com.tecnick.tcpdf
  * @version 1.0.004
  * @author Nicola Asuni - info@tecnick.com
+ * @deprecated TCPDF is deprecated: migrate to tecnickcom/tc-lib-pdf.
  */
 \class_alias('OpenNfseVendor\TCPDF_COLORS', 'TCPDF_COLORS', \false);
 // END OF TCPDF_COLORS CLASS

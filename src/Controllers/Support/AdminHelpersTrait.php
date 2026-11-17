@@ -470,11 +470,6 @@ trait AdminHelpersTrait
             'queue_wait_status_interval_seconds' => 'Intervalo entre consultas de status quando a nota fica aguardando retorno do ambiente nacional.',
             'queue_done_retention_days' => 'Quantidade de dias para manter registros da fila concluídos ou resolvidos antes da limpeza.',
             'logs_retention_days' => 'Quantidade de dias para manter logs de request/response antes da limpeza.',
-            'danfse_logo_svg' => 'Cole aqui o SVG completo do brasão ou logotipo que deve aparecer no cabeçalho do DANFS-e.',
-            'danfse_municipio_nome' => 'Linha principal exibida no bloco institucional do cabeçalho do PDF.',
-            'danfse_secretaria_nome' => 'Linha secundária exibida abaixo do nome do município.',
-            'danfse_telefone' => 'Telefone institucional mostrado no cabeçalho do DANFS-e.',
-            'danfse_email' => 'E-mail institucional mostrado no cabeçalho do DANFS-e.',
         ];
 
         return $help;
@@ -661,40 +656,6 @@ trait AdminHelpersTrait
                 'ok' => 0,
                 'total' => 0,
             ],
-            'danfse' => (function () use ($config, $ok, $attention): array {
-                $defaults = $this->getDefaultDanfseConfig();
-                $required = [
-                    'danfse_logo_svg' => (string) (($config['danfse_logo_svg'] ?? '') !== '' ? $config['danfse_logo_svg'] : $defaults['danfse_logo_svg']),
-                    'danfse_municipio_nome' => (string) (($config['danfse_municipio_nome'] ?? '') !== '' ? $config['danfse_municipio_nome'] : $defaults['danfse_municipio_nome']),
-                    'danfse_secretaria_nome' => (string) (($config['danfse_secretaria_nome'] ?? '') !== '' ? $config['danfse_secretaria_nome'] : $defaults['danfse_secretaria_nome']),
-                    'danfse_telefone' => (string) (($config['danfse_telefone'] ?? '') !== '' ? $config['danfse_telefone'] : $defaults['danfse_telefone']),
-                    'danfse_email' => (string) (($config['danfse_email'] ?? '') !== '' ? $config['danfse_email'] : $defaults['danfse_email']),
-                ];
-                $missing = [];
-                foreach ($required as $label => $value) {
-                    if (trim($value) === '') {
-                        $missing[] = $label;
-                    }
-                }
-                if (empty($missing)) {
-                    return [
-                        'label' => 'PDF pronto',
-                        'tone' => 'ok',
-                        'summary' => 'Cabeçalho do DANFS-e configurado com logo SVG, dados institucionais e aviso automático para homologação.',
-                        'missing' => [],
-                        'ok' => 1,
-                        'total' => 1,
-                    ];
-                }
-                return [
-                    'label' => $attention['label'],
-                    'tone' => 'attention',
-                    'summary' => 'Revise os dados institucionais e o logo SVG usados no cabeçalho do DANFS-e.',
-                    'missing' => ['Cabeçalho do PDF'],
-                    'ok' => 0,
-                    'total' => 1,
-                ];
-            })(),
             default => [
                 'label' => $info['label'],
                 'tone' => 'info',

@@ -1,7 +1,7 @@
 # OpenNfse - assets públicos
 #
 # Libera somente imagens e CSS usados pelas telas do WHMCS. Todo o resto
-# continua negado, inclusive .svg (o brasão é lido só pelo PHP) e dotfiles.
+# continua negado, inclusive .svg e dotfiles.
 # Detalhes: docs/SEGURANCA.md.
 
 # Apache 2.4+ e LiteSpeed Enterprise

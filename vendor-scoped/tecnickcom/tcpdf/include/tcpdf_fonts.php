@@ -45,6 +45,7 @@ namespace OpenNfseVendor;
  * @package com.tecnick.tcpdf
  * @version 1.1.1
  * @author Nicola Asuni - info@tecnick.com
+ * @deprecated TCPDF is deprecated: migrate to tecnickcom/tc-lib-pdf.
  */
 class TCPDF_FONTS
 {
@@ -2726,6 +2727,7 @@ class TCPDF_FONTS
  * @package com.tecnick.tcpdf
  * @version 1.1.1
  * @author Nicola Asuni - info@tecnick.com
+ * @deprecated TCPDF is deprecated: migrate to tecnickcom/tc-lib-pdf.
  */
 \class_alias('OpenNfseVendor\TCPDF_FONTS', 'TCPDF_FONTS', \false);
 // END OF TCPDF_FONTS CLASS

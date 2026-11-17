@@ -798,14 +798,6 @@
 /* Tabelas da tela: selects ocupam a célula; colunas de rótulo não quebram. */
 .nfse-cfg-table select.nfse-input { width: 100%; min-width: 160px; }
 .nfse-cfg-table .nfse-input--w-sm { width: 140px; }
-/* Pré-visualização do cabeçalho do DANFS-e. */
-.nfse-cfg-preview { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) 18px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-card); }
-.nfse-cfg-preview__title { flex: 1 1 240px; min-width: 0; text-align: center; font-size: 15px; line-height: 20px; font-weight: 700; color: var(--ink); }
-.nfse-cfg-preview__org { flex: 1 1 260px; min-width: 0; display: flex; align-items: flex-start; justify-content: flex-end; gap: 10px; }
-.nfse-cfg-preview__org-text { min-width: 0; font-size: 12px; line-height: 18px; color: var(--ink-2); overflow-wrap: anywhere; }
-.nfse-cfg-preview__org-name { font-size: 13px; font-weight: 700; color: var(--ink); }
-.nfse-cfg-logo { flex: none; width: 48px; height: 48px; display: flex; align-items: flex-start; justify-content: center; overflow: hidden; }
-.nfse-cfg-logo svg { display: block; width: 100%; height: 100%; max-width: 48px; max-height: 48px; }
 @container nfse-page (max-width: 999px) {
   .nfse-cfg .nfse-withnav__content { max-width: none; }
   .nfse-cfg a.nfse-subnav__item { flex-wrap: nowrap; }
@@ -815,7 +807,6 @@
   .nfse-cfg-blk { grid-template-columns: minmax(0, 1fr); }
   .nfse-cfg-blk--wide > .nfse-cfg-blk__intro { display: block; }
   .nfse-cfg-blk--wide > .nfse-cfg-blk__intro > .nfse-cfg-blk__actions { margin-top: var(--space-3); }
-  .nfse-cfg-preview__org { justify-content: flex-start; }
 }
 
 /* Atualizador: lista da checagem */
