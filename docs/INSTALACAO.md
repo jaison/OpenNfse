@@ -47,8 +47,7 @@ Comece pelo ambiente de **homologação** e valide as notas com a contabilidade 
 5. **Série DPS** e, se necessário, ajuste dos sequenciais em **Sequenciais**.
 6. **Gateways**: marque os gateways cujas faturas podem gerar NFS-e.
 7. **Processamento automático**: fila, emissão automática ao pagar, intervalo de consulta, faturas `Unpaid` e envio automático de e-mail. O efeito de cada opção está em [FLUXOS.md](FLUXOS.md#configurações-que-controlam-os-fluxos).
-8. **DANFS-e** (opcional): logo SVG e linhas do cabeçalho do PDF.
-9. **Área do cliente** (opcional): aviso exibido na página **Notas Fiscais**.
+8. **Área do cliente** (opcional): aviso exibido na página **Notas Fiscais**.
 
 O catálogo local de municípios IBGE é preenchido automaticamente na primeira vez que o módulo precisa dele e também pode ser sincronizado pelo botão **Sincronizar municípios IBGE agora**. Se a fonte mudar desde o último hash aprovado, a sincronização pede aprovação do novo hash.
 

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "7b65128775c505937e8c911dfff8cfcb",
+    "content-hash": "b2d077677076e603467e6c09ef5b5d9b",
     "packages": [
         {
             "name": "guzzlehttp/guzzle",
@@ -400,41 +400,6 @@
                 "source": "https://github.com/nfse-nacional/nfse-php/tree/v1.24.0-beta"
             },
             "time": "2026-11-01T16:11:44+00:00"
-        },
-        {
-            "name": "paseto/nfse-nacional-pdf",
-            "version": "v0.5",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/paseto/nfse-nacional-pdf.git",
-                "reference": "4d7b2c3813192604e774ea7e6e0f9945f2e6457a"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/paseto/nfse-nacional-pdf/zipball/4d7b2c3813192604e774ea7e6e0f9945f2e6457a",
-                "reference": "4d7b2c3813192604e774ea7e6e0f9945f2e6457a",
-                "shasum": ""
-            },
-            "require": {
-                "php": ">=7.4",
-                "tecnickcom/tcpdf": "^6.6"
-            },
-            "type": "project",
-            "autoload": {
-                "psr-4": {
-                    "NfsePdf\\": "src/"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "MIT"
-            ],
-            "description": "NFS-e PDF",
-            "support": {
-                "issues": "https://github.com/paseto/nfse-nacional-pdf/issues",
-                "source": "https://github.com/paseto/nfse-nacional-pdf/tree/v0.5"
-            },
-            "time": "2026-06-15T20:14:06+00:00"
         },
         {
             "name": "psr/http-client",
@@ -946,16 +911,16 @@
         },
         {
             "name": "tecnickcom/tcpdf",
-            "version": "6.11.3",
+            "version": "6.11.4",
             "source": {
                 "type": "git",
                 "url": "https://github.com/tecnickcom/TCPDF.git",
-                "reference": "b18f6119161019916c5bb07cb8da5205ae5c1b63"
+                "reference": "fbbaf14cfae8fe646f154f7c530d15ec25764040"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/tecnickcom/TCPDF/zipball/b18f6119161019916c5bb07cb8da5205ae5c1b63",
-                "reference": "b18f6119161019916c5bb07cb8da5205ae5c1b63",
+                "url": "https://api.github.com/repos/tecnickcom/TCPDF/zipball/fbbaf14cfae8fe646f154f7c530d15ec25764040",
+                "reference": "fbbaf14cfae8fe646f154f7c530d15ec25764040",
                 "shasum": ""
             },
             "require": {
@@ -966,7 +931,7 @@
                 "ext-gd": "Enables additional image handling in some workflows.",
                 "ext-imagick": "Enables additional image format support when available.",
                 "ext-zlib": "Recommended for compressed streams and related features.",
-                "tecnickcom/tc-lib-pdf": "Modern replacement for TCPDF for new projects."
+                "tecnickcom/tc-lib-pdf": "Modern replacement for TCPDF."
             },
             "type": "library",
             "autoload": {
@@ -998,7 +963,7 @@
                     "role": "lead"
                 }
             ],
-            "description": "Deprecated legacy PDF engine for PHP. For new projects use tecnickcom/tc-lib-pdf.",
+            "description": "Deprecated legacy PDF engine for PHP. Migrate to tecnickcom/tc-lib-pdf.",
             "homepage": "https://tcpdf.org",
             "keywords": [
                 "PDFD32000-2008",
@@ -1015,11 +980,11 @@
             },
             "funding": [
                 {
-                    "url": "https://www.paypal.com/donate/?hosted_button_id=NZUEC5XS8MFBJ",
-                    "type": "paypal"
+                    "url": "https://github.com/sponsors/tecnickcom",
+                    "type": "github"
                 }
             ],
-            "time": "2026-04-21T17:00:18+00:00"
+            "time": "2026-08-28T11:28:19+00:00"
         }
     ],
     "packages-dev": [

@@ -94,6 +94,7 @@ if (!\defined('DATAMATRIXDEFS')) {
 * @package com.tecnick.tcpdf
 * @author Nicola Asuni
 * @version 1.0.004
+* @deprecated TCPDF is deprecated: migrate to tecnickcom/tc-lib-pdf.
 */
 class Datamatrix
 {

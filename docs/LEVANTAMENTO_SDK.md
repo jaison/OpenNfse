@@ -101,7 +101,7 @@ Se a SDK não estiver carregada, o adapter lança `RuntimeException` com a orien
 
 ## Geração de PDF
 
-O DANFS-e não usa a SDK de emissão. O PDF é gerado localmente a partir do XML salvo, por `DanfsePdfService` e `LocalNfsePdfGenerator` (TCPDF). O pacote `paseto/nfse-nacional-pdf` também é dependência, e [`src/PasetoOverrides/`](../src/PasetoOverrides/) sobrepõe sua classe `NfsePdf\NfsePdfGenerator`.
+O DANFS-e não usa a SDK de emissão. O PDF é gerado localmente a partir do XML salvo, por `DanfsePdfService` e `LocalNfsePdfGenerator` (TCPDF), no layout DANFSe v2.0 da NT 008 v1.02. O gerador é baseado no `paseto/nfse-nacional-pdf` v0.6 (MIT), com ajustes para ficar igual ao gerador oficial da Receita Federal. O cabeçalho segue a NT: logomarca da NFS-e, município do emitente e ambiente, sem brasão nem dados da prefeitura.
 
 ## Referências da SDK
 

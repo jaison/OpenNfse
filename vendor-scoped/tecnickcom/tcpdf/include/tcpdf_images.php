@@ -49,6 +49,7 @@ namespace OpenNfseVendor;
  * @brief PHP class for generating PDF documents without requiring external extensions.
  * @version 1.0.005
  * @author Nicola Asuni - info@tecnick.com
+ * @deprecated TCPDF is deprecated: migrate to tecnickcom/tc-lib-pdf.
  */
 class TCPDF_IMAGES
 {
@@ -407,6 +408,7 @@ class TCPDF_IMAGES
  * @brief PHP class for generating PDF documents without requiring external extensions.
  * @version 1.0.005
  * @author Nicola Asuni - info@tecnick.com
+ * @deprecated TCPDF is deprecated: migrate to tecnickcom/tc-lib-pdf.
  */
 \class_alias('OpenNfseVendor\TCPDF_IMAGES', 'TCPDF_IMAGES', \false);
 // END OF TCPDF_IMAGES CLASS

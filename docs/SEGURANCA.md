@@ -67,7 +67,7 @@ Sem proteção, qualquer arquivo responde pela web: `README.md`, `composer.lock`
 O addon traz dois `.htaccess`:
 
 - `.htaccess` (raiz): nega tudo.
-- `assets/.htaccess`: libera só `css`, `png`, `jpg`/`jpeg`, `gif`, `webp` e `ico`. Continuam negados `.svg` (o brasão é lido só pelo PHP), dotfiles e qualquer outra extensão.
+- `assets/.htaccess`: libera só `css`, `png`, `jpg`/`jpeg`, `gif`, `webp` e `ico`. Continuam negados `.svg`, dotfiles e qualquer outra extensão.
 
 Cada arquivo tem três camadas, para funcionar em servidores diferentes:
 
@@ -145,7 +145,7 @@ Rode a partir de qualquer máquina, trocando o domínio. O parâmetro `?t=` evit
 ```bash
 B=https://seu-whmcs.com.br/modules/addons/OpenNfse
 for p in README.md composer.lock .gitignore docs/SEGURANCA.md \
-         vendor-scoped/autoload.php src/Module.php assets/brasao_itajai.svg \
+         vendor-scoped/autoload.php src/Module.php assets/.htaccess \
          %52EADME.md src/Module.php/x \
          assets/nfse-ui.css assets/opennsfe_logo.png; do
   printf '%-30s %s\n' "$p" "$(curl -s -o /dev/null -w '%{http_code}' "$B/$p?t=$(date +%s)")"

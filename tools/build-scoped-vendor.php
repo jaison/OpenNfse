@@ -59,13 +59,12 @@ if ($scopedPackages !== $runtimePackages) {
 // Todo namespace declarado no resultado precisa ter o prefixo, exceto os que
 // ficam globais de propósito (os mesmos de exclude-namespaces no scoper.inc.php):
 // - Nfse\: SDK, usada pelo src/ com o nome completo;
-// - NfsePdf\: gerador de PDF, cuja classe principal o src/PasetoOverrides/ redefine;
 // - Psr\: interfaces PSR, compartilhadas com o host;
 // - Spatie\: base dos DTOs da SDK.
 // Um namespace de terceiro sem prefixo (como o GuzzleHttp\Psr7 que o
 // php-scoper deixava passar) seria servido pela cópia do WHMCS ou de outro
 // módulo, porque o nosso autoload é registrado por último.
-$globalNamespaces = ['Nfse', 'NfsePdf', 'Psr', 'Spatie'];
+$globalNamespaces = ['Nfse', 'Psr', 'Spatie'];
 $namespaceViolations = [];
 $scopedFiles = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($scopedDir, FilesystemIterator::SKIP_DOTS));
 foreach ($scopedFiles as $file) {
@@ -146,7 +145,6 @@ foreach ($composerJsonFiles as $composerJsonFile) {
 // scoped); add it explicitly so vendor-scoped/autoload.php is a complete
 // drop-in replacement for vendor/autoload.php.
 $psr4['OpenNfse\\'] = [$root . '/src'];
-$psr4['NfsePdf\\'][] = $root . '/src/PasetoOverrides';
 
 if (is_dir($outDir)) {
     $it = new RecursiveIteratorIterator(

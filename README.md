@@ -124,7 +124,7 @@ As telas abaixo usam dados fictícios.
 - Emissão manual de faturas com status `Unpaid`, permitindo ou bloqueando o enfileiramento dessas faturas.
 - Catálogo de código de serviço e NBS, com mapeamento por grupo de produto do WHMCS.
 - Habilitação da automação por gateway de pagamento.
-- DANFS-e e personalização do cabeçalho do PDF.
+- DANFS-e em PDF no layout v2.0 da NT 008.
 - Dados padrão do tomador e sincronização de municípios IBGE, com fallback via ViaCEP.
 - Política de retenção de logs e fila.
 - Aba **Atualizações**: versão instalada, versão mais recente, notas da versão, requisitos e o botão **Atualizar agora**.
@@ -194,8 +194,8 @@ Este projeto usa bibliotecas de terceiros para a integração com a NFS-e Nacion
 
 - [`nfse-nacional/nfse-php`](https://github.com/nfse-nacional/nfse-php):
   SDK principal de integração com a API Nacional da NFS-e.
-- [`paseto/nfse-nacional-pdf`](https://github.com/paseto/nfse-nacional-pdf):
-  biblioteca base para geração do DANFS-e em PDF.
+- [`tecnickcom/tcpdf`](https://github.com/tecnickcom/TCPDF):
+  geração do DANFS-e em PDF. O layout DANFSe v2.0 (NT 008) em `src/Services/LocalNfsePdfGenerator.php` é baseado no [`paseto/nfse-nacional-pdf`](https://github.com/paseto/nfse-nacional-pdf) v0.6 (MIT), conferido com o [gerador oficial da Receita Federal](https://github.com/ReceitaFederal/calculadora-rtc-gerador-danfse).
 - [`humbug/php-scoper`](https://github.com/humbug/php-scoper):
   usada no build para gerar a pasta `vendor-scoped/` e reduzir conflitos de dependências com outros módulos do WHMCS.
 - [`phpunit/phpunit`](https://github.com/sebastianbergmann/phpunit):
@@ -350,7 +350,7 @@ Isso reconstrói a pasta `vendor-scoped/`. O `composer install` precisa incluir 
 O `vendor-scoped/` leva só as dependências de produção:
 
 - O `scoper.inc.php` parte dos pacotes do `vendor/composer/installed.json` que não estão em `dev-package-names`. O `tools/build-scoped-vendor.php` interrompe o build se o resultado tiver algum pacote a mais ou a menos.
-- Da SDK saem `references/`, `examples/`, `scripts/`, `types/`, `tests/` e os scripts e configurações de desenvolvimento da raiz do pacote. Do `paseto/nfse-nacional-pdf` sai o script de exemplo `generate-pdf.php`. De todos os pacotes saem os arquivos `.md` e `.dist` e as pastas `bin/`, `docs/` e de testes.
+- Da SDK saem `references/`, `examples/`, `scripts/`, `types/`, `tests/` e os scripts e configurações de desenvolvimento da raiz do pacote. De todos os pacotes saem os arquivos `.md` e `.dist` e as pastas `bin/`, `docs/` e de testes.
 - Depois de gerar o `vendor-scoped/autoload.php`, o build remove os `composer.json` e `composer.lock` de dentro dos pacotes, que não são usados em runtime e que o Dependabot leria como manifests.
 - Uma biblioteca usada em runtime precisa estar no `require` do `composer.json`. O que chega apenas como dependência de desenvolvimento fica fora do `vendor-scoped/`. Por esse motivo, o `symfony/polyfill-intl-normalizer` está no `require`: ele fornece a classe `\Normalizer`, que a SDK usa para normalizar textos quando o servidor não tem a extensão `intl`.
 

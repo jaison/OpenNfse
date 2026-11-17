@@ -49,6 +49,7 @@ namespace OpenNfseVendor;
  * @brief PHP class for generating PDF documents without requiring external extensions.
  * @version 1.1.5
  * @author Nicola Asuni - info@tecnick.com
+ * @deprecated TCPDF is deprecated: migrate to tecnickcom/tc-lib-pdf.
  */
 class TCPDF_STATIC
 {
@@ -56,7 +57,7 @@ class TCPDF_STATIC
      * Current TCPDF version.
      * @private static
      */
-    private static $tcpdf_version = '6.11.3';
+    private static $tcpdf_version = '6.11.4';
     /**
      * String alias for total number of pages.
      * @public static
@@ -3070,6 +3071,7 @@ class TCPDF_STATIC
  * @brief PHP class for generating PDF documents without requiring external extensions.
  * @version 1.1.5
  * @author Nicola Asuni - info@tecnick.com
+ * @deprecated TCPDF is deprecated: migrate to tecnickcom/tc-lib-pdf.
  */
 \class_alias('OpenNfseVendor\TCPDF_STATIC', 'TCPDF_STATIC', \false);
 // END OF TCPDF_STATIC CLASS

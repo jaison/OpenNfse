@@ -13,7 +13,6 @@ $psr4 = [
     'OpenNfseVendor\\GuzzleHttp\\Promise\\' => [__DIR__ . '/guzzlehttp/promises/src'],
     'OpenNfseVendor\\GuzzleHttp\\Psr7\\' => [__DIR__ . '/guzzlehttp/psr7/src'],
     'Nfse\\' => [__DIR__ . '/nfse-nacional/nfse-php/src'],
-    'NfsePdf\\' => [__DIR__ . '/paseto/nfse-nacional-pdf/src', __DIR__ . '/../src/PasetoOverrides'],
     'Psr\\Http\\Client\\' => [__DIR__ . '/psr/http-client/src'],
     'Psr\\Http\\Message\\' => [__DIR__ . '/psr/http-factory/src', __DIR__ . '/psr/http-message/src'],
     'Spatie\\DataTransferObject\\' => [__DIR__ . '/spatie/data-transfer-object/src'],

@@ -30,6 +30,10 @@ namespace OpenNfseVendor;
 // See LICENSE.TXT file for more information.
 // -------------------------------------------------------------------
 //
+// DEPRECATED :
+//   TCPDF is deprecated: migrate to tecnickcom/tc-lib-pdf
+//   (https://github.com/tecnickcom/tc-lib-pdf).
+//
 // Description : PHP class to creates array representations for
 //               2D barcodes to be used with TCPDF.
 //
@@ -47,6 +51,7 @@ namespace OpenNfseVendor;
  * @package com.tecnick.tcpdf
  * @version 1.0.015
  * @author Nicola Asuni
+ * @deprecated TCPDF is deprecated: migrate to tecnickcom/tc-lib-pdf.
  */
 class TCPDF2DBarcode
 {
@@ -387,6 +392,10 @@ class TCPDF2DBarcode
 // See LICENSE.TXT file for more information.
 // -------------------------------------------------------------------
 //
+// DEPRECATED :
+//   TCPDF is deprecated: migrate to tecnickcom/tc-lib-pdf
+//   (https://github.com/tecnickcom/tc-lib-pdf).
+//
 // Description : PHP class to creates array representations for
 //               2D barcodes to be used with TCPDF.
 //
@@ -404,6 +413,7 @@ class TCPDF2DBarcode
  * @package com.tecnick.tcpdf
  * @version 1.0.015
  * @author Nicola Asuni
+ * @deprecated TCPDF is deprecated: migrate to tecnickcom/tc-lib-pdf.
  */
 \class_alias('OpenNfseVendor\TCPDF2DBarcode', 'TCPDF2DBarcode', \false);
 // end of class

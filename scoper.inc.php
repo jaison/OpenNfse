@@ -46,10 +46,6 @@ $packageExcluded = [
         'phpstan.neon',
         'phpstan-baseline.neon',
     ],
-    // Gerador de PDF: script de exemplo da raiz.
-    'paseto/nfse-nacional-pdf' => [
-        'generate-pdf.php',
-    ],
 ];
 
 return [
@@ -102,8 +98,6 @@ return [
         '~^WHMCS(\\\\|$)~',
         // SDK nfse-php: o src/ usa as classes pelo nome completo (\Nfse\...).
         '~^Nfse(\\\\|$)~',
-        // Gerador de PDF: o src/PasetoOverrides/ redefine NfsePdf\NfsePdfGenerator.
-        '~^NfsePdf(\\\\|$)~',
         // Interfaces PSR (http-message, http-client, http-factory): contratos
         // estáveis entre versões, compartilhados com o host como era antes.
         '~^Psr(\\\\|$)~',
