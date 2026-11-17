@@ -110,6 +110,59 @@ final class LocalNfsePdfGeneratorTest extends TestCase
         self::assertTrue($data['destinatarioEhTomador']);
     }
 
+    private function call(LocalNfsePdfGenerator $g, string $method, ...$args)
+    {
+        $r = new \ReflectionMethod($g, $method);
+        $r->setAccessible(true);
+
+        return $r->invoke($g, ...$args);
+    }
+
+    public function testValuesFollowTheOfficialGeneratorFormatting(): void
+    {
+        $g = $this->generator();
+
+        self::assertSame('R$ 1.234,50', $this->call($g, 'brl', 1234.5));
+        self::assertSame('-', $this->call($g, 'moneyOrDash', null));
+        self::assertSame('-', $this->call($g, 'moneyOrDash', 0.0));
+        self::assertSame('R$ 10,00', $this->call($g, 'moneyOrDash', 10.0));
+        self::assertSame('-', $this->call($g, 'pctOrDash', 0.0));
+        self::assertSame('2,00%', $this->call($g, 'pctOrDash', 2.0));
+        self::assertSame('2,00', $this->call($g, 'numPctOrDash', 2.0));
+        self::assertSame('-', $this->call($g, 'joinValues', '-', '', '-'));
+        self::assertSame('100301 / - / Itajaí', $this->call($g, 'joinValues', '100301', '', 'Itajaí'));
+    }
+
+    public function testDescriptionsMatchTheOfficialGenerator(): void
+    {
+        $g = $this->generator();
+
+        self::assertSame('NFS-e Regular', $this->call($g, 'mapCStat', '100'));
+        self::assertSame('-', $this->call($g, 'mapFinNFSe', ''));
+        self::assertSame('3 - Optante - ME/EPP', $this->call($g, 'mapOpSimpNac', '3'));
+        self::assertSame('Nenhum', $this->call($g, 'mapRegEspTrib', '0'));
+        self::assertSame('Operação Tributável', $this->call($g, 'mapTribISSQN', '1'));
+        self::assertSame('Sistema Nacional da NFS-e', $this->call($g, 'mapAmbGer', '2'));
+    }
+
+    public function testComplementaryInfoTotalsLineMatchesTheOfficialText(): void
+    {
+        $g = $this->generator()->parseXml($this->xml());
+
+        self::assertSame(
+            'Totais aproximados dos Tributos cfe. Lei nº 12.741/2012: Federais: R$ 0,00; Estaduais: R$ 0,00; Municipais: R$ 0,00;',
+            $this->call($g, 'buildTotaisAproximadosLine')
+        );
+    }
+
+    public function testWithoutIbsCbsFinalidadeIsDash(): void
+    {
+        $data = $this->generator()->parseXml($this->xml())->getData();
+
+        self::assertSame('', $data['finNFSe']);
+        self::assertFalse($data['ibsNfsePresent']);
+    }
+
     public function testPdfIsGeneratedOnASinglePage(): void
     {
         $pdf = $this->generator()->parseXml($this->xml())->generate();
