@@ -14,6 +14,7 @@ declare(strict_types=1);
  *
  *   --dry            só monta e mostra o grupo IBSCBS, sem enviar.
  *   --fin-duplicado  também informa finNFSe em IbscbsData; o XML deve sair com um finNFSe só.
+ *   --cancelar-dps=<idDps> só consulta a DPS informada e cancela a NFS-e dela (use com a mesma fatura).
  *   --nbs=<9 dígitos> NBS a usar quando a DPS sair sem cNBS (a Sefin exige NBS com IBS/CBS, E0322).
  */
 
@@ -45,7 +46,11 @@ $dry = in_array('--dry', $args, true);
 $finDuplicado = in_array('--fin-duplicado', $args, true);
 $invoiceId = (int) ($args[0] ?? 0);
 $nbs = '';
+$cancelarDps = '';
 foreach ($args as $arg) {
+    if (str_starts_with($arg, '--cancelar-dps=')) {
+        $cancelarDps = trim(substr($arg, 15));
+    }
     if (str_starts_with($arg, '--nbs=')) {
         $nbs = preg_replace('/\D/', '', substr($arg, 6));
     }
@@ -72,6 +77,51 @@ $invoice = $invoiceRepo->getInvoice($invoiceId);
 $userId = (int) ($invoice['userid'] ?? 0);
 if ($userId !== CLIENTE_TESTE) {
     falhar('Recusado: a fatura não é do cliente de teste ' . CLIENTE_TESTE . '.');
+}
+
+$sdkConfig = [
+    'ambiente' => \Nfse\Enums\TipoAmbiente::Homologacao,
+    'certificatePath' => (string) $config['certificate_path'],
+    'certificatePassword' => (new CryptoService())->decrypt((string) $config['certificate_password_enc']),
+    'codigoMunicipio' => (string) ($config['codigo_ibge'] ?? ''),
+];
+$adapter = new NfsePhpSdkAdapter();
+
+function cancelar(NfsePhpSdkAdapter $adapter, array $sdkConfig, array $config, string $chave): void
+{
+    $evento = new \Nfse\Dto\Nfse\PedRegEventoData([
+        'versao' => '1.01',
+        'infPedReg' => [
+            'tpAmb' => 2,
+            'verAplic' => 'WHMCS-NFSE-ADDON',
+            'dhEvento' => date('c'),
+            'chNFSe' => $chave,
+            'cnpjAutor' => preg_replace('/\D/', '', (string) $config['cnpj_emissor']),
+            'tipoEvento' => '101101',
+            'e101101' => [
+                'xDesc' => 'Cancelamento de NFS-e',
+                'cMotivo' => '1',
+                'xMotivo' => 'Teste de homologacao do leiaute NT 009 com IBSCBS',
+            ],
+        ],
+    ]);
+    $cancel = $adapter->cancelarNfse($sdkConfig, $evento);
+    echo 'cancelamento: ', $cancel->success ? 'REGISTRADO' : 'FALHOU', "\n";
+    if (!$cancel->success) {
+        echo 'erro: ', $cancel->errorMessage ?? '', "\n";
+        exit(3);
+    }
+}
+
+if ($cancelarDps !== '') {
+    $consulta = $adapter->consultarDps($sdkConfig, $cancelarDps);
+    $chave = trim((string) ($consulta->chaveAcesso ?? ''));
+    if ($chave === '') {
+        falhar('DPS não encontrada ou sem chave: ' . ($consulta->errorMessage ?? ''));
+    }
+    echo 'chave: ', $chave, "\n";
+    cancelar($adapter, $sdkConfig, $config, $chave);
+    exit(0);
 }
 
 $items = $invoiceRepo->getItems($invoiceId);
@@ -120,13 +170,6 @@ if ($dry) {
     exit(0);
 }
 
-$sdkConfig = [
-    'ambiente' => \Nfse\Enums\TipoAmbiente::Homologacao,
-    'certificatePath' => (string) $config['certificate_path'],
-    'certificatePassword' => (new CryptoService())->decrypt((string) $config['certificate_password_enc']),
-    'codigoMunicipio' => (string) ($config['codigo_ibge'] ?? ''),
-];
-$adapter = new NfsePhpSdkAdapter();
 $result = $adapter->emitir($sdkConfig, $dps);
 
 echo 'emissão: ', $result->success ? 'AUTORIZADA' : 'REJEITADA', ' (HTTP ', $result->httpStatus ?? '-', ")\n";
@@ -134,27 +177,12 @@ if (!$result->success) {
     echo 'erro: ', $result->errorMessage ?? '', "\n";
     exit(2);
 }
-echo 'chave: ', $result->chaveAcesso, "\n";
-
-$evento = new \Nfse\Dto\Nfse\PedRegEventoData([
-    'versao' => '1.01',
-    'infPedReg' => [
-        'tpAmb' => 2,
-        'verAplic' => 'WHMCS-NFSE-ADDON',
-        'dhEvento' => date('c'),
-        'chNFSe' => $result->chaveAcesso,
-        'cnpjAutor' => preg_replace('/\D/', '', (string) $config['cnpj_emissor']),
-        'tipoEvento' => '101101',
-        'e101101' => [
-            'xDesc' => 'Cancelamento de NFS-e',
-            'cMotivo' => '1',
-            'xMotivo' => 'Teste de homologacao do leiaute NT 009 com IBSCBS',
-        ],
-    ],
-]);
-$cancel = $adapter->cancelarNfse($sdkConfig, $evento);
-echo 'cancelamento: ', $cancel->success ? 'REGISTRADO' : 'FALHOU', "\n";
-if (!$cancel->success) {
-    echo 'erro: ', $cancel->errorMessage ?? '', "\n";
-    exit(3);
+$chave = trim((string) ($result->chaveAcesso ?? ''));
+if ($chave === '' && $result->nfseXml) {
+    $chave = trim((string) (\OpenNfse\Helpers\NfseXmlExtractor::extractChaveAcesso($result->nfseXml) ?? ''));
 }
+if ($chave === '') {
+    falhar('Autorizada, mas sem chave na resposta. Cancele com --cancelar-dps=' . $dps->infDps->id);
+}
+echo 'chave: ', $chave, "\n";
+cancelar($adapter, $sdkConfig, $config, $chave);
