@@ -3,7 +3,7 @@
   "type": "project",
   "require": {
     "php": "^8.1",
-    "nfse-nacional/nfse-php": "1.24.0-beta",
+    "nfse-nacional/nfse-php": "dev-fix/nt009-trib-ibscbs",
     "tecnickcom/tcpdf": "^6.6",
     "symfony/polyfill-intl-normalizer": "^1.38"
   },
@@ -36,5 +36,10 @@
       "php tools/build-scoped-vendor.php",
       "@php -r \"array_map('unlink', glob(__DIR__.'/build/scoped/*') ?: []); @rmdir('build/scoped'); @rmdir('build');\""
     ]
-  }
+  },
+  "repositories": [{
+    "name": "nfse-fork",
+    "type": "vcs",
+    "url": "https://github.com/jaison/nfse-php"
+  }]
 }

@@ -80,6 +80,9 @@ class ContribuinteService
      * gerar o DANFSe internamente e adequar seus layouts. Novo Layout: o documento agora possui um formato
      * padrão obrigatório em folha A4, exigência de QR Code e inclusão de campos para IBS e CBS.
      * Nota técnica: https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/rtc/nt-008-se-cgnfse-danfse-20260505.pdf
+     * Para gerar o PDF localmente, use o pacote nfse-nacional/danfse-php:
+     * `(new \Danfse\Danfse\Danfse)->render($nfse->contribuinte()->consultar($chaveAcesso))`.
+     * @see https://github.com/nfse-nacional/danfse-php
      */
     public function downloadDanfse(string $chaveAcesso): string
     {
@@ -117,10 +120,13 @@ class ContribuinteService
         $evento->infPedReg->tipoEvento = '101101';
         return $this->registrarEventoData($evento);
     }
-    public function consultarEvento(string $chaveAcesso, int $tipoEvento, int $numSeqEvento): \Nfse\Dto\Http\RegistroEventoResponse
+    public function consultarEvento(string $chaveAcesso, int $tipoEvento, int $numSeqEvento): \Nfse\Dto\Http\ConsultaEventoResponse
     {
         return $this->sefinClient->consultarEvento($chaveAcesso, $tipoEvento, $numSeqEvento);
     }
+    /**
+     * @deprecated A API do Sefin Nacional não expõe listagem de eventos.
+     */
     public function listarEventos(string $chaveAcesso, ?int $tipoEvento = null): array
     {
         if ($tipoEvento) {

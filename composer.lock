@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "b2d077677076e603467e6c09ef5b5d9b",
+    "content-hash": "7d5124c52748b3cade14422e3b48021b",
     "packages": [
         {
             "name": "guzzlehttp/guzzle",
@@ -339,16 +339,16 @@
         },
         {
             "name": "nfse-nacional/nfse-php",
-            "version": "v1.24.0-beta",
+            "version": "dev-fix/nt009-trib-ibscbs",
             "source": {
                 "type": "git",
-                "url": "https://github.com/nfse-nacional/nfse-php.git",
-                "reference": "83e6484ed860eec04801d560431898c6065f85fe"
+                "url": "git@github.com:jaison/nfse-php.git",
+                "reference": "56c71bdcf56e9b408fb6754b55914cac683217ea"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/nfse-nacional/nfse-php/zipball/83e6484ed860eec04801d560431898c6065f85fe",
-                "reference": "83e6484ed860eec04801d560431898c6065f85fe",
+                "url": "https://api.github.com/repos/jaison/nfse-php/zipball/56c71bdcf56e9b408fb6754b55914cac683217ea",
+                "reference": "56c71bdcf56e9b408fb6754b55914cac683217ea",
                 "shasum": ""
             },
             "require": {
@@ -371,6 +371,7 @@
                 "spatie/ray": "^1.28"
             },
             "suggest": {
+                "nfse-nacional/danfse-php": "Gera o PDF do DANFSe localmente a partir do NfseData (PHP >= 8.3).",
                 "spatie/typescript-transformer": "Opcional (PHP >=8.2) para regenerar o arquivo types/generated.d.ts."
             },
             "type": "library",
@@ -379,7 +380,52 @@
                     "Nfse\\": "src"
                 }
             },
-            "notification-url": "https://packagist.org/downloads/",
+            "autoload-dev": {
+                "psr-4": {
+                    "Nfse\\Tests\\": "tests"
+                }
+            },
+            "archive": {
+                "exclude": [
+                    "/docs",
+                    "/references",
+                    "/tests",
+                    "/examples",
+                    "/.github",
+                    "/.phpunit.cache",
+                    "*.xml",
+                    "*.yml",
+                    "*.neon",
+                    "*.json",
+                    "*.lock",
+                    "!composer.json",
+                    "*.pdf",
+                    "*.xlsx",
+                    "*.jpg",
+                    "*.png",
+                    "*.ico",
+                    "*.pfx",
+                    "*.zip",
+                    "*.tar",
+                    "*.gz",
+                    "*.rar",
+                    ".DS_Store"
+                ]
+            },
+            "scripts": {
+                "test": [
+                    "vendor/bin/pest"
+                ],
+                "test-coverage": [
+                    "vendor/bin/pest --coverage"
+                ],
+                "format": [
+                    "vendor/bin/pint"
+                ],
+                "phpstan": [
+                    "vendor/bin/phpstan analyse --memory-limit 2G"
+                ]
+            },
             "license": [
                 "MIT"
             ],
@@ -393,13 +439,10 @@
             "description": "This is my package nfse",
             "homepage": "https://github.com/nfse-nacional/nfse-php",
             "keywords": [
+                "Nfse",
                 "nfse"
             ],
-            "support": {
-                "issues": "https://github.com/nfse-nacional/nfse-php/issues",
-                "source": "https://github.com/nfse-nacional/nfse-php/tree/v1.24.0-beta"
-            },
-            "time": "2026-11-01T16:11:44+00:00"
+            "time": "2026-11-20T19:38:38+00:00"
         },
         {
             "name": "psr/http-client",
@@ -4371,7 +4414,9 @@
     ],
     "aliases": [],
     "minimum-stability": "dev",
-    "stability-flags": {},
+    "stability-flags": {
+        "nfse-nacional/nfse-php": 20
+    },
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
