@@ -14,6 +14,7 @@ declare(strict_types=1);
  *
  *   --dry            só monta e mostra o grupo IBSCBS, sem enviar.
  *   --fin-duplicado  também informa finNFSe em IbscbsData; o XML deve sair com um finNFSe só.
+ *   --nbs=<9 dígitos> NBS a usar quando a DPS sair sem cNBS (a Sefin exige NBS com IBS/CBS, E0322).
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -43,6 +44,12 @@ $args = array_slice($argv, 1);
 $dry = in_array('--dry', $args, true);
 $finDuplicado = in_array('--fin-duplicado', $args, true);
 $invoiceId = (int) ($args[0] ?? 0);
+$nbs = '';
+foreach ($args as $arg) {
+    if (str_starts_with($arg, '--nbs=')) {
+        $nbs = preg_replace('/\D/', '', substr($arg, 6));
+    }
+}
 
 function falhar(string $msg): never
 {
@@ -83,6 +90,14 @@ if (($dps->infDps->finalidadeNfse ?? null) === null) {
     falhar('O addon montou a DPS no leiaute anterior à NT 009 (sem finNFSe). Ajuste o leiaute para NT 009 ou automático.');
 }
 
+$cServ = $dps->infDps->servico->codigoServico ?? null;
+if ($cServ !== null && ($cServ->codigoNbs ?? '') === '') {
+    if (strlen($nbs) !== 9) {
+        falhar('A DPS saiu sem cNBS. Informe --nbs=<9 dígitos> (a Sefin exige NBS com IBS/CBS, E0322).');
+    }
+    $cServ->codigoNbs = $nbs;
+}
+
 $ibscbs = [
     'cIndOp' => '100301',
     'indDest' => 0,
@@ -96,6 +111,8 @@ $dps->infDps->ibscbs = new \Nfse\Dto\Nfse\IbscbsData($ibscbs);
 $xml = (new \Nfse\Xml\DpsXmlBuilder())->build($dps);
 preg_match('#<IBSCBS>.*</IBSCBS>#s', $xml, $m);
 echo 'idDps: ', $dps->infDps->id, "\n";
+preg_match('#<cServ>.*</cServ>#s', $xml, $c);
+echo 'cServ: ', $c[0] ?? '(ausente)', "\n";
 echo 'finNFSe no XML: ', substr_count($xml, '<finNFSe>'), "\n";
 echo 'IBSCBS: ', $m[0] ?? '(ausente)', "\n";
 
