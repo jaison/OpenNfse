@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace OpenNfse\Controllers;
 
 use OpenNfse\Exceptions\NfseModuleException;
+use OpenNfse\Helpers\NbsPost;
+use OpenNfse\Helpers\ScriptJson;
 use OpenNfse\Helpers\WebRoot;
 use OpenNfse\Module;
 use OpenNfse\Repositories\ConfigRepository;
@@ -643,8 +645,8 @@ final class ConfigController
 
         echo '<script>';
         echo '(function(){';
-        echo 'var active=' . json_encode($activeTab, JSON_UNESCAPED_UNICODE) . ';';
-        echo 'var standalone=' . json_encode($standaloneTabs) . ';';
+        echo 'var active=' . ScriptJson::encode($activeTab) . ';';
+        echo 'var standalone=' . ScriptJson::encode($standaloneTabs) . ';';
         echo 'var root=document.getElementById("nfse-config");';
         echo 'if(!root){return;}';
         echo 'var links=root.querySelectorAll(".nfse-subnav a.nfse-subnav__item");';
@@ -659,7 +661,7 @@ final class ConfigController
         echo 'for(var j=0;j<links.length;j++){if(tabOf(links[j])===tab){links[j].setAttribute("aria-current","page");reveal(links[j]);}else{links[j].removeAttribute("aria-current");}}';
         echo 'for(var s=0;s<saves.length;s++){saves[s].hidden=standalone.indexOf(tab)!==-1;}';
         echo 'if(activeInput){activeInput.value=tab;}';
-        echo 'if(updateUrl&&window.history&&window.history.replaceState){window.history.replaceState(null,"",' . json_encode('addonmodules.php?module=OpenNfse&action=config&tab=', JSON_UNESCAPED_UNICODE) . '+encodeURIComponent(tab));}';
+        echo 'if(updateUrl&&window.history&&window.history.replaceState){window.history.replaceState(null,"",' . ScriptJson::encode('addonmodules.php?module=OpenNfse&action=config&tab=') . '+encodeURIComponent(tab));}';
         echo '}';
         echo 'for(var k=0;k<links.length;k++){(function(a){a.addEventListener("click",function(e){var tab=tabOf(a);if(!tab){return;}e.preventDefault();show(tab,true);});})(links[k]);}';
         echo 'var toggleButtons=document.querySelectorAll("[data-nfse-toggle-password]");';
@@ -882,7 +884,7 @@ final class ConfigController
         $inscricaoMunicipal = (string) ($_POST['inscricao_municipal'] ?? '');
         $codigoIbge = (string) ($_POST['codigo_ibge'] ?? '');
         $codigoServico = (string) ($_POST['codigo_servico'] ?? '');
-        $nbsPadrao = (string) ($_POST['nbs_padrao'] ?? '');
+        $nbsPadrao = (string) (NbsPost::padrao($_POST, isset($existingConfig['nbs_padrao']) ? (string) $existingConfig['nbs_padrao'] : null) ?? '');
         $aliquotaIss = (string) ($_POST['aliquota_iss'] ?? '');
         $tomadorFieldId = (string) ($_POST['tomador_cpfcnpj_customfield_id'] ?? '');
         $serieDps = (string) ($_POST['serie_dps'] ?? '900');
@@ -2063,7 +2065,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
             $nbsOptionsByService[$selectedServico][$selectedNbs] = $selectedNbs . ' - Valor atual fora do catálogo';
         }
 
-        $jsNbsOptions = json_encode($nbsOptionsByService, JSON_UNESCAPED_UNICODE);
+        $jsNbsOptions = ScriptJson::encode($nbsOptionsByService);
 
         echo Ui::formRow(
             'Código de Serviço Padrão',
@@ -2079,7 +2081,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
             ['id' => 'nfse-tributacao-nbs']
         );
 
-        echo '<script>(function(){var selectedNbs=' . json_encode($selectedNbs, JSON_UNESCAPED_UNICODE) . ';var nbsOptions=' . $jsNbsOptions . ';var servicoEl=document.getElementById("nfse-tributacao-servico");var nbsEl=document.getElementById("nfse-tributacao-nbs");var helpEl=document.getElementById("nfse-tributacao-nbs-help");if(!servicoEl||!nbsEl){return;}function fill(){var servico=servicoEl.value||"";nbsEl.innerHTML="";if(servico===""){var placeholder=document.createElement("option");placeholder.value="";placeholder.textContent="Selecione um código de serviço primeiro";nbsEl.appendChild(placeholder);nbsEl.disabled=true;if(helpEl){helpEl.textContent="Cadastre novas combinações na subaba Código de Serviços e NBS sempre que necessário.";}return;}var opts=nbsOptions[servico]||{};var first="";for(var key in opts){if(!opts.hasOwnProperty(key)){continue;}if(first===""){first=key;}var option=document.createElement("option");option.value=key;option.textContent=opts[key];if(selectedNbs!==""&&selectedNbs===key){option.selected=true;}nbsEl.appendChild(option);}if(nbsEl.options.length===0){var empty=document.createElement("option");empty.value="";empty.textContent="(Sem NBS cadastrada para este código)";nbsEl.appendChild(empty);nbsEl.disabled=true;if(helpEl){helpEl.textContent="Adicione uma NBS relacionada a este código na subaba Código de Serviços e NBS.";}return;}nbsEl.disabled=false;if(selectedNbs===""||!opts.hasOwnProperty(selectedNbs)){nbsEl.value=first;}if(helpEl){helpEl.textContent="A NBS selecionada será usada como padrão quando não houver regra específica por grupo.";}selectedNbs=nbsEl.value||"";}fill();servicoEl.addEventListener("change",function(){selectedNbs="";fill();});})();</script>';
+        echo '<script>(function(){var selectedNbs=' . ScriptJson::encode($selectedNbs) . ';var nbsOptions=' . $jsNbsOptions . ';var servicoEl=document.getElementById("nfse-tributacao-servico");var nbsEl=document.getElementById("nfse-tributacao-nbs");var helpEl=document.getElementById("nfse-tributacao-nbs-help");if(!servicoEl||!nbsEl){return;}function fill(){var servico=servicoEl.value||"";nbsEl.innerHTML="";if(servico===""){var placeholder=document.createElement("option");placeholder.value="";placeholder.textContent="Selecione um código de serviço primeiro";nbsEl.appendChild(placeholder);nbsEl.disabled=true;if(helpEl){helpEl.textContent="Cadastre novas combinações na subaba Código de Serviços e NBS sempre que necessário.";}return;}var opts=nbsOptions[servico]||{};var first="";for(var key in opts){if(!opts.hasOwnProperty(key)){continue;}if(first===""){first=key;}var option=document.createElement("option");option.value=key;option.textContent=opts[key];if(selectedNbs!==""&&selectedNbs===key){option.selected=true;}nbsEl.appendChild(option);}if(nbsEl.options.length===0){var empty=document.createElement("option");empty.value="";empty.textContent="(Sem NBS cadastrada para este código)";nbsEl.appendChild(empty);nbsEl.disabled=true;if(helpEl){helpEl.textContent="Adicione uma NBS relacionada a este código na subaba Código de Serviços e NBS.";}return;}nbsEl.disabled=false;if(selectedNbs===""||!opts.hasOwnProperty(selectedNbs)){nbsEl.value=first;}if(helpEl){helpEl.textContent="A NBS selecionada será usada como padrão quando não houver regra específica por grupo.";}selectedNbs=nbsEl.value||"";}fill();servicoEl.addEventListener("change",function(){selectedNbs="";fill();});})();</script>';
     }
 
 
@@ -2174,9 +2176,9 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
             }
         }
 
-        $jsNbsOptions = json_encode($mergedNbsOptions, JSON_UNESCAPED_UNICODE);
-        $jsDefaultServico = json_encode($defaultServico, JSON_UNESCAPED_UNICODE);
-        $jsDefaultNbs = json_encode($defaultNbs, JSON_UNESCAPED_UNICODE);
+        $jsNbsOptions = ScriptJson::encode($mergedNbsOptions);
+        $jsDefaultServico = ScriptJson::encode($defaultServico);
+        $jsDefaultNbs = ScriptJson::encode($defaultNbs);
 
         echo '<script>(function(){var nbsOptions=' . $jsNbsOptions . ';var defaultServico=' . $jsDefaultServico . ';var defaultNbs=' . $jsDefaultNbs . ';function curVal(cls,gid){var el=document.querySelector(cls+\'[data-gid="\'+gid+\'"]\');return el?el.value:\'\';}function fill(gid){var servEl=document.querySelector(\'.nfse-servico[data-gid="\'+gid+\'"]\');var nbsEl=document.querySelector(\'.nfse-nbs[data-gid="\'+gid+\'"]\');var help=document.querySelector(\'.nfse-nbs-help[data-gid="\'+gid+\'"]\');if(!servEl||!nbsEl){return;}var serv=servEl.value||\'\';var curNbs=curVal(\'.nfse-cur-nbs\',gid);nbsEl.innerHTML=\'\';if(serv===\'\'){var opt=document.createElement(\'option\');opt.value=\'\';opt.textContent=\'Padrão\';nbsEl.appendChild(opt);nbsEl.disabled=true;var s=defaultServico?defaultServico:\'-\';var n=defaultNbs?defaultNbs:\'-\';if(help){help.textContent=\'Usará: Código \' + s + \' e NBS \' + n; }return;}nbsEl.disabled=false;var opts=nbsOptions[serv]||{};var first=\'\';for(var k in opts){if(!opts.hasOwnProperty(k)){continue;}if(first===\'\'){first=k;}var o=document.createElement(\'option\');o.value=k;o.textContent=opts[k];if(curNbs!==\'\'&&curNbs===k){o.selected=true;}nbsEl.appendChild(o);}if(nbsEl.options.length===0){var o2=document.createElement(\'option\');o2.value=\'\';o2.textContent=\'(Sem opções)\';nbsEl.appendChild(o2);nbsEl.disabled=true;}else if(curNbs===\'\'){nbsEl.value=first;}if(help){help.textContent=\'\';}}var servs=document.querySelectorAll(\'.nfse-servico\');for(var i=0;i<servs.length;i++){(function(el){var gid=el.getAttribute(\'data-gid\');fill(gid);el.addEventListener(\'change\',function(){var h=document.querySelector(\'.nfse-cur-nbs[data-gid="\'+gid+\'"]\');if(h){h.value=\'\';}fill(gid);});})(servs[i]);}})();</script>';
     }
@@ -2216,6 +2218,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
         foreach ($catalogRepo->getNbsOptionsByServiceCode() as $codigoServico => $nbsOptions) {
             $allowedNbs[$codigoServico] = array_fill_keys(array_keys($nbsOptions), true);
         }
+        $nbsAtualPorGrupo = $repo->getAllByGroupId();
 
         foreach ($servicos as $gidRaw => $servRaw) {
             $gid = (int) $gidRaw;
@@ -2234,8 +2237,8 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
                 continue;
             }
 
-            $nbsRaw = (string) ($nbs[$gidRaw] ?? '');
-            $nbsDigits = preg_replace('/\D/', '', $nbsRaw);
+            $atual = $nbsAtualPorGrupo[$gid]['nbs'] ?? null;
+            $nbsDigits = NbsPost::doGrupo($nbs, $gid, $atual !== null ? (string) $atual : null);
             if ($nbsDigits === '' || !isset($allowedNbs[$serv][$nbsDigits])) {
                 Module::ui()->renderError('NBS inválida para o grupo ' . $gid . '.');
                 return;
