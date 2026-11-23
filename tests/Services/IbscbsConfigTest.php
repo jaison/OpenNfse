@@ -22,17 +22,17 @@ final class IbscbsConfigTest extends TestCase
             'cClassTrib' => '000001',
             'indDest' => '0',
         ], IbscbsConfig::codigos([]));
+        $this->assertSame('0', IbscbsConfig::codigos(['ibscbs_inddest' => '1'])['indDest']);
     }
 
     public function testValidaFormatoAoSalvar(): void
     {
-        $this->assertSame([], IbscbsConfig::validate('0', '100301', '000', '000001', '0'));
-        $this->assertSame([], IbscbsConfig::validate('1', '100301', '000', '000001', '1'));
-        $this->assertNotEmpty(IbscbsConfig::validate('2', '100301', '000', '000001', '0'));
-        $this->assertNotEmpty(IbscbsConfig::validate('1', '10030', '000', '000001', '0'));
-        $this->assertNotEmpty(IbscbsConfig::validate('1', '100301', '00', '000001', '0'));
-        $this->assertNotEmpty(IbscbsConfig::validate('1', '100301', '000', '00001', '0'));
-        $this->assertNotEmpty(IbscbsConfig::validate('1', '100301', '000', '000001', '2'));
+        $this->assertSame([], IbscbsConfig::validate('0', '100301', '000', '000001'));
+        $this->assertSame([], IbscbsConfig::validate('1', '100301', '000', '000001'));
+        $this->assertNotEmpty(IbscbsConfig::validate('2', '100301', '000', '000001'));
+        $this->assertNotEmpty(IbscbsConfig::validate('1', '10030', '000', '000001'));
+        $this->assertNotEmpty(IbscbsConfig::validate('1', '100301', '00', '000001'));
+        $this->assertNotEmpty(IbscbsConfig::validate('1', '100301', '000', '00001'));
     }
 
     public function testMigrationCriaColunasComPadraoDesligado(): void

@@ -303,7 +303,7 @@ final class DpsBuilderServiceTest extends TestCase
             'ibscbs_cindop' => '100301',
             'ibscbs_cst' => '000',
             'ibscbs_cclasstrib' => '000001',
-            'ibscbs_inddest' => '0',
+            'ibscbs_inddest' => '1',
         ];
         $xml = $this->buildXml($config, $this->clientePfSemEndereco(), '100.00');
 

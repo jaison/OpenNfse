@@ -602,10 +602,6 @@ final class ConfigController
         $this->renderTextRow('ibscbs_cindop', 'cIndOp', (string) ($config['ibscbs_cindop'] ?? IbscbsConfig::CIND_OP_PADRAO));
         $this->renderTextRow('ibscbs_cst', 'CST', (string) ($config['ibscbs_cst'] ?? IbscbsConfig::CST_PADRAO));
         $this->renderTextRow('ibscbs_cclasstrib', 'cClassTrib', (string) ($config['ibscbs_cclasstrib'] ?? IbscbsConfig::CCLASS_TRIB_PADRAO));
-        $this->renderSelectRow('ibscbs_inddest', 'indDest', [
-            '0' => '0 - O destinatário é o próprio tomador',
-            '1' => '1 - O destinatário não é o tomador',
-        ], (string) ($config['ibscbs_inddest'] ?? IbscbsConfig::IND_DEST_PADRAO));
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
         $this->renderConfigSectionStart(
@@ -1014,7 +1010,6 @@ $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '
         $ibscbsCindop = trim((string) ($_POST['ibscbs_cindop'] ?? IbscbsConfig::CIND_OP_PADRAO));
         $ibscbsCst = trim((string) ($_POST['ibscbs_cst'] ?? IbscbsConfig::CST_PADRAO));
         $ibscbsCclasstrib = trim((string) ($_POST['ibscbs_cclasstrib'] ?? IbscbsConfig::CCLASS_TRIB_PADRAO));
-        $ibscbsInddest = trim((string) ($_POST['ibscbs_inddest'] ?? IbscbsConfig::IND_DEST_PADRAO));
         $compraGovTpoper = trim((string) ($_POST['compra_gov_tpoper'] ?? CompraGovernamental::TPOPER_PADRAO));
         $compraGovFieldId = trim((string) ($_POST['compra_gov_customfield_id'] ?? ''));
         $prestadorRegEspTrib = trim($prestadorRegEspTrib);
@@ -1025,8 +1020,7 @@ $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '
             $ibscbsEnabled,
             $ibscbsCindop,
             $ibscbsCst,
-            $ibscbsCclasstrib,
-            $ibscbsInddest
+            $ibscbsCclasstrib
         );
         foreach ($ibscbsErrors as $ibscbsError) {
             $errors[] = $ibscbsError;
@@ -1177,7 +1171,7 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
             'ibscbs_cindop' => $ibscbsCindop,
             'ibscbs_cst' => $ibscbsCst,
             'ibscbs_cclasstrib' => $ibscbsCclasstrib,
-            'ibscbs_inddest' => $ibscbsInddest,
+            'ibscbs_inddest' => IbscbsConfig::IND_DEST_PADRAO,
             'compra_gov_customfield_id' => ctype_digit($compraGovFieldId) && (int) $compraGovFieldId > 0
                 ? (int) $compraGovFieldId
                 : null,

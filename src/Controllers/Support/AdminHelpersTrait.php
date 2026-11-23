@@ -454,15 +454,14 @@ trait AdminHelpersTrait
             'prestador_reg_esp_trib' => ['Use 0 quando não houver enquadramento específico.', 'Regime especial tributário (TSRegEspTrib): 0 Nenhum, 1 Ato Cooperado, 2 Estimativa, 3 Microempresa Municipal, 4 Notário ou Registrador, 5 Profissional Autônomo, 6 Sociedade de Profissionais, 9 Outros.'],
             'ibscbs_enabled' => [
                 'Desligado por padrão. Só altera a DPS no leiaute da NT 009.',
-                'Com o grupo ligado, a DPS leva cIndOp, indDest, CST e cClassTrib. Fora da NT 009 o XML permanece o de hoje.',
+                'Com o grupo ligado, a DPS leva cIndOp, CST e cClassTrib. O indDest fica sempre 0, porque 1 exige o grupo dest, que esta versão não monta. Fora da NT 009 o XML permanece o de hoje.',
             ],
             'ibscbs_cindop' => 'Código indicador da operação (6 dígitos). Padrão 100301.',
             'ibscbs_cst' => 'CST do IBS/CBS (3 dígitos). Padrão 000.',
             'ibscbs_cclasstrib' => 'Classificação tributária do IBS/CBS (6 dígitos). Padrão 000001.',
-            'ibscbs_inddest' => '0 quando o destinatário é o próprio tomador. 1 quando for outra pessoa.',
             'compra_gov_customfield_id' => [
                 'Campo do cliente que indica o ente público. Vazio não é governo.',
-                'Aceita 1 a 4, também com texto depois do dígito, como "4 - Município".',
+                'Códigos: 1 União, 2 Estado, 3 Distrito Federal, 4 Município (administração direta, autarquias e fundações). Crie o campo como lista suspensa com as opções: vazio, 1 - União, 2 - Estado, 3 - Distrito Federal, 4 - Município.',
             ],
             'compra_gov_tpoper' => 'Tipo de operação enviado junto com tpEnteGov. Padrão 5. Os tipos 2 e 3 não são usados.',
             'dps_leiaute' => ['Deixe em Automático, salvo se a SEFIN rejeitar a DPS com E1235 por leiaute.', 'O modo Automático segue a NT 009: leiaute novo em homologação desde 20/10/2026 e em produção a partir de 01/12/2026 00:00 (horário de Brasília). Force um leiaute só se a SEFIN rejeitar a DPS com E1235 por leiaute.'],

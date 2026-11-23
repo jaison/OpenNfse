@@ -22,7 +22,7 @@ final class IbscbsConfig
     /**
      * @return array<int, string>
      */
-    public static function validate(string $enabled, string $cIndOp, string $cst, string $cClassTrib, string $indDest): array
+    public static function validate(string $enabled, string $cIndOp, string $cst, string $cClassTrib): array
     {
         $errors = [];
         if (!in_array($enabled, ['0', '1'], true)) {
@@ -36,9 +36,6 @@ final class IbscbsConfig
         }
         if (preg_match('/^\d{6}$/', $cClassTrib) !== 1) {
             $errors[] = 'cClassTrib do IBS/CBS inválido (6 dígitos).';
-        }
-        if (!in_array($indDest, ['0', '1'], true)) {
-            $errors[] = 'indDest do IBS/CBS inválido (use 0 ou 1).';
         }
 
         return $errors;
@@ -85,13 +82,13 @@ final class IbscbsConfig
         $cIndOp = trim((string) ($config['ibscbs_cindop'] ?? ''));
         $cst = trim((string) ($config['ibscbs_cst'] ?? ''));
         $cClassTrib = trim((string) ($config['ibscbs_cclasstrib'] ?? ''));
-        $indDest = trim((string) ($config['ibscbs_inddest'] ?? ''));
 
         return [
             'cIndOp' => $cIndOp !== '' ? $cIndOp : self::CIND_OP_PADRAO,
             'cst' => $cst !== '' ? $cst : self::CST_PADRAO,
             'cClassTrib' => $cClassTrib !== '' ? $cClassTrib : self::CCLASS_TRIB_PADRAO,
-            'indDest' => $indDest !== '' ? $indDest : self::IND_DEST_PADRAO,
+            // indDest 1 exige o grupo dest, que esta versão não monta.
+            'indDest' => self::IND_DEST_PADRAO,
         ];
     }
 }
