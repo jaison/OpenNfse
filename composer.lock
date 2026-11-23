@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "b2d077677076e603467e6c09ef5b5d9b",
+    "content-hash": "ebbab5a5e31a5d4a9c9bc92e98417347",
     "packages": [
         {
             "name": "guzzlehttp/guzzle",
@@ -339,16 +339,16 @@
         },
         {
             "name": "nfse-nacional/nfse-php",
-            "version": "v1.24.0-beta",
+            "version": "v1.26.0-beta",
             "source": {
                 "type": "git",
                 "url": "https://github.com/nfse-nacional/nfse-php.git",
-                "reference": "83e6484ed860eec04801d560431898c6065f85fe"
+                "reference": "ac855fa750f074865a4df55c419d7e204abeb2ca"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/nfse-nacional/nfse-php/zipball/83e6484ed860eec04801d560431898c6065f85fe",
-                "reference": "83e6484ed860eec04801d560431898c6065f85fe",
+                "url": "https://api.github.com/repos/nfse-nacional/nfse-php/zipball/ac855fa750f074865a4df55c419d7e204abeb2ca",
+                "reference": "ac855fa750f074865a4df55c419d7e204abeb2ca",
                 "shasum": ""
             },
             "require": {
@@ -371,6 +371,7 @@
                 "spatie/ray": "^1.28"
             },
             "suggest": {
+                "nfse-nacional/danfse-php": "Gera o PDF do DANFSe localmente a partir do NfseData (PHP >= 8.3).",
                 "spatie/typescript-transformer": "Opcional (PHP >=8.2) para regenerar o arquivo types/generated.d.ts."
             },
             "type": "library",
@@ -397,9 +398,9 @@
             ],
             "support": {
                 "issues": "https://github.com/nfse-nacional/nfse-php/issues",
-                "source": "https://github.com/nfse-nacional/nfse-php/tree/v1.24.0-beta"
+                "source": "https://github.com/nfse-nacional/nfse-php/tree/v1.26.0-beta"
             },
-            "time": "2026-11-01T16:11:44+00:00"
+            "time": "2026-11-20T19:54:57+00:00"
         },
         {
             "name": "psr/http-client",

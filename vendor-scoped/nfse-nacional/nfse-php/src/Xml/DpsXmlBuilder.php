@@ -84,7 +84,7 @@ class DpsXmlBuilder
             $this->buildValores($parent, $data->valores, $data->prestador);
         }
         if ($data->ibscbs) {
-            $this->buildIbscbs($parent, $data->ibscbs);
+            $this->buildIbscbs($parent, $data->ibscbs, $data->finalidadeNfse !== null);
         }
     }
     private function buildPrestador(DOMElement $parent, PrestadorData $data): void
@@ -106,6 +106,7 @@ class DpsXmlBuilder
             $regTrib = $this->dom->createElement('regTrib');
             $this->appendElement($regTrib, 'opSimpNac', $data->regimeTributario->opcaoSimplesNacional);
             $this->appendElement($regTrib, 'regApTribSN', $data->regimeTributario->regimeApuracaoTributosSn);
+            $this->appendElement($regTrib, 'regApIBSCBSSN', $data->regimeTributario->regimeApuracaoIbsCbsSn);
             $this->appendElement($regTrib, 'regEspTrib', $data->regimeTributario->regimeEspecialTributacao);
             $prest->appendChild($regTrib);
         }
@@ -182,6 +183,7 @@ class DpsXmlBuilder
                 $this->appendElement($cServ, 'xDescServ', $data->codigoServico->descricaoServico);
             }
             $this->appendElement($cServ, 'cNBS', $data->codigoServico->codigoNbs);
+            $this->appendElement($cServ, 'cAtvSN', $data->codigoServico->codigoAtividadeSimplesNacional);
             $this->appendElement($cServ, 'cIntContrib', $data->codigoServico->codigoInternoContribuinte);
             if ($leiauteNt009) {
                 $this->appendElement($cServ, 'xDescServ', $data->codigoServico->descricaoServico);
@@ -348,10 +350,13 @@ class DpsXmlBuilder
         }
         $parent->appendChild($valores);
     }
-    private function buildIbscbs(DOMElement $parent, IbscbsData $data): void
+    private function buildIbscbs(DOMElement $parent, IbscbsData $data, bool $leiauteNt009 = \false): void
     {
         $ibscbs = $this->dom->createElement('IBSCBS');
-        $this->appendElement($ibscbs, 'finNFSe', $data->finalidadeNfse);
+        // No leiaute da NT 009, finNFSe fica só no infDPS e não existe em IBSCBS.
+        if (!$leiauteNt009) {
+            $this->appendElement($ibscbs, 'finNFSe', $data->finalidadeNfse);
+        }
         $this->appendElement($ibscbs, 'indFinal', $data->indicadorUsoConsumoPessoal);
         $this->appendElement($ibscbs, 'cIndOp', $data->codigoIndicadorOperacao);
         $this->appendElement($ibscbs, 'tpOper', $data->tipoOperacao);
@@ -398,8 +403,10 @@ class DpsXmlBuilder
         }
         $trib = $this->dom->createElement('trib');
         $gIbscbs = $this->dom->createElement('gIBSCBS');
-        $this->appendElement($gIbscbs, 'CST', $data->cst);
-        $this->appendElement($gIbscbs, 'cClassTrib', $data->codigoClassificacaoTributaria);
+        // No leiaute da NT 009, CST e cClassTrib ficam direto em trib, e gIBSCBS é opcional.
+        $tribClass = $leiauteNt009 ? $trib : $gIbscbs;
+        $this->appendElement($tribClass, 'CST', $data->cst);
+        $this->appendElement($tribClass, 'cClassTrib', $data->codigoClassificacaoTributaria);
         $this->appendElement($gIbscbs, 'cCredPres', $data->codigoCreditoPresumido);
         if ($data->cstTributacaoRegular) {
             $gTribRegular = $this->dom->createElement('gTribRegular');
@@ -414,7 +421,9 @@ class DpsXmlBuilder
             $this->appendElement($gDif, 'pDifCBS', number_format((float) $data->percentualDiferimentoCbs, 2, '.', ''));
             $gIbscbs->appendChild($gDif);
         }
-        $trib->appendChild($gIbscbs);
+        if (!$leiauteNt009 || $gIbscbs->hasChildNodes()) {
+            $trib->appendChild($gIbscbs);
+        }
         $valores->appendChild($trib);
         $ibscbs->appendChild($valores);
         $parent->appendChild($ibscbs);
