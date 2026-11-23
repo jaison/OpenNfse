@@ -26,6 +26,8 @@ final class EmissionPreValidationService
             ));
         }
 
+        $this->assertIbscbsECompraGovernamental($config, $invoice, $items, $client);
+
         $errors = [];
 
         $certificatePath = trim((string) ($config['certificate_path'] ?? ''));
@@ -118,5 +120,63 @@ final class EmissionPreValidationService
         if (!empty($errors)) {
             throw new NfseValidationException('Validação preventiva falhou: ' . implode('; ', array_values(array_unique($errors))) . '.');
         }
+    }
+
+    private function assertIbscbsECompraGovernamental(array $config, array $invoice, array $items, array $client): void
+    {
+        $ente = CompraGovernamental::ente($config, $client);
+        $ibscbsLigado = IbscbsConfig::enabled($config);
+        $leiauteNt009 = (new DpsLayoutService())->effectiveLayout($config) === DpsLayoutService::LAYOUT_NT009;
+
+        if ($ente !== null && (!$ibscbsLigado || !$leiauteNt009)) {
+            throw new NfseValidationException(
+                'Cliente marcado como ente público (compra governamental). A nota não pode ser emitida '
+                . 'com o IBS/CBS desligado ou fora do leiaute da NT 009: a SEFIN exige tpEnteGov e tpOper no grupo IBSCBS.'
+            );
+        }
+
+        if ($ente !== null && !$this->tomadorTemCnpj($config, $client)) {
+            throw new NfseValidationException(
+                'Cliente marcado como ente público (compra governamental) sem CNPJ de 14 dígitos no tomador. '
+                . 'Informe o CNPJ no campo de CPF/CNPJ do cliente.'
+            );
+        }
+
+        if ($ibscbsLigado && $leiauteNt009 && !$this->servicoTemCnbs($config, $invoice, $items)) {
+            throw new NfseValidationException(
+                'IBS/CBS está ligado e o serviço da nota não tem cNBS. A SEFIN rejeita esse caso com E0322. '
+                . 'Informe a NBS em Configurações > Tributação ou no mapeamento do grupo.'
+            );
+        }
+    }
+
+    private function tomadorTemCnpj(array $config, array $client): bool
+    {
+        $fieldId = (int) ($config['tomador_cpfcnpj_customfield_id'] ?? 0);
+        if ($fieldId <= 0) {
+            return false;
+        }
+
+        try {
+            $documento = (new WhmcsCustomerRepository())->getCpfCnpjFromCustomField((int) ($client['id'] ?? 0), $fieldId);
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return strlen($documento) === 14;
+    }
+
+    private function servicoTemCnbs(array $config, array $invoice, array $items): bool
+    {
+        try {
+            $resolved = (new DpsBuilderService())->resolveServicoNbs($config, $invoice, $items);
+        } catch (NfseValidationException $e) {
+            if (stripos($e->getMessage(), 'NBS') !== false) {
+                return false;
+            }
+            throw $e;
+        }
+
+        return ($resolved['nbs'] ?? '') !== '';
     }
 }

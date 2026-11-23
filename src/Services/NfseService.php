@@ -224,6 +224,7 @@ final class NfseService
         }
         $userId = (int) ($invoice['userid'] ?? 0);
         $client = $customerRepo->getClient($userId);
+        $client = (new CompraGovernamental())->withValor($config, $client, $customerRepo);
 
         (new EmissionPreValidationService())->validate($config, $invoice, $items, $client);
 

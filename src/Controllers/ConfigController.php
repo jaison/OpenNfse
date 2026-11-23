@@ -16,6 +16,7 @@ use OpenNfse\Repositories\ReportRepository;
 use OpenNfse\Repositories\ServiceNbsCatalogRepository;
 use OpenNfse\Repositories\WhmcsInvoiceRepository;
 use OpenNfse\Repositories\WhmcsPaymentGatewayRepository;
+use OpenNfse\Services\CompraGovernamental;
 use OpenNfse\Services\CryptoService;
 use OpenNfse\Services\DpsLayoutService;
 use OpenNfse\Services\EmissionPolicyService;
@@ -607,6 +608,23 @@ final class ConfigController
         ], (string) ($config['ibscbs_inddest'] ?? IbscbsConfig::IND_DEST_PADRAO));
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
+        $this->renderConfigSectionStart(
+            'Compra governamental',
+            'O custom field do cliente indica o ente. Vazio não é governo. tpOper 2 e 3 não são usados.'
+        );
+        $this->renderConfigFormTableStart();
+        $this->renderCustomFieldSelectRow(
+            'compra_gov_customfield_id',
+            'Custom field do ente público',
+            (string) ($config['compra_gov_customfield_id'] ?? '')
+        );
+        $tpOperSalvo = (string) ($config['compra_gov_tpoper'] ?? CompraGovernamental::TPOPER_PADRAO);
+        if (!in_array($tpOperSalvo, CompraGovernamental::TPOPER_VALIDOS, true)) {
+            $tpOperSalvo = CompraGovernamental::TPOPER_PADRAO;
+        }
+        $this->renderSelectRow('compra_gov_tpoper', 'tpOper', CompraGovernamental::tpOperOptions(), $tpOperSalvo);
+        $this->renderConfigFormTableEnd();
+        $this->renderConfigSectionEnd();
         $paneEnd();
 
         echo '<div class="nfse-savebar nfse-savebar--sticky nfse-cfg-savebar nfse-config-save" id="nfse-config-save"' . (in_array($activeTab, $standaloneTabs, true) ? ' hidden' : '') . '>';
@@ -997,6 +1015,8 @@ $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '
         $ibscbsCst = trim((string) ($_POST['ibscbs_cst'] ?? IbscbsConfig::CST_PADRAO));
         $ibscbsCclasstrib = trim((string) ($_POST['ibscbs_cclasstrib'] ?? IbscbsConfig::CCLASS_TRIB_PADRAO));
         $ibscbsInddest = trim((string) ($_POST['ibscbs_inddest'] ?? IbscbsConfig::IND_DEST_PADRAO));
+        $compraGovTpoper = trim((string) ($_POST['compra_gov_tpoper'] ?? CompraGovernamental::TPOPER_PADRAO));
+        $compraGovFieldId = trim((string) ($_POST['compra_gov_customfield_id'] ?? ''));
         $prestadorRegEspTrib = trim($prestadorRegEspTrib);
         if ($prestadorRegEspTrib === '') {
             $prestadorRegEspTrib = '0';
@@ -1010,6 +1030,9 @@ $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '
         );
         foreach ($ibscbsErrors as $ibscbsError) {
             $errors[] = $ibscbsError;
+        }
+        foreach (CompraGovernamental::validateConfig($compraGovTpoper, $compraGovFieldId) as $compraGovError) {
+            $errors[] = $compraGovError;
         }
         if (!in_array($prestadorRegEspTrib, self::REG_ESP_TRIB_VALIDOS, true)) {
             $errors[] = 'Regime especial inválido: use 0 (Nenhum), 1 (Ato Cooperado), 2 (Estimativa), '
@@ -1155,6 +1178,10 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
             'ibscbs_cst' => $ibscbsCst,
             'ibscbs_cclasstrib' => $ibscbsCclasstrib,
             'ibscbs_inddest' => $ibscbsInddest,
+            'compra_gov_customfield_id' => ctype_digit($compraGovFieldId) && (int) $compraGovFieldId > 0
+                ? (int) $compraGovFieldId
+                : null,
+            'compra_gov_tpoper' => $compraGovTpoper,
             'queue_enabled' => (int) $queueEnabled,
             'auto_emit_on_payment' => (int) $autoEmitOnPayment,
             'auto_emit_trigger' => $autoEmitTrigger,

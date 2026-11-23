@@ -322,7 +322,8 @@ final class DpsBuilderService
                 'trib' => $trib,
             ],
         ];
-        $ibscbs = IbscbsConfig::grupo($config, $layout);
+        $ente = CompraGovernamental::ente($config, $client);
+        $ibscbs = IbscbsConfig::grupo($config, $layout, $ente, CompraGovernamental::tpOper($config));
         if ($ibscbs !== null) {
             $infDps['IBSCBS'] = $ibscbs;
         }
@@ -344,6 +345,22 @@ final class DpsBuilderService
         return number_format($v, 2, '.', '');
     }
 
+
+    /**
+     * Código de serviço e cNBS efetivos da fatura (padrão ou mapeamento de grupo).
+     *
+     * @return array{codigo_servico: string, nbs: string}
+     */
+    public function resolveServicoNbs(array $config, array $invoice, array $items): array
+    {
+        $codigoServico = (string) ($config['codigo_servico'] ?? '');
+        $nbsDigits = preg_replace('/\D/', '', (string) ($config['nbs_padrao'] ?? ''));
+        if ($nbsDigits !== '' && strlen($nbsDigits) !== 9) {
+            throw new NfseValidationException('NBS inválida (precisa ter 9 dígitos).');
+        }
+
+        return $this->resolveCodigoServicoAndNbs($invoice, $items, $codigoServico, $nbsDigits);
+    }
 
     private function resolveCodigoServicoAndNbs(array $invoice, array $items, string $defaultCodigoServico, string $defaultNbsDigits): array
     {

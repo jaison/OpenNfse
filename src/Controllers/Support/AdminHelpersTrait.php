@@ -460,6 +460,11 @@ trait AdminHelpersTrait
             'ibscbs_cst' => 'CST do IBS/CBS (3 dígitos). Padrão 000.',
             'ibscbs_cclasstrib' => 'Classificação tributária do IBS/CBS (6 dígitos). Padrão 000001.',
             'ibscbs_inddest' => '0 quando o destinatário é o próprio tomador. 1 quando for outra pessoa.',
+            'compra_gov_customfield_id' => [
+                'Campo do cliente que indica o ente público. Vazio não é governo.',
+                'Aceita 1 a 4, também com texto depois do dígito, como "4 - Município".',
+            ],
+            'compra_gov_tpoper' => 'Tipo de operação enviado junto com tpEnteGov. Padrão 5. Os tipos 2 e 3 não são usados.',
             'dps_leiaute' => ['Deixe em Automático, salvo se a SEFIN rejeitar a DPS com E1235 por leiaute.', 'O modo Automático segue a NT 009: leiaute novo em homologação desde 20/10/2026 e em produção a partir de 01/12/2026 00:00 (horário de Brasília). Force um leiaute só se a SEFIN rejeitar a DPS com E1235 por leiaute.'],
             'tomador_cpfcnpj_customfield_id' => 'ID do custom field do cliente que armazena CPF/CNPJ do tomador no WHMCS.',
             'client_area_notice_enabled' => 'Controla a exibição de um aviso fixo no topo da lista de NFS-e do cliente.',

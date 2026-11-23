@@ -46,18 +46,18 @@ final class IbscbsConfig
 
     /**
      * Grupo para o infDPS, ou null quando o IBS/CBS não entra no XML.
+     * tpEnteGov e tpOper só entram juntos, quando o cliente é ente público.
      *
      * @return array<string, mixed>|null
      */
-    public static function grupo(array $config, string $layout): ?array
+    public static function grupo(array $config, string $layout, ?int $ente = null, ?int $tpOper = null): ?array
     {
         if ($layout !== DpsLayoutService::LAYOUT_NT009 || !self::enabled($config)) {
             return null;
         }
 
         $codigos = self::codigos($config);
-
-        return [
+        $grupo = [
             'cIndOp' => $codigos['cIndOp'],
             'indDest' => (int) $codigos['indDest'],
             'valores' => [
@@ -69,6 +69,12 @@ final class IbscbsConfig
                 ],
             ],
         ];
+        if ($ente !== null) {
+            $grupo['tpEnteGov'] = $ente;
+            $grupo['tpOper'] = $tpOper ?? (int) CompraGovernamental::TPOPER_PADRAO;
+        }
+
+        return $grupo;
     }
 
     /**

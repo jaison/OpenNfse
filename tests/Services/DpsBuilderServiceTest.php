@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenNfse\Tests\Services;
 
 use OpenNfse\Helpers\AddonVersion;
+use OpenNfse\Services\CompraGovernamental;
 use OpenNfse\Services\DpsBuilderService;
 use OpenNfse\Services\DpsLayoutService;
 use OpenNfse\Services\IbscbsConfig;
@@ -313,6 +314,62 @@ final class DpsBuilderServiceTest extends TestCase
         $this->assertStringNotContainsString('<tpOper>', $xml);
         $this->assertStringNotContainsString('<tpEnteGov>', $xml);
         $this->assertSame(IbscbsConfig::CIND_OP_PADRAO, '100301');
+    }
+
+    /**
+     * @dataProvider entesEOperacoes
+     */
+    public function testCompraGovernamentalEnviaEnteETpOper(string $ente, string $tpOper): void
+    {
+        $config = $this->configIbscbs() + ['compra_gov_tpoper' => $tpOper];
+        $client = $this->clientePfSemEndereco() + [CompraGovernamental::CLIENT_KEY => $ente];
+        $xml = $this->buildXml($config, $client, '100.00', '12345678000195');
+
+        $this->assertStringContainsString(
+            '<cIndOp>100301</cIndOp><tpOper>' . $tpOper . '</tpOper><tpEnteGov>' . $ente . '</tpEnteGov><indDest>0</indDest>',
+            $xml
+        );
+        $this->assertStringContainsString('<CST>000</CST><cClassTrib>000001</cClassTrib>', $xml);
+    }
+
+    public function testTextoDoCampoViraEnteQuatro(): void
+    {
+        $config = $this->configIbscbs() + ['compra_gov_tpoper' => '5'];
+        $client = $this->clientePfSemEndereco() + [CompraGovernamental::CLIENT_KEY => '4 - Município'];
+        $xml = $this->buildXml($config, $client, '100.00', '12345678000195');
+
+        $this->assertStringContainsString('<tpOper>5</tpOper><tpEnteGov>4</tpEnteGov>', $xml);
+    }
+
+    public function testCampoVazioNaoEnviaGoverno(): void
+    {
+        $config = $this->configIbscbs() + ['compra_gov_customfield_id' => 12, 'compra_gov_tpoper' => '5'];
+        $client = $this->clientePfSemEndereco() + [CompraGovernamental::CLIENT_KEY => ''];
+        $xml = $this->buildXml($config, $client, '100.00');
+
+        $this->assertStringContainsString('<IBSCBS>', $xml);
+        $this->assertStringNotContainsString('<tpOper>', $xml);
+        $this->assertStringNotContainsString('<tpEnteGov>', $xml);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function entesEOperacoes(): array
+    {
+        $casos = [];
+        foreach (['1', '2', '3', '4'] as $ente) {
+            foreach (['1', '4', '5'] as $tpOper) {
+                $casos['ente ' . $ente . ' tpOper ' . $tpOper] = [$ente, $tpOper];
+            }
+        }
+
+        return $casos;
+    }
+
+    private function configIbscbs(): array
+    {
+        return $this->config(DpsLayoutService::MODE_NT009) + ['ibscbs_enabled' => '1'];
     }
 
     private function xmlSemRelogio(string $xml): string
