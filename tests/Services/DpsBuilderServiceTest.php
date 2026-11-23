@@ -7,6 +7,7 @@ namespace OpenNfse\Tests\Services;
 use OpenNfse\Helpers\AddonVersion;
 use OpenNfse\Services\DpsBuilderService;
 use OpenNfse\Services\DpsLayoutService;
+use OpenNfse\Services\IbscbsConfig;
 use OpenNfse\Services\TomadorBairroService;
 use PHPUnit\Framework\TestCase;
 use WHMCS\Database\Capsule;
@@ -270,5 +271,52 @@ final class DpsBuilderServiceTest extends TestCase
             '<xLgr>Market Street</xLgr><nro>500</nro><xCpl>Suite 12 - Floor 3</xCpl><xBairro>CENTRO</xBairro>',
             $end
         );
+    }
+
+    public function testIbscbsDesligadoMantemOXmlAtual(): void
+    {
+        $base = $this->config(DpsLayoutService::MODE_NT009);
+        $desligado = $base + ['ibscbs_enabled' => '0'];
+        $semChave = $this->xmlSemRelogio($this->buildXml($base, $this->clientePfSemEndereco(), '100.00'));
+        $explicito = $this->xmlSemRelogio($this->buildXml($desligado, $this->clientePfSemEndereco(), '100.00'));
+
+        $this->assertSame($semChave, $explicito);
+        $this->assertStringNotContainsString('IBSCBS', $explicito);
+        $this->assertStringNotContainsString('tpEnteGov', $explicito);
+        $this->assertStringNotContainsString('tpOper', $explicito);
+    }
+
+    public function testIbscbsLigadoForaDaNt009NaoEntraNoXml(): void
+    {
+        $config = $this->config(DpsLayoutService::MODE_PRE_NT009) + ['ibscbs_enabled' => '1'];
+        $xml = $this->buildXml($config, $this->clientePfSemEndereco(), '100.00');
+
+        $this->assertStringNotContainsString('IBSCBS', $xml);
+        $this->assertStringNotContainsString('finNFSe', $xml);
+    }
+
+    public function testIbscbsLigadoNaNt009EnviaOGrupoMinimoSemGoverno(): void
+    {
+        $config = $this->config(DpsLayoutService::MODE_NT009) + [
+            'ibscbs_enabled' => '1',
+            'ibscbs_cindop' => '100301',
+            'ibscbs_cst' => '000',
+            'ibscbs_cclasstrib' => '000001',
+            'ibscbs_inddest' => '0',
+        ];
+        $xml = $this->buildXml($config, $this->clientePfSemEndereco(), '100.00');
+
+        $this->assertStringContainsString(
+            '<IBSCBS><cIndOp>100301</cIndOp><indDest>0</indDest><valores><trib><CST>000</CST><cClassTrib>000001</cClassTrib></trib></valores></IBSCBS>',
+            $xml
+        );
+        $this->assertStringNotContainsString('<tpOper>', $xml);
+        $this->assertStringNotContainsString('<tpEnteGov>', $xml);
+        $this->assertSame(IbscbsConfig::CIND_OP_PADRAO, '100301');
+    }
+
+    private function xmlSemRelogio(string $xml): string
+    {
+        return (string) preg_replace('#<dhEmi>[^<]*</dhEmi>#', '<dhEmi></dhEmi>', $xml);
     }
 }

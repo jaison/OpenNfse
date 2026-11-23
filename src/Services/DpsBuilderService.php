@@ -322,6 +322,10 @@ final class DpsBuilderService
                 'trib' => $trib,
             ],
         ];
+        $ibscbs = IbscbsConfig::grupo($config, $layout);
+        if ($ibscbs !== null) {
+            $infDps['IBSCBS'] = $ibscbs;
+        }
 
         $dps = new \Nfse\Dto\Nfse\DpsData([
             '@attributes' => ['versao' => $layoutService->versaoDps($layout)],

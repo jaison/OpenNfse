@@ -20,6 +20,7 @@ use OpenNfse\Services\CryptoService;
 use OpenNfse\Services\DpsLayoutService;
 use OpenNfse\Services\EmissionPolicyService;
 use OpenNfse\Services\IbgeService;
+use OpenNfse\Services\IbscbsConfig;
 use OpenNfse\Services\InvoiceEmailService;
 use OpenNfse\Services\NfseService;
 use OpenNfse\Services\QueueErrorClassifierService;
@@ -588,6 +589,24 @@ final class ConfigController
         );
         $this->renderConfigFormTableEnd();
         $this->renderConfigSectionEnd();
+        $this->renderConfigSectionStart(
+            'IBS/CBS (NT 009)',
+            'Grupo mínimo do IBSCBS. Só entra na DPS quando estiver ligado e o leiaute efetivo for o da NT 009.'
+        );
+        $this->renderConfigFormTableStart();
+        $this->renderSelectRow('ibscbs_enabled', 'Enviar grupo IBS/CBS', [
+            '0' => 'Não',
+            '1' => 'Sim',
+        ], (string) ($config['ibscbs_enabled'] ?? '0'));
+        $this->renderTextRow('ibscbs_cindop', 'cIndOp', (string) ($config['ibscbs_cindop'] ?? IbscbsConfig::CIND_OP_PADRAO));
+        $this->renderTextRow('ibscbs_cst', 'CST', (string) ($config['ibscbs_cst'] ?? IbscbsConfig::CST_PADRAO));
+        $this->renderTextRow('ibscbs_cclasstrib', 'cClassTrib', (string) ($config['ibscbs_cclasstrib'] ?? IbscbsConfig::CCLASS_TRIB_PADRAO));
+        $this->renderSelectRow('ibscbs_inddest', 'indDest', [
+            '0' => '0 - O destinatário é o próprio tomador',
+            '1' => '1 - O destinatário não é o tomador',
+        ], (string) ($config['ibscbs_inddest'] ?? IbscbsConfig::IND_DEST_PADRAO));
+        $this->renderConfigFormTableEnd();
+        $this->renderConfigSectionEnd();
         $paneEnd();
 
         echo '<div class="nfse-savebar nfse-savebar--sticky nfse-cfg-savebar nfse-config-save" id="nfse-config-save"' . (in_array($activeTab, $standaloneTabs, true) ? ' hidden' : '') . '>';
@@ -973,9 +992,24 @@ $queueWaitInterval = (string) ($_POST['queue_wait_status_interval_seconds'] ?? '
         if ($prestadorOpSimpNac !== '3') {
             $prestadorRegApTribSn = '';
         }
+        $ibscbsEnabled = (string) ($_POST['ibscbs_enabled'] ?? '0');
+        $ibscbsCindop = trim((string) ($_POST['ibscbs_cindop'] ?? IbscbsConfig::CIND_OP_PADRAO));
+        $ibscbsCst = trim((string) ($_POST['ibscbs_cst'] ?? IbscbsConfig::CST_PADRAO));
+        $ibscbsCclasstrib = trim((string) ($_POST['ibscbs_cclasstrib'] ?? IbscbsConfig::CCLASS_TRIB_PADRAO));
+        $ibscbsInddest = trim((string) ($_POST['ibscbs_inddest'] ?? IbscbsConfig::IND_DEST_PADRAO));
         $prestadorRegEspTrib = trim($prestadorRegEspTrib);
         if ($prestadorRegEspTrib === '') {
             $prestadorRegEspTrib = '0';
+        }
+        $ibscbsErrors = IbscbsConfig::validate(
+            $ibscbsEnabled,
+            $ibscbsCindop,
+            $ibscbsCst,
+            $ibscbsCclasstrib,
+            $ibscbsInddest
+        );
+        foreach ($ibscbsErrors as $ibscbsError) {
+            $errors[] = $ibscbsError;
         }
         if (!in_array($prestadorRegEspTrib, self::REG_ESP_TRIB_VALIDOS, true)) {
             $errors[] = 'Regime especial inválido: use 0 (Nenhum), 1 (Ato Cooperado), 2 (Estimativa), '
@@ -1116,6 +1150,11 @@ $errors[] = 'Opção inválida para envio automático de e-mail da NFS-e.';
             'prestador_op_simp_nac' => $prestadorOpSimpNac,
             'prestador_reg_ap_trib_sn' => $prestadorRegApTribSn,
             'prestador_reg_esp_trib' => $prestadorRegEspTrib,
+            'ibscbs_enabled' => (int) $ibscbsEnabled,
+            'ibscbs_cindop' => $ibscbsCindop,
+            'ibscbs_cst' => $ibscbsCst,
+            'ibscbs_cclasstrib' => $ibscbsCclasstrib,
+            'ibscbs_inddest' => $ibscbsInddest,
             'queue_enabled' => (int) $queueEnabled,
             'auto_emit_on_payment' => (int) $autoEmitOnPayment,
             'auto_emit_trigger' => $autoEmitTrigger,
