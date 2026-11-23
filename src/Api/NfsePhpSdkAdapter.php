@@ -8,6 +8,7 @@ use OpenNfse\Dto\CancelarResult;
 use OpenNfse\Dto\ConsultarDpsResult;
 use OpenNfse\Dto\ConsultarNfseResult;
 use OpenNfse\Dto\EmitirResult;
+use OpenNfse\Helpers\NfseXmlExtractor;
 
 final class NfsePhpSdkAdapter implements SdkAdapterInterface
 {
@@ -20,10 +21,7 @@ final class NfsePhpSdkAdapter implements SdkAdapterInterface
             $service = $nfse->contribuinte();
             $nfseData = $service->emitir($dpsData);
 
-            $chave = null;
-            if (property_exists($nfseData, 'infNfse') && $nfseData->infNfse && property_exists($nfseData->infNfse, 'chaveAcesso')) {
-                $chave = (string) $nfseData->infNfse->chaveAcesso;
-            }
+            $chave = self::chaveAcessoDaEmissao($nfseData);
 
             $xml = null;
             if (property_exists($nfseData, 'nfseXml')) {
@@ -184,6 +182,29 @@ final class NfsePhpSdkAdapter implements SdkAdapterInterface
                 'raw_response' => null,
             ];
         }
+    }
+
+    /**
+     * A chave não existe como campo do DTO: está em infNfse->id ("NFS" + 50 dígitos)
+     * e, no XML, só no atributo Id de infNFSe.
+     */
+    public static function chaveAcessoDaEmissao(object $nfseData): ?string
+    {
+        $infNfse = $nfseData->infNfse ?? null;
+        if (is_object($infNfse)) {
+            $id = $infNfse->id ?? null;
+            $chave = NfseXmlExtractor::chaveDeInfNfseId(is_scalar($id) ? (string) $id : null);
+            if ($chave !== null) {
+                return $chave;
+            }
+        }
+
+        $xml = $nfseData->nfseXml ?? null;
+        if (!is_string($xml) || $xml === '') {
+            return null;
+        }
+
+        return NfseXmlExtractor::chaveDeInfNfseId(NfseXmlExtractor::extractChaveAcessoFromInfNfseId($xml));
     }
 
     private function makeSdk(array $sdkConfig): \Nfse\Nfse

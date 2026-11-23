@@ -132,4 +132,24 @@ XML;
         $this->assertNull(NfseXmlExtractor::extractValorServico('<NFSe><vServ>abc</vServ></NFSe>'));
         $this->assertNull(NfseXmlExtractor::extractValorServico('não é xml'));
     }
+
+    public function testResolveChaveAcessoUsaIdQuandoNaoHaElemento(): void
+    {
+        $chave = str_repeat('9', 50);
+        $xml = '<NFSe><infNFSe Id="NFS' . $chave . '"><nNFSe>1</nNFSe></infNFSe></NFSe>';
+
+        $this->assertSame($chave, NfseXmlExtractor::chaveDeInfNfseId('NFS' . $chave));
+        $this->assertSame($chave, NfseXmlExtractor::resolveChaveAcesso($xml));
+        $this->assertNull(NfseXmlExtractor::resolveChaveAcesso(self::XML_NFSE));
+        $this->assertNull(NfseXmlExtractor::chaveDeInfNfseId('NFS' . str_repeat('1', 49)));
+    }
+
+    public function testResolveChaveAcessoPrefereElementoDe50Digitos(): void
+    {
+        $porElemento = str_repeat('1', 50);
+        $porId = str_repeat('2', 50);
+        $xml = '<NFSe><infNFSe Id="NFS' . $porId . '"><chNFSe>' . $porElemento . '</chNFSe></infNFSe></NFSe>';
+
+        $this->assertSame($porElemento, NfseXmlExtractor::resolveChaveAcesso($xml));
+    }
 }

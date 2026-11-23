@@ -942,7 +942,7 @@ final class NfseService
             throw new NfseModuleException('Não foi possível ler o XML órfão selecionado.');
         }
 
-        $chave = trim((string) (NfseXmlExtractor::extractChaveAcesso($xml) ?? ''));
+        $chave = trim((string) (NfseXmlExtractor::resolveChaveAcesso($xml) ?? ''));
         $historyRepo = new FiscalHistoryRepository();
         $historyEmission = $historyRepo->findLatestEmissionByXmlPathOrChave($normalizedPath, $chave !== '' ? $chave : null) ?? [];
         $idDps = trim((string) (($historyEmission['id_dps'] ?? '') !== '' ? $historyEmission['id_dps'] : (NfseXmlExtractor::extractIdDps($xml) ?? '')));

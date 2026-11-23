@@ -195,7 +195,7 @@ final class ApiAuditService
         $emitidaEm = NfseXmlExtractor::extractEmitidaEm($xml);
         $eventoEm = NfseXmlExtractor::extractEventDate($xml);
         $numeroNf = NfseXmlExtractor::extractNumeroNfse($xml);
-        $chaveExtraida = NfseXmlExtractor::extractChaveAcesso($xml);
+        $chaveExtraida = NfseXmlExtractor::resolveChaveAcesso($xml);
         $competencia = NfseXmlExtractor::extractCompetencia($xml);
 
         $tipoDocumento = 'DESCONHECIDO';

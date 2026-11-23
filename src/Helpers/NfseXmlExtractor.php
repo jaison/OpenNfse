@@ -124,6 +124,33 @@ final class NfseXmlExtractor
         });
     }
 
+    /**
+     * Chave de 50 dígitos a partir de "NFS" + chave, ou da chave já sem prefixo.
+     */
+    public static function chaveDeInfNfseId(?string $id): ?string
+    {
+        $id = trim((string) $id);
+        if ($id === '') {
+            return null;
+        }
+        $id = (string) preg_replace('/^NFS/i', '', $id);
+
+        return preg_match('/^\d{50}$/', $id) === 1 ? $id : null;
+    }
+
+    /**
+     * Elemento de chave, quando existir; senão o Id de infNFSe. Só devolve 50 dígitos.
+     */
+    public static function resolveChaveAcesso(string $xml): ?string
+    {
+        $porElemento = self::chaveDeInfNfseId(self::extractChaveAcesso($xml));
+        if ($porElemento !== null) {
+            return $porElemento;
+        }
+
+        return self::chaveDeInfNfseId(self::extractChaveAcessoFromInfNfseId($xml));
+    }
+
     public static function extractIdDps(string $xml): ?string
     {
         return self::withDocument($xml, static function (\DOMXPath $xp): ?string {
