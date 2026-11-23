@@ -129,6 +129,26 @@ function cancelar(NfsePhpSdkAdapter $adapter, array $sdkConfig, array $config, s
     }
 }
 
+/** Consulta a NFS-e direto na Sefin (XML bruto) e mostra os campos de compra governamental. */
+function mostrarCamposNfse(array $sdkConfig, string $chave): void
+{
+    $context = new \Nfse\Http\NfseContext(
+        ambiente: $sdkConfig['ambiente'],
+        certificatePath: $sdkConfig['certificatePath'],
+        certificatePassword: $sdkConfig['certificatePassword'],
+        codigoMunicipio: $sdkConfig['codigoMunicipio'] ?: null
+    );
+    $resp = (new \Nfse\Http\Client\SefinClient($context))->consultarNfse($chave);
+    $xml = $resp->nfseXmlGZipB64 ? (string) gzdecode(base64_decode($resp->nfseXmlGZipB64)) : '';
+    if ($xml === '') {
+        echo "NFS-e: consulta sem XML\n";
+        return;
+    }
+    foreach (['tpEnteGov', 'tpOper', 'pRedutor', 'gTribCompraGov', 'gTribSN', 'vReceitaBrutaSN', 'totCIBS'] as $tag) {
+        echo 'NFS-e ', $tag, ': ', preg_match('#<' . $tag . '>.*?</' . $tag . '>#s', $xml, $t) ? $t[0] : '(ausente)', "\n";
+    }
+}
+
 if ($cancelarDps !== '') {
     $consulta = $adapter->consultarDps($sdkConfig, $cancelarDps);
     $chave = trim((string) ($consulta->chaveAcesso ?? ''));
@@ -136,6 +156,7 @@ if ($cancelarDps !== '') {
         falhar('DPS não encontrada ou sem chave: ' . ($consulta->errorMessage ?? ''));
     }
     echo 'chave: ', $chave, "\n";
+    mostrarCamposNfse($sdkConfig, $chave);
     cancelar($adapter, $sdkConfig, $config, $chave);
     exit(0);
 }
