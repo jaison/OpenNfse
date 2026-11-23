@@ -16,6 +16,8 @@ declare(strict_types=1);
  *   --fin-duplicado  também informa finNFSe em IbscbsData; o XML deve sair com um finNFSe só.
  *   --cancelar-dps=<idDps> só consulta a DPS informada e cancela a NFS-e dela (use com a mesma fatura).
  *   --nbs=<9 dígitos> NBS a usar quando a DPS sair sem cNBS (a Sefin exige NBS com IBS/CBS, E0322).
+ *   --ente=<1-4>     compra governamental: tpEnteGov (1 União, 2 Estado, 3 DF, 4 Município).
+ *   --oper=<1|4|5>   tpOper da compra governamental (2 e 3 exigem gRefNFSe e não são cobertos aqui).
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -47,9 +49,17 @@ $finDuplicado = in_array('--fin-duplicado', $args, true);
 $invoiceId = (int) ($args[0] ?? 0);
 $nbs = '';
 $cancelarDps = '';
+$ente = 0;
+$oper = 0;
 foreach ($args as $arg) {
     if (str_starts_with($arg, '--cancelar-dps=')) {
         $cancelarDps = trim(substr($arg, 15));
+    }
+    if (str_starts_with($arg, '--ente=')) {
+        $ente = (int) substr($arg, 7);
+    }
+    if (str_starts_with($arg, '--oper=')) {
+        $oper = (int) substr($arg, 7);
     }
     if (str_starts_with($arg, '--nbs=')) {
         $nbs = preg_replace('/\D/', '', substr($arg, 6));
@@ -64,6 +74,12 @@ function falhar(string $msg): never
 
 if ($invoiceId <= 0) {
     falhar('Informe o ID da fatura de teste.');
+}
+if (($ente === 0) !== ($oper === 0)) {
+    falhar('Compra governamental: informe --ente e --oper juntos (tpOper sem tpEnteGov é rejeitado, E0904).');
+}
+if ($ente !== 0 && (!in_array($ente, [1, 2, 3, 4], true) || !in_array($oper, [1, 4, 5], true))) {
+    falhar('Use --ente=1..4 e --oper=1, 4 ou 5.');
 }
 
 $config = (new ConfigRepository())->get();
@@ -153,6 +169,11 @@ $ibscbs = [
     'indDest' => 0,
     'valores' => ['trib' => ['gIBSCBS' => ['CST' => '000', 'cClassTrib' => '000001']]],
 ];
+if ($ente !== 0) {
+    // Ordem do XML é decidida pelo DpsXmlBuilder; aqui só os dados.
+    $ibscbs['tpOper'] = $oper;
+    $ibscbs['tpEnteGov'] = $ente;
+}
 if ($finDuplicado) {
     $ibscbs = ['finNFSe' => '0'] + $ibscbs;
 }
@@ -185,4 +206,13 @@ if ($chave === '') {
     falhar('Autorizada, mas sem chave na resposta. Cancele com --cancelar-dps=' . $dps->infDps->id);
 }
 echo 'chave: ', $chave, "\n";
+if ($result->nfseXml) {
+    foreach (['pRedutor', 'gTribCompraGov', 'gTribSN', 'tpEnteGov', 'tpOper'] as $tag) {
+        if (preg_match('#<' . $tag . '>.*?</' . $tag . '>#s', $result->nfseXml, $t)) {
+            echo 'NFS-e ', $tag, ': ', $t[0], "\n";
+        } else {
+            echo 'NFS-e ', $tag, ': (ausente)', "\n";
+        }
+    }
+}
 cancelar($adapter, $sdkConfig, $config, $chave);
