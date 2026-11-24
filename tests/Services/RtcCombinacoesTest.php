@@ -132,6 +132,49 @@ final class RtcCombinacoesTest extends TestCase
         $this->assertSame([], Capsule::$inserts);
     }
 
+    public function testPainelComNbsVaziaListaAsVigentes(): void
+    {
+        $combinacoes = [];
+        for ($i = 1; $i <= 22; $i++) {
+            $codigo = sprintf('1000000%02d', $i);
+            $combinacoes[] = $this->linha('2.01', $codigo, '100301', '000001', '2026-01-01', null);
+        }
+        $combinacoes[] = $this->linha('3.01', '300000001', '100302', '000002', '2026-01-01', null);
+        $rtc = new RtcCombinacoes([
+            'indop' => [
+                '100301' => ['descricao' => 'Demais', 'local' => 'Tomador'],
+                '100302' => ['descricao' => 'Outra', 'local' => 'Prestador'],
+            ],
+            'classtrib' => [
+                '000001' => 'Integral',
+                '000002' => 'Reduzida',
+            ],
+            'nbs' => [
+                '100000001' => 'A & B <script>',
+            ],
+            'combinacoes' => $combinacoes,
+        ]);
+        $html = $rtc->htmlPainel('020101', '', '100301', '000001', [
+            ['rotulo' => 'Grupo <2>', 'codigo_servico' => '030101', 'nbs' => ''],
+        ], new \DateTimeImmutable('2026-07-01'));
+
+        $this->assertStringContainsString('NBS vigentes', $html);
+        $this->assertStringContainsString('NBS 100000001 — A &amp; B &lt;script&gt;', $html);
+        $this->assertStringContainsString('NBS 100000002', $html);
+        $this->assertStringContainsString('NBS 100000020', $html);
+        $this->assertStringContainsString('cIndOp 100301', $html);
+        $this->assertStringContainsString('cClassTrib 000001', $html);
+        $this->assertStringContainsString('e mais 2', $html);
+        $this->assertStringContainsString('Grupo &lt;2&gt;', $html);
+        $this->assertStringNotContainsString('100000021', $html);
+        $this->assertStringNotContainsString('100000022', $html);
+        $this->assertStringNotContainsString('<script>', $html);
+        $this->assertStringNotContainsString('Sem combinação oficial', $html);
+        $this->assertStringContainsString('NBS 300000001', $html);
+        $this->assertStringContainsString('value="100301"', $html);
+        $this->assertStringContainsString('value="100302"', $html);
+    }
+
     public function testBaseOficialDoProcessamentoDeDados(): void
     {
         $rtc = new RtcCombinacoes();

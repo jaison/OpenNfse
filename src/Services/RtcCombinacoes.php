@@ -21,6 +21,8 @@ final class RtcCombinacoes
     public const DESCONHECIDA = 'desconhecida';
     public const LOG_FORA_TABELA = 'IBSCBS_COMBINACAO_FORA_TABELA';
 
+    private const LIMITE_NBS_PAINEL = 20;
+
     /** @var array<string, mixed>|null */
     private static ?array $arquivo = null;
 
@@ -169,6 +171,16 @@ final class RtcCombinacoes
         $cIndOps = [];
         $classes = [];
         foreach ($contextos as $contexto) {
+            $nbsDigitos = preg_replace('/\D/', '', (string) $contexto['nbs']) ?? '';
+            if ($nbsDigitos === '') {
+                $bloco = $this->htmlNbsDoServico($contexto['rotulo'], $contexto['codigo_servico'], $data);
+                $listas .= $bloco['html'];
+                foreach ($bloco['opcoes'] as $opcao) {
+                    $cIndOps[$opcao['cIndOp']] = $opcao['cIndOpDescricao'];
+                    $classes[$opcao['cClassTrib']] = $opcao['cClassTribDescricao'];
+                }
+                continue;
+            }
             $status = $this->avaliar(
                 $contexto['codigo_servico'],
                 $contexto['nbs'],
@@ -339,6 +351,71 @@ final class RtcCombinacoes
     }
 
     /**
+     * NBS vigentes do serviço quando o contexto ainda não tem NBS.
+     *
+     * @return array{html: string, opcoes: list<array<string, string>>}
+     */
+    private function htmlNbsDoServico(string $rotulo, string $codigo, \DateTimeInterface $data): array
+    {
+        $titulo = $rotulo . ' · serviço ' . $codigo . ' · NBS não informada';
+        $nbsLista = $this->nbsPara($codigo, $data);
+        if ($nbsLista === []) {
+            return [
+                'html' => '<p class="nfse-help">' . $this->h(
+                    $titulo . '. Nenhuma NBS vigente na tabela oficial para este serviço.'
+                ) . '</p>',
+                'opcoes' => [],
+            ];
+        }
+
+        $visiveis = array_slice($nbsLista, 0, self::LIMITE_NBS_PAINEL);
+        $resto = count($nbsLista) - count($visiveis);
+        $html = '<p class="nfse-help">' . $this->h('NBS vigentes — ' . $titulo) . '</p>';
+        $todas = [];
+        foreach ($visiveis as $nbs) {
+            $descricao = $this->descricaoNbs($nbs);
+            $cabeca = 'NBS ' . $nbs . ($descricao !== '' ? ' — ' . $descricao : '');
+            $html .= '<p class="nfse-help">' . $this->h($cabeca) . '</p><ul class="nfse-help">';
+            $opcoes = $this->opcoes($codigo, $nbs, $data);
+            if ($opcoes === []) {
+                $html .= '<li>' . $this->h('Sem combinação vigente.') . '</li>';
+            }
+            foreach ($opcoes as $opcao) {
+                $todas[] = $opcao;
+                $html .= '<li>' . $this->h($this->textoOpcao($opcao)) . '</li>';
+            }
+            $html .= '</ul>';
+        }
+        if ($resto > 0) {
+            $html .= '<p class="nfse-help">' . $this->h('e mais ' . $resto) . '</p>';
+        }
+
+        return ['html' => $html, 'opcoes' => $todas];
+    }
+
+    /**
+     * @param array<string, string> $opcao
+     */
+    private function textoOpcao(array $opcao): string
+    {
+        return 'cIndOp ' . $opcao['cIndOp']
+            . ($opcao['cIndOpDescricao'] !== '' ? ' (' . $opcao['cIndOpDescricao'] . ')' : '')
+            . ($opcao['localIncidencia'] !== '' ? ', local ' . $opcao['localIncidencia'] : '')
+            . ' · cClassTrib ' . $opcao['cClassTrib']
+            . ($opcao['cClassTribDescricao'] !== '' ? ' (' . $opcao['cClassTribDescricao'] . ')' : '');
+    }
+
+    private function descricaoNbs(string $nbs): string
+    {
+        $mapa = $this->carregar()['nbs'] ?? [];
+        if (!is_array($mapa) || !isset($mapa[$nbs]) || !is_string($mapa[$nbs])) {
+            return '';
+        }
+
+        return trim($mapa[$nbs]);
+    }
+
+    /**
      * @param list<array<string, string>> $opcoes
      */
     private function htmlLista(string $rotulo, string $codigo, string $nbs, array $opcoes, string $status): string
@@ -353,13 +430,7 @@ final class RtcCombinacoes
         }
         $html = '<p class="nfse-help">' . $this->h('Combinações oficiais — ' . $titulo) . '</p><ul class="nfse-help">';
         foreach ($opcoes as $opcao) {
-            $html .= '<li>' . $this->h(
-                'cIndOp ' . $opcao['cIndOp']
-                . ($opcao['cIndOpDescricao'] !== '' ? ' (' . $opcao['cIndOpDescricao'] . ')' : '')
-                . ($opcao['localIncidencia'] !== '' ? ', local ' . $opcao['localIncidencia'] : '')
-                . ' · cClassTrib ' . $opcao['cClassTrib']
-                . ($opcao['cClassTribDescricao'] !== '' ? ' (' . $opcao['cClassTribDescricao'] . ')' : '')
-            ) . '</li>';
+            $html .= '<li>' . $this->h($this->textoOpcao($opcao)) . '</li>';
         }
 
         return $html . '</ul>';
