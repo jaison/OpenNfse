@@ -27,6 +27,7 @@ use OpenNfse\Services\IbscbsConfig;
 use OpenNfse\Services\InvoiceEmailService;
 use OpenNfse\Services\NfseService;
 use OpenNfse\Services\QueueErrorClassifierService;
+use OpenNfse\Services\RtcCombinacoes;
 use OpenNfse\Services\QueueService;
 use OpenNfse\Services\StorageService;
 use OpenNfse\Services\TokenService;
@@ -601,10 +602,20 @@ final class ConfigController
             '0' => 'Não',
             '1' => 'Sim',
         ], (string) ($config['ibscbs_enabled'] ?? '0'));
-        $this->renderTextRow('ibscbs_cindop', 'cIndOp', (string) ($config['ibscbs_cindop'] ?? IbscbsConfig::CIND_OP_PADRAO));
+        $cIndOp = (string) ($config['ibscbs_cindop'] ?? IbscbsConfig::CIND_OP_PADRAO);
+        $cClassTrib = (string) ($config['ibscbs_cclasstrib'] ?? IbscbsConfig::CCLASS_TRIB_PADRAO);
+        $this->renderTextRowComLista('ibscbs_cindop', 'cIndOp', $cIndOp, 'nfse-rtc-cindop');
         $this->renderTextRow('ibscbs_cst', 'CST', (string) ($config['ibscbs_cst'] ?? IbscbsConfig::CST_PADRAO));
-        $this->renderTextRow('ibscbs_cclasstrib', 'cClassTrib', (string) ($config['ibscbs_cclasstrib'] ?? IbscbsConfig::CCLASS_TRIB_PADRAO));
+        $this->renderTextRowComLista('ibscbs_cclasstrib', 'cClassTrib', $cClassTrib, 'nfse-rtc-cclasstrib');
         $this->renderConfigFormTableEnd();
+        echo (new RtcCombinacoes())->htmlPainel(
+            (string) ($config['codigo_servico'] ?? ''),
+            (string) ($config['nbs_padrao'] ?? ''),
+            $cIndOp,
+            $cClassTrib,
+            $this->gruposParaCombinacaoRtc($config),
+            new \DateTimeImmutable('today')
+        );
         $this->renderConfigSectionEnd();
         $this->renderConfigSectionStart(
             'Compra governamental',
@@ -869,6 +880,35 @@ final class ConfigController
         }
 
         return $out;
+    }
+
+    /**
+     * @return list<array{rotulo: string, codigo_servico: string, nbs: string}>
+     */
+    private function gruposParaCombinacaoRtc(array $config): array
+    {
+        try {
+            $mapa = (new GroupServiceCodeRepository())->getAllByGroupId();
+        } catch (\Throwable $e) {
+            return [];
+        }
+        $padraoCodigo = (string) ($config['codigo_servico'] ?? '');
+        $padraoNbs = (string) ($config['nbs_padrao'] ?? '');
+        $grupos = [];
+        foreach ($mapa as $groupId => $row) {
+            $codigo = trim((string) ($row['codigo_servico'] ?? ''));
+            $nbs = trim((string) ($row['nbs'] ?? ''));
+            if ($codigo === '' && $nbs === '') {
+                continue;
+            }
+            $grupos[] = [
+                'rotulo' => 'Grupo ' . (int) $groupId,
+                'codigo_servico' => $codigo !== '' ? $codigo : $padraoCodigo,
+                'nbs' => $nbs !== '' ? $nbs : $padraoNbs,
+            ];
+        }
+
+        return $grupos;
     }
 
     public function saveConfig(): void

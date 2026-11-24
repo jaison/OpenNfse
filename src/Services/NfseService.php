@@ -268,6 +268,8 @@ final class NfseService
         $nota = $notaRepo->findByInvoiceId($invoiceId);
         $notaId = $nota ? (int) $nota['id'] : null;
 
+        $this->registrarCombinacaoRtc($logRepo, $notaId, $correlationId, $config, $invoice, $items);
+
         $requestPayload = $this->safeSerializeDps($dps);
         $requestPayload['_configSnapshot'] = [
             'prestador_informar_im' => $config['prestador_informar_im'] ?? null,
@@ -1109,6 +1111,35 @@ final class NfseService
                 ], JSON_UNESCAPED_UNICODE),
                 null,
                 $correlationId
+            );
+        } catch (\Throwable $e) {
+            return;
+        }
+    }
+
+    private function registrarCombinacaoRtc(
+        LogRepository $logRepo,
+        ?int $notaId,
+        ?string $correlationId,
+        array $config,
+        array $invoice,
+        array $items
+    ): void {
+        $layout = (new DpsLayoutService())->effectiveLayout($config);
+        if (!IbscbsConfig::enabled($config) || $layout !== DpsLayoutService::LAYOUT_NT009) {
+            return;
+        }
+        try {
+            $servico = (new DpsBuilderService())->resolveServicoNbs($config, $invoice, $items);
+            (new RtcCombinacoes())->registrarSeInvalida(
+                $logRepo,
+                $notaId,
+                $correlationId,
+                $config,
+                $layout,
+                (string) $servico['codigo_servico'],
+                (string) $servico['nbs'],
+                new \DateTimeImmutable('today')
             );
         } catch (\Throwable $e) {
             return;

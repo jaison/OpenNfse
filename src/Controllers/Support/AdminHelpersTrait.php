@@ -336,6 +336,14 @@ trait AdminHelpersTrait
     }
 
 
+    public function renderTextRowComLista(string $name, string $label, mixed $value, string $lista): void
+    {
+        $id = $this->configFieldId($name);
+        $campo = Ui::input($name, (string) $value, 'text', ['id' => $id, 'list' => $lista], 'nfse-cfg-field');
+        echo Ui::formRow($label, $campo, $this->getConfigFieldHelp($name), ['id' => $id, 'more' => $this->getConfigFieldHelpMore($name)]);
+    }
+
+
     public function renderPasswordRow(string $name, string $label, mixed $value): void
     {
         $id = 'nfse-field-' . preg_replace('/[^a-zA-Z0-9_-]/', '-', $name);
@@ -456,9 +464,15 @@ trait AdminHelpersTrait
                 'Desligado por padrão. Só altera a DPS no leiaute da NT 009.',
                 'Com o grupo ligado, a DPS leva cIndOp, CST e cClassTrib. O indDest fica sempre 0, porque 1 exige o grupo dest, que esta versão não monta. Fora da NT 009 o XML permanece o de hoje.',
             ],
-            'ibscbs_cindop' => 'Código indicador da operação (6 dígitos). Padrão 100301.',
+            'ibscbs_cindop' => [
+                'Código indicador da operação (6 dígitos). Padrão 100301.',
+                'A lista vem da calculadora RTC (serviço e NBS). Fora da tabela: aviso e log na emissão. O salvamento segue.',
+            ],
             'ibscbs_cst' => 'CST do IBS/CBS (3 dígitos). Padrão 000.',
-            'ibscbs_cclasstrib' => 'Classificação tributária do IBS/CBS (6 dígitos). Padrão 000001.',
+            'ibscbs_cclasstrib' => [
+                'Classificação tributária do IBS/CBS (6 dígitos). Padrão 000001.',
+                'A lista vem da calculadora RTC (serviço e NBS). Fora da tabela: aviso e log na emissão. O salvamento segue.',
+            ],
             'compra_gov_customfield_id' => [
                 'Campo do cliente que indica o ente público. Vazio não é governo.',
                 'Códigos: 1 União, 2 Estado, 3 Distrito Federal, 4 Município (administração direta, autarquias e fundações). Crie o campo como lista suspensa com as opções: vazio, 1 - União, 2 - Estado, 3 - Distrito Federal, 4 - Município.',
