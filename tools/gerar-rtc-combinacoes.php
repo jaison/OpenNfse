@@ -209,7 +209,7 @@ foreach ($classes as $row) {
 ksort($mapaClasse);
 
 $dados = [
-    'fonte' => 'https://github.com/Serpro/calculadora-rtc-regime-regular',
+    'fonte' => 'https://github.com/ReceitaFederal/calculadora-rtc-regime-regular',
     'commit' => $commit,
     'versao_base' => $versaoBase,
     'licenca' => 'MIT',

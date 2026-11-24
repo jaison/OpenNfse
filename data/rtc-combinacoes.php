@@ -13,7 +13,7 @@ declare(strict_types=1);
 // cClassTrib é CLTR_CD (6 dígitos), resolvido a partir de CNIL_CLTR_ID.
 
 return array (
-  'fonte' => 'https://github.com/Serpro/calculadora-rtc-regime-regular',
+  'fonte' => 'https://github.com/ReceitaFederal/calculadora-rtc-regime-regular',
   'commit' => 'f1eebd7ce3157423b1a6aaca7dc1d6c3395452c4',
   'versao_base' => 'V0073',
   'licenca' => 'MIT',
