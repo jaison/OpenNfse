@@ -18,6 +18,7 @@ declare(strict_types=1);
  *   --nbs=<9 dígitos> NBS a usar quando a DPS sair sem cNBS (a Sefin exige NBS com IBS/CBS, E0322).
  *   --ente=<1-4>     compra governamental: tpEnteGov (1 União, 2 Estado, 3 DF, 4 Município).
  *   --oper=<1|4|5>   tpOper da compra governamental (2 e 3 exigem gRefNFSe e não são cobertos aqui).
+ *   --cindop=<6 dígitos> cIndOp a enviar no lugar de 100301.
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -51,6 +52,7 @@ $nbs = '';
 $cancelarDps = '';
 $ente = 0;
 $oper = 0;
+$cIndOp = '100301';
 foreach ($args as $arg) {
     if (str_starts_with($arg, '--cancelar-dps=')) {
         $cancelarDps = trim(substr($arg, 15));
@@ -60,6 +62,9 @@ foreach ($args as $arg) {
     }
     if (str_starts_with($arg, '--oper=')) {
         $oper = (int) substr($arg, 7);
+    }
+    if (str_starts_with($arg, '--cindop=')) {
+        $cIndOp = preg_replace('/\D/', '', substr($arg, 9));
     }
     if (str_starts_with($arg, '--nbs=')) {
         $nbs = preg_replace('/\D/', '', substr($arg, 6));
@@ -74,6 +79,9 @@ function falhar(string $msg): never
 
 if ($invoiceId <= 0) {
     falhar('Informe o ID da fatura de teste.');
+}
+if (strlen($cIndOp) !== 6) {
+    falhar('Use --cindop com 6 dígitos.');
 }
 if (($ente === 0) !== ($oper === 0)) {
     falhar('Compra governamental: informe --ente e --oper juntos (tpOper sem tpEnteGov é rejeitado, E0904).');
@@ -144,7 +152,7 @@ function mostrarCamposNfse(array $sdkConfig, string $chave): void
         echo "NFS-e: consulta sem XML\n";
         return;
     }
-    foreach (['tpEnteGov', 'tpOper', 'pRedutor', 'gTribCompraGov', 'gTribSN', 'vReceitaBrutaSN', 'totCIBS'] as $tag) {
+    foreach (['cIndOp', 'tpEnteGov', 'tpOper', 'pRedutor', 'gTribCompraGov', 'gTribSN', 'vReceitaBrutaSN', 'totCIBS'] as $tag) {
         echo 'NFS-e ', $tag, ': ', preg_match('#<' . $tag . '>.*?</' . $tag . '>#s', $xml, $t) ? $t[0] : '(ausente)', "\n";
     }
 }
@@ -186,7 +194,7 @@ if ($cServ !== null && ($cServ->codigoNbs ?? '') === '') {
 }
 
 $ibscbs = [
-    'cIndOp' => '100301',
+    'cIndOp' => $cIndOp,
     'indDest' => 0,
     'valores' => ['trib' => ['gIBSCBS' => ['CST' => '000', 'cClassTrib' => '000001']]],
 ];
@@ -228,7 +236,7 @@ if ($chave === '') {
 }
 echo 'chave: ', $chave, "\n";
 if ($result->nfseXml) {
-    foreach (['pRedutor', 'gTribCompraGov', 'gTribSN', 'tpEnteGov', 'tpOper'] as $tag) {
+    foreach (['cIndOp', 'pRedutor', 'gTribCompraGov', 'gTribSN', 'tpEnteGov', 'tpOper'] as $tag) {
         if (preg_match('#<' . $tag . '>.*?</' . $tag . '>#s', $result->nfseXml, $t)) {
             echo 'NFS-e ', $tag, ': ', $t[0], "\n";
         } else {
