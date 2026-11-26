@@ -8,7 +8,7 @@ Todas ficam em `mod_opennfse_config` e são editadas em **Addons > OpenNfse > Co
 
 | Campo | Padrão | Efeito |
 |---|---|---|
-| `dps_leiaute` | `auto` | Leiaute da DPS (seção Ambiente): `auto` segue a NT 009 (homologação já no leiaute novo; produção a partir de 01/12/2026 00:00, horário de Brasília), `pre_nt009` e `nt009` forçam um leiaute. Ver [LEVANTAMENTO_API_NACIONAL.md](LEVANTAMENTO_API_NACIONAL.md#leiaute-da-dps-nt-009). |
+| `dps_leiaute` | `auto` | Leiaute da DPS (seção Ambiente): `auto` segue a NT 009 (homologação já no leiaute novo; produção a partir de 07/12/2026 00:00, horário de Brasília), `pre_nt009` e `nt009` forçam um leiaute. Ver [LEVANTAMENTO_API_NACIONAL.md](LEVANTAMENTO_API_NACIONAL.md#leiaute-da-dps-nt-009). |
 | `queue_enabled` | `0` | Liga a fila. Com a fila desligada, o cron faz as novas tentativas do e-mail automático, a conferência diferida dos alertas, a limpeza e a checagem de atualização, e a emissão manual é síncrona. |
 | `auto_emit_trigger` | `nunca` | **Enfileirar emissão automaticamente quando?** `nunca`, `paga` (quando a fatura é paga) ou `gerada` (quando a fatura `Unpaid` é publicada e, se ainda não houver NFS-e, também no pagamento). Exige `queue_enabled`. Ver [Política de emissão automática](#política-de-emissão-automática). |
 | `auto_emit_scope` | `todos` | **Aplicar a regra a quais clientes?** `todos` ou `grupos` (só os clientes dos grupos de `auto_emit_group_ids`). |
