@@ -19,6 +19,7 @@ declare(strict_types=1);
  *   --ente=<1-4>     compra governamental: tpEnteGov (1 União, 2 Estado, 3 DF, 4 Município).
  *   --oper=<1|4|5>   tpOper da compra governamental (2 e 3 exigem gRefNFSe e não são cobertos aqui).
  *   --cindop=<6 dígitos> cIndOp a enviar no lugar de 100301.
+ *   --sem-endereco   envia o tomador sem endereço (confere se a Sefin exige o endereço).
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -47,6 +48,7 @@ use OpenNfse\Services\TomadorBairroService;
 $args = array_slice($argv, 1);
 $dry = in_array('--dry', $args, true);
 $finDuplicado = in_array('--fin-duplicado', $args, true);
+$semEndereco = in_array('--sem-endereco', $args, true);
 $invoiceId = (int) ($args[0] ?? 0);
 $nbs = '';
 $cancelarDps = '';
@@ -185,6 +187,10 @@ if (($dps->infDps->finalidadeNfse ?? null) === null) {
     falhar('O addon montou a DPS no leiaute anterior à NT 009 (sem finNFSe). Ajuste o leiaute para NT 009 ou automático.');
 }
 
+if ($semEndereco && $dps->infDps->tomador !== null) {
+    $dps->infDps->tomador->endereco = null;
+}
+
 $cServ = $dps->infDps->servico->codigoServico ?? null;
 if ($cServ !== null && ($cServ->codigoNbs ?? '') === '') {
     if (strlen($nbs) !== 9) {
@@ -211,6 +217,8 @@ $dps->infDps->ibscbs = new \Nfse\Dto\Nfse\IbscbsData($ibscbs);
 $xml = (new \Nfse\Xml\DpsXmlBuilder())->build($dps);
 preg_match('#<IBSCBS>.*</IBSCBS>#s', $xml, $m);
 echo 'idDps: ', $dps->infDps->id, "\n";
+preg_match('#<toma>.*</toma>#s', $xml, $t);
+echo 'toma tem <end>: ', isset($t[0]) && str_contains($t[0], '<end>') ? 'sim' : 'não', "\n";
 preg_match('#<cServ>.*</cServ>#s', $xml, $c);
 echo 'cServ: ', $c[0] ?? '(ausente)', "\n";
 echo 'finNFSe no XML: ', substr_count($xml, '<finNFSe>'), "\n";
