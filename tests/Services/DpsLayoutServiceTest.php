@@ -35,7 +35,7 @@ final class DpsLayoutServiceTest extends TestCase
     {
         $this->assertSame(
             DpsLayoutService::LAYOUT_PRE_NT009,
-            $this->service->resolve(DpsLayoutService::MODE_AUTO, 'producao', self::at('2026-11-30 23:59:59'))
+            $this->service->resolve(DpsLayoutService::MODE_AUTO, 'producao', self::at('2026-12-06 23:59:59'))
         );
     }
 
@@ -43,20 +43,28 @@ final class DpsLayoutServiceTest extends TestCase
     {
         $this->assertSame(
             DpsLayoutService::LAYOUT_NT009,
-            $this->service->resolve(DpsLayoutService::MODE_AUTO, 'producao', self::at('2026-12-01 00:00:00'))
+            $this->service->resolve(DpsLayoutService::MODE_AUTO, 'producao', self::at('2026-12-07 00:00:00'))
+        );
+    }
+
+    public function testAutomaticStaysOnPreviousLayoutOnDecemberThird(): void
+    {
+        $this->assertSame(
+            DpsLayoutService::LAYOUT_PRE_NT009,
+            $this->service->resolve(DpsLayoutService::MODE_AUTO, 'producao', self::at('2026-12-03 12:00:00'))
         );
     }
 
     public function testAutomaticComparesInstantsNotLocalClock(): void
     {
-        // 02:59:59 UTC ainda é 30/11 23:59:59 em Brasília (UTC-3).
+        // 02:59:59 UTC ainda é 06/12 23:59:59 em Brasília (UTC-3).
         $this->assertSame(
             DpsLayoutService::LAYOUT_PRE_NT009,
-            $this->service->resolve(DpsLayoutService::MODE_AUTO, 'producao', self::at('2026-12-01 02:59:59', 'Z'))
+            $this->service->resolve(DpsLayoutService::MODE_AUTO, 'producao', self::at('2026-12-07 02:59:59', 'Z'))
         );
         $this->assertSame(
             DpsLayoutService::LAYOUT_NT009,
-            $this->service->resolve(DpsLayoutService::MODE_AUTO, 'producao', self::at('2026-12-01 03:00:00', 'Z'))
+            $this->service->resolve(DpsLayoutService::MODE_AUTO, 'producao', self::at('2026-12-07 03:00:00', 'Z'))
         );
     }
 
@@ -69,11 +77,11 @@ final class DpsLayoutServiceTest extends TestCase
             $auto = DpsLayoutService::MODE_AUTO;
             $this->assertSame(
                 DpsLayoutService::LAYOUT_PRE_NT009,
-                $this->service->resolve($auto, 'producao', self::at('2026-12-01 00:59:59', '-02:00'))
+                $this->service->resolve($auto, 'producao', self::at('2026-12-07 00:59:59', '-02:00'))
             );
             $this->assertSame(
                 DpsLayoutService::LAYOUT_NT009,
-                $this->service->resolve($auto, 'producao', self::at('2026-12-01 01:00:00', '-02:00'))
+                $this->service->resolve($auto, 'producao', self::at('2026-12-07 01:00:00', '-02:00'))
             );
         } finally {
             date_default_timezone_set($original);
@@ -86,7 +94,7 @@ final class DpsLayoutServiceTest extends TestCase
             ['environment' => 'producao', 'dps_leiaute' => DpsLayoutService::MODE_AUTO],
             self::at('2026-11-15 12:00:00')
         );
-        $this->assertStringContainsString('01/12/2026 00:00', $text);
+        $this->assertStringContainsString('07/12/2026 00:00', $text);
     }
 
     public function testOverridesWinOverEnvironmentAndDate(): void

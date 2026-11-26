@@ -464,7 +464,7 @@ trait AdminHelpersTrait
                 'Códigos: 1 União, 2 Estado, 3 Distrito Federal, 4 Município (administração direta, autarquias e fundações). Crie o campo como lista suspensa com as opções: vazio, 1 - União, 2 - Estado, 3 - Distrito Federal, 4 - Município.',
             ],
             'compra_gov_tpoper' => 'Tipo de operação enviado junto com tpEnteGov. Padrão 5. Os tipos 2 e 3 não são usados.',
-            'dps_leiaute' => ['Deixe em Automático, salvo se a SEFIN rejeitar a DPS com E1235 por leiaute.', 'O modo Automático segue a NT 009: leiaute novo em homologação desde 20/10/2026 e em produção a partir de 01/12/2026 00:00 (horário de Brasília). Force um leiaute só se a SEFIN rejeitar a DPS com E1235 por leiaute.'],
+            'dps_leiaute' => ['Deixe em Automático, salvo se a SEFIN rejeitar a DPS com E1235 por leiaute.', 'O modo Automático segue a NT 009: leiaute novo em homologação desde 20/10/2026 e em produção a partir de 07/12/2026 00:00 (horário de Brasília). Force um leiaute só se a SEFIN rejeitar a DPS com E1235 por leiaute.'],
             'tomador_cpfcnpj_customfield_id' => 'ID do custom field do cliente que armazena CPF/CNPJ do tomador no WHMCS.',
             'client_area_notice_enabled' => 'Controla a exibição de um aviso fixo no topo da lista de NFS-e do cliente.',
             'client_area_notice_type' => 'Define o estilo visual do aviso mostrado na área do cliente.',
