@@ -21,10 +21,10 @@ final class DpsLayoutService
     public const LAYOUT_NT009 = 'nt009';
 
     /**
-     * Início da NT 009 em produção: 01/12/2026 00:00 em Brasília. O offset é
+     * Início da NT 009 em produção: 07/12/2026 00:00 em Brasília. O offset é
      * fixo para não depender do tzdata (ex.: se o horário de verão voltar).
      */
-    public const NT009_PRODUCAO_INICIO = '2026-12-01T00:00:00-03:00';
+    public const NT009_PRODUCAO_INICIO = '2026-12-07T00:00:00-03:00';
 
     /** finNFSe = 0: NFS-e regular (único valor do TSRTCFinNFSe). */
     public const FIN_NFSE_REGULAR = '0';
@@ -42,7 +42,7 @@ final class DpsLayoutService
     public static function modeOptions(): array
     {
         return [
-            self::MODE_AUTO => 'Automático (NT 009 em homologação; em produção a partir de 01/12/2026)',
+            self::MODE_AUTO => 'Automático (NT 009 em homologação; em produção a partir de 07/12/2026)',
             self::MODE_PRE_NT009 => 'Pré-NT 009 (força o leiaute anterior)',
             self::MODE_NT009 => 'NT 009 (força o leiaute novo)',
         ];

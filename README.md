@@ -18,13 +18,13 @@ Quem usa o WHMCS já mantém o servidor, o banco de dados e o cron. O OpenNfse a
 
 A versão 1.0.0 traz duas mudanças grandes: o visual novo do admin (Dashboard, Fila, Relatórios e Configurações) e o **atualizador embutido**.
 
-Nos próximos meses ainda haverá várias atualizações: ajustes da NT 009, que entra em produção em 01/12/2026, correções e funções novas. Até aqui, cada atualização era feita à mão: baixar o zip, apagar a pasta, enviar a nova e torcer para nada dar errado. Em um módulo fiscal, um erro nesse processo para a emissão de notas, e esse atrito fazia muita gente adiar a atualização. O atualizador existe para tirar esse atrito: a partir da 1.0.0, a atualização é feita pela tela **Configurações > Atualizações**, em etapas, com backup e volta ao estado anterior se algo der errado. Veja [Atualizador embutido](#atualizador-embutido).
+Nos próximos meses ainda haverá várias atualizações: ajustes da NT 009, que entra em produção em 07/12/2026, correções e funções novas. Até aqui, cada atualização era feita à mão: baixar o zip, apagar a pasta, enviar a nova e torcer para nada dar errado. Em um módulo fiscal, um erro nesse processo para a emissão de notas, e esse atrito fazia muita gente adiar a atualização. O atualizador existe para tirar esse atrito: a partir da 1.0.0, a atualização é feita pela tela **Configurações > Atualizações**, em etapas, com backup e volta ao estado anterior se algo der errado. Veja [Atualizador embutido](#atualizador-embutido).
 
 A instalação da 1.0.0 ainda é manual, uma única vez. As versões seguintes já podem ser instaladas pelo atualizador.
 
 Ao começar a usar o addon, configure primeiro o ambiente de homologação. Se estiver testando em uma instalação de produção do WHMCS, não ative as automações de emissão. Valide as notas emitidas no ambiente de homologação do Emissor Nacional com a sua contabilidade e confira se todos os campos foram preenchidos corretamente.
 
-O leiaute da DPS segue a NT 009 e muda automaticamente em produção em 01/12/2026 (configurável em **Leiaute da DPS**). Depois de atualizar, clique em **Testar conexão** e, se houver erro de certificado, atualize o pacote `ca-certificates` do servidor.
+O leiaute da DPS segue a NT 009 e muda automaticamente em produção em 07/12/2026 (configurável em **Leiaute da DPS**). Depois de atualizar, clique em **Testar conexão** e, se houver erro de certificado, atualize o pacote `ca-certificates` do servidor.
 
 Se encontrar algum problema ou tiver uma sugestão, [abra uma issue](https://github.com/jaison/OpenNfse/issues/new).
 
@@ -272,7 +272,7 @@ Use este caminho para sair de uma versão anterior à 1.0.0, ou quando o atualiz
 ## Configuração Inicial
 
 - Configure ambiente, certificado digital e dados do prestador.
-- Em **Leiaute da DPS**, mantenha **Automático**. Ele segue a NT 009: em homologação o leiaute novo já vale; em produção ele passa a valer em 01/12/2026 00:00 (horário de Brasília). A tela mostra o leiaute ativo. Só force **Pré-NT 009** ou **NT 009** se a SEFIN rejeitar a DPS com E1235 por leiaute; nesse caso a mensagem de erro da nota indica o ajuste.
+- Em **Leiaute da DPS**, mantenha **Automático**. Ele segue a NT 009: em homologação o leiaute novo já vale; em produção ele passa a valer em 07/12/2026 00:00 (horário de Brasília). A tela mostra o leiaute ativo. Só force **Pré-NT 009** ou **NT 009** se a SEFIN rejeitar a DPS com E1235 por leiaute; nesse caso a mensagem de erro da nota indica o ajuste.
 - Configure a série DPS conforme a operação desejada.
 - Revise as opções de fila e processamento automático.
 - Em **Automação de E-mail**, configure **Enviar PDF/XML automaticamente por e-mail?** como `Sim` para enviar os anexos quando a nota for emitida; a opção vem desativada por padrão. Cada nota recebe um e-mail automático; uma reemissão gera nota nova e, portanto, um e-mail novo.

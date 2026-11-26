@@ -77,7 +77,7 @@ A NT 009 mudou o leiaute da DPS. O `DpsLayoutService` decide qual leiaute usar a
 
 | Modo (`dps_leiaute`) | Leiaute enviado |
 |---|---|
-| `auto` (padrão) | Homologação: NT 009. Produção: Pré-NT 009 até 30/11/2026 e NT 009 a partir de 01/12/2026 00:00 (horário de Brasília, `2026-12-01T00:00:00-03:00`). |
+| `auto` (padrão) | Homologação: NT 009. Produção: Pré-NT 009 até 06/12/2026 e NT 009 a partir de 07/12/2026 00:00 (horário de Brasília, `2026-12-07T00:00:00-03:00`). |
 | `pre_nt009` | Sempre o leiaute anterior à NT 009. |
 | `nt009` | Sempre o leiaute da NT 009. |
 
