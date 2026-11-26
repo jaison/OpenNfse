@@ -20,6 +20,7 @@ declare(strict_types=1);
  *   --oper=<1|4|5>   tpOper da compra governamental (2 e 3 exigem gRefNFSe e não são cobertos aqui).
  *   --cindop=<6 dígitos> cIndOp a enviar no lugar de 100301.
  *   --sem-endereco   envia o tomador sem endereço (confere se a Sefin exige o endereço).
+ *   --sem-ibscbs     envia a DPS sem o grupo IBSCBS (não combina com --ente, --oper, --cindop e --fin-duplicado).
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -49,6 +50,7 @@ $args = array_slice($argv, 1);
 $dry = in_array('--dry', $args, true);
 $finDuplicado = in_array('--fin-duplicado', $args, true);
 $semEndereco = in_array('--sem-endereco', $args, true);
+$semIbscbs = in_array('--sem-ibscbs', $args, true);
 $invoiceId = (int) ($args[0] ?? 0);
 $nbs = '';
 $cancelarDps = '';
@@ -81,6 +83,9 @@ function falhar(string $msg): never
 
 if ($invoiceId <= 0) {
     falhar('Informe o ID da fatura de teste.');
+}
+if ($semIbscbs && ($ente !== 0 || $finDuplicado || $cIndOp !== '100301')) {
+    falhar('--sem-ibscbs não combina com --ente, --oper, --cindop ou --fin-duplicado.');
 }
 if (strlen($cIndOp) !== 6) {
     falhar('Use --cindop com 6 dígitos.');
@@ -212,7 +217,7 @@ if ($ente !== 0) {
 if ($finDuplicado) {
     $ibscbs = ['finNFSe' => '0'] + $ibscbs;
 }
-$dps->infDps->ibscbs = new \Nfse\Dto\Nfse\IbscbsData($ibscbs);
+$dps->infDps->ibscbs = $semIbscbs ? null : new \Nfse\Dto\Nfse\IbscbsData($ibscbs);
 
 $xml = (new \Nfse\Xml\DpsXmlBuilder())->build($dps);
 preg_match('#<IBSCBS>.*</IBSCBS>#s', $xml, $m);
