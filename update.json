@@ -1,12 +1,12 @@
 {
   "module": "OpenNfse",
-  "latest_version": "1.0.8",
-  "release_date": "2026-11-17",
-  "download_url": "https://github.com/jaison/OpenNfse/releases/tag/v1.0.8",
-  "changelog_url": "https://github.com/jaison/OpenNfse/releases/tag/v1.0.8",
-  "package_url": "https://github.com/jaison/OpenNfse/releases/download/v1.0.8/OpenNfse-1.0.8.zip",
-  "package_sha256": "db51d9770f72a1478255fe5ff2a95a39ba369c45bf8e408cd8cb9b8bf0441086",
+  "latest_version": "1.0.9",
+  "release_date": "2026-11-26",
+  "download_url": "https://github.com/jaison/OpenNfse/releases/tag/v1.0.9",
+  "changelog_url": "https://github.com/jaison/OpenNfse/releases/tag/v1.0.9",
+  "package_url": "https://github.com/jaison/OpenNfse/releases/download/v1.0.9/OpenNfse-1.0.9.zip",
+  "package_sha256": "7be82d33f1a83c593ed246caab218b0980d43c5a78e85d1e559559c33090f978",
   "minimum_whmcs": "8.13.0",
   "minimum_php": "8.1",
-  "message": "DANFSe v2.0 conforme a NT 008, com o mesmo conteúdo do gerador oficial da Receita Federal: blocos novos (IBS/CBS, situação, finalidade, NBS, destinatário e canhoto), valores em R$ e QR Code oficial. O cabeçalho segue a NT, então saem o brasão e a aba \"PDF DANFS-e\" da configuração. Na 1.0.x, atualize por Configurações > Atualizações > Atualizar agora. Em versões anteriores, apague a pasta modules/addons/OpenNfse e envie a nova, do arquivo OpenNfse-1.0.8.zip do release."
+  "message": "A NT 009 passa a valer em produção em 07/12/2026, conforme o novo cronograma do Comitê Gestor. O modo automático do leiaute da DPS agora troca nessa data, e não mais em 01/12/2026. Na 1.0.x, atualize por Configurações > Atualizações > Atualizar agora. Em versões anteriores, apague a pasta modules/addons/OpenNfse e envie a nova, do arquivo OpenNfse-1.0.9.zip do release."
 }
